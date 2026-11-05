@@ -21,6 +21,9 @@ namespace Automation.App
         private const string UntilFormat = "yyyy-MM-dd HH:mm:ss";
 
         private readonly MouseController _mouse = new MouseController();
+        private readonly KeyboardController _keyboard = new KeyboardController();
+        private readonly StopKeyHook _stopHook = new StopKeyHook();
+        private bool _hotKeyFallback;
         private AutomationScript _script = new AutomationScript();
         private CancellationTokenSource _cts;
         private bool _running;
@@ -67,14 +70,34 @@ namespace Automation.App
         private readonly NumericUpDown _y = MakeNumber(-20000, 20000, 0);
         private readonly NumericUpDown _notches = MakeNumber(1, 1000, 1);
 
-        // Editor: control (loop)
+        // Editor: keyboard
+        private readonly ComboBox _kbAction = MakeCombo(typeof(KeyboardAction));
+        private readonly KeyCaptureBox _kbKey = new KeyCaptureBox { Width = 200 };
+        private readonly TextBox _kbText = new TextBox { Width = 200, Height = 90, Multiline = true, AcceptsReturn = true, AcceptsTab = true, ScrollBars = ScrollBars.Vertical };
+        private readonly TimeBox _kbTime = new TimeBox(500);
+        private readonly TimeBox _kbDelay = new TimeBox(500);
+        private readonly TextBox _kbProcessName = new TextBox { Width = 200 };
+        private readonly TextBox _kbProcessTitle = new TextBox { Width = 200 };
+
+        // Editor: command
+        private readonly ComboBox _cmdKind = MakeCombo(typeof(CommandKind));
+        private readonly TextBox _cmdValue = new TextBox { Width = 200 };
+
+        // Editor: control (loop, wait)
         private readonly ComboBox _controlKind = MakeCombo(typeof(ControlKind));
         private readonly ComboBox _loopType = MakeCombo(typeof(LoopType));
         private readonly NumericUpDown _loopCount = MakeNumber(0, 1000000000, 1);
         private readonly TimeBox _loopDuration = new TimeBox(10000);
         private readonly DateTimePicker _loopUntil = new DateTimePicker { Format = DateTimePickerFormat.Custom, CustomFormat = UntilFormat, Width = 200 };
+        private readonly TextBox _waitProcessName = new TextBox { Width = 200 };
+        private readonly TextBox _waitProcessTitle = new TextBox { Width = 200 };
+        private readonly TimeBox _waitTime = new TimeBox(10000);
+        private readonly NumericUpDown _waitRetry = MakeNumber(0, 1000, 0);
+        private readonly Button _waitPick = new Button { Text = "Pick program...", AutoSize = true };
 
         private readonly GroupBox _mouseBox = new GroupBox { Text = "Mouse", Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8) };
+        private readonly GroupBox _keyboardBox = new GroupBox { Text = "Keyboard", Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8) };
+        private readonly GroupBox _commandBox = new GroupBox { Text = "Command", Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8) };
         private readonly GroupBox _controlBox = new GroupBox { Text = "Control", Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8) };
         private readonly Dictionary<Control, Label> _rowLabels = new Dictionary<Control, Label>();
         // AutoSize + Dock.Top so the area is exactly as tall as its content; the parent panel scrolls when the window is small.
@@ -127,11 +150,9 @@ namespace Automation.App
             var common = NewTable();
             AddRow(common, "Category", _category);
 
-            var pickProcess = new Button { Text = "Pick program...", AutoSize = true };
-            pickProcess.Click += (s, e) => PickProcess();
-            var pickPosition = new Button { Text = "Pick position...", AutoSize = true };
-            pickPosition.Click += (s, e) => PickPosition();
-
+            // Mouse
+            var pickProcess = MakeButton("Pick program...", (s, e) => PickProcess(_processName));
+            var pickPosition = MakeButton("Pick position...", (s, e) => PickPosition());
             var mouseTable = NewTable();
             AddRow(mouseTable, "Action", _mouseAction);
             AddRow(mouseTable, "Type", _button);
@@ -147,16 +168,43 @@ namespace Automation.App
             AddRow(mouseTable, "", pickPosition);
             _mouseBox.Controls.Add(mouseTable);
 
+            // Keyboard
+            var kbTable = NewTable();
+            AddRow(kbTable, "Action", _kbAction);
+            AddRow(kbTable, "Key (press it)", _kbKey);
+            AddRow(kbTable, "Text", _kbText);
+            AddRow(kbTable, "Time", _kbTime);
+            AddRow(kbTable, "Delay", _kbDelay);
+            AddRow(kbTable, "Target process", _kbProcessName);
+            AddRow(kbTable, "Target title (regex)", _kbProcessTitle);
+            AddRow(kbTable, "", MakeButton("Pick program...", (s, e) => PickProcess(_kbProcessName)));
+            _keyboardBox.Controls.Add(kbTable);
+
+            // Command
+            var cmdTable = NewTable();
+            AddRow(cmdTable, "Type", _cmdKind);
+            AddRow(cmdTable, "Path", _cmdValue);
+            AddRow(cmdTable, "", MakeButton("Browse...", (s, e) => BrowseCommandPath()));
+            _commandBox.Controls.Add(cmdTable);
+
+            // Control
             var controlTable = NewTable();
             AddRow(controlTable, "Type", _controlKind);
             AddRow(controlTable, "Loop by", _loopType);
             AddRow(controlTable, "Count (0 = forever)", _loopCount);
             AddRow(controlTable, "Duration", _loopDuration);
             AddRow(controlTable, "Until", _loopUntil);
+            AddRow(controlTable, "Process", _waitProcessName);
+            AddRow(controlTable, "Title (regex)", _waitProcessTitle);
+            AddRow(controlTable, "", _waitPick);
+            AddRow(controlTable, "Wait up to", _waitTime);
+            AddRow(controlTable, "Retry", _waitRetry);
             _controlBox.Controls.Add(controlTable);
 
             // Docked top-to-bottom: the control added last is docked first.
             _editArea.Controls.Add(_controlBox);
+            _editArea.Controls.Add(_commandBox);
+            _editArea.Controls.Add(_keyboardBox);
             _editArea.Controls.Add(_mouseBox);
             _editArea.Controls.Add(common);
             _editArea.Controls.Add(buttons);
@@ -186,31 +234,55 @@ namespace Automation.App
             _startStop.Click += (s, e) => ToggleRun();
             _category.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
             _mouseAction.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
+            _kbAction.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
+            _controlKind.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
             _loopType.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
             _processName.TextChanged += (s, e) => UpdateEditorVisibility();
             _processTitle.TextChanged += (s, e) => UpdateEditorVisibility();
+
+            // F6 is a global hot key while idle; it must not be swallowed while the user records F6 as a key.
+            _waitPick.Click += (s, e) => PickProcess(_waitProcessName);
+            _kbKey.Enter += (s, e) => SetToggleHotKey(false);
+            _kbKey.Leave += (s, e) => SetToggleHotKey(true);
         }
 
         /// <summary>Shows only the fields that apply to the chosen category, action and loop type.</summary>
         private void UpdateEditorVisibility()
         {
-            bool mouse = (ActionCategory)_category.SelectedItem == ActionCategory.Mouse;
-            _mouseBox.Visible = mouse;
-            _controlBox.Visible = !mouse;
+            var category = (ActionCategory)_category.SelectedItem;
+            _mouseBox.Visible = category == ActionCategory.Mouse;
+            _keyboardBox.Visible = category == ActionCategory.Keyboard;
+            _commandBox.Visible = category == ActionCategory.Command;
+            _controlBox.Visible = category == ActionCategory.Control;
 
+            // Mouse
             var action = (MouseAction)_mouseAction.SelectedItem;
             bool scroll = action == MouseAction.ScrollUp || action == MouseAction.ScrollDown;
             RefreshButtonChoices(scroll);
             SetRowVisible(_notches, scroll);
-
             // Without a process the position is absolute on the desktop, so an anchor means nothing.
-            bool hasProcess = _processName.Text.Trim().Length > 0 || _processTitle.Text.Trim().Length > 0;
-            _anchor.Enabled = hasProcess;
+            _anchor.Enabled = _processName.Text.Trim().Length > 0 || _processTitle.Text.Trim().Length > 0;
 
-            var loop = (LoopType)_loopType.SelectedItem;
-            SetRowVisible(_loopCount, loop == LoopType.Count);
-            SetRowVisible(_loopDuration, loop == LoopType.Duration);
-            SetRowVisible(_loopUntil, loop == LoopType.Until);
+            // Keyboard
+            var kb = (KeyboardAction)_kbAction.SelectedItem;
+            bool isText = kb == KeyboardAction.Text;
+            _kbKey.Combo = kb == KeyboardAction.ComboKey;
+            SetRowVisible(_kbKey, !isText);
+            SetRowVisible(_kbText, isText);
+            SetRowVisible(_kbTime, kb == KeyboardAction.KeyPress || kb == KeyboardAction.ComboKey || isText);
+
+            // Control
+            bool loop = (ControlKind)_controlKind.SelectedItem == ControlKind.Loop;
+            var loopType = (LoopType)_loopType.SelectedItem;
+            SetRowVisible(_loopType, loop);
+            SetRowVisible(_loopCount, loop && loopType == LoopType.Count);
+            SetRowVisible(_loopDuration, loop && loopType == LoopType.Duration);
+            SetRowVisible(_loopUntil, loop && loopType == LoopType.Until);
+            SetRowVisible(_waitProcessName, !loop);
+            SetRowVisible(_waitProcessTitle, !loop);
+            SetRowVisible(_waitTime, !loop);
+            SetRowVisible(_waitRetry, !loop);
+            SetRowVisible(_waitPick, !loop);
         }
 
         /// <summary>Scroll actions always use the middle button; the other actions allow all three.</summary>
@@ -228,34 +300,64 @@ namespace Automation.App
 
         private ActionNode ReadEditor()
         {
-            if ((ActionCategory)_category.SelectedItem == ActionCategory.Mouse)
+            switch ((ActionCategory)_category.SelectedItem)
             {
-                return ActionNode.NewMouse(new MouseSettings
-                {
-                    Action = (MouseAction)_mouseAction.SelectedItem,
-                    Button = (MouseButton)_button.SelectedItem,
-                    TimeMs = _time.Milliseconds,
-                    DelayMs = _delay.Milliseconds,
-                    Process = ReadProcess(),
-                    Anchor = (WindowAnchor)_anchor.SelectedItem,
-                    X = (int)_x.Value,
-                    Y = (int)_y.Value,
-                    ScrollNotches = (int)_notches.Value
-                });
+                case ActionCategory.Mouse:
+                    return ActionNode.NewMouse(new MouseSettings
+                    {
+                        Action = (MouseAction)_mouseAction.SelectedItem,
+                        Button = (MouseButton)_button.SelectedItem,
+                        TimeMs = _time.Milliseconds,
+                        DelayMs = _delay.Milliseconds,
+                        Process = Target(_processName, _processTitle),
+                        Anchor = (WindowAnchor)_anchor.SelectedItem,
+                        X = (int)_x.Value,
+                        Y = (int)_y.Value,
+                        ScrollNotches = (int)_notches.Value
+                    });
+
+                case ActionCategory.Keyboard:
+                    var action = (KeyboardAction)_kbAction.SelectedItem;
+                    return ActionNode.NewKeyboard(new KeyboardSettings
+                    {
+                        Action = action,
+                        Value = action == KeyboardAction.Text ? _kbText.Text : _kbKey.Value,
+                        TimeMs = _kbTime.Milliseconds,
+                        DelayMs = _kbDelay.Milliseconds,
+                        Target = Target(_kbProcessName, _kbProcessTitle)
+                    });
+
+                case ActionCategory.Command:
+                    return ActionNode.NewCommand(new CommandSettings
+                    {
+                        Kind = (CommandKind)_cmdKind.SelectedItem,
+                        Value = _cmdValue.Text.Trim()
+                    });
+
+                default:
+                    if ((ControlKind)_controlKind.SelectedItem == ControlKind.Wait)
+                    {
+                        return ActionNode.NewWait(new WaitSettings
+                        {
+                            Process = Target(_waitProcessName, _waitProcessTitle),
+                            TimeMs = _waitTime.Milliseconds,
+                            Retry = (int)_waitRetry.Value
+                        });
+                    }
+                    var loop = new LoopSettings
+                    {
+                        Mode = (LoopType)_loopType.SelectedItem,
+                        Count = (long)_loopCount.Value,
+                        DurationMs = _loopDuration.Milliseconds
+                    };
+                    loop.SetUntil(_loopUntil.Value);
+                    return ActionNode.NewLoop(loop);
             }
-            var loop = new LoopSettings
-            {
-                Mode = (LoopType)_loopType.SelectedItem,
-                Count = (long)_loopCount.Value,
-                DurationMs = _loopDuration.Milliseconds
-            };
-            loop.SetUntil(_loopUntil.Value);
-            return ActionNode.NewLoop(loop);
         }
 
-        private WindowTarget ReadProcess()
+        private static WindowTarget Target(TextBox name, TextBox title)
         {
-            return new WindowTarget { ProcessName = _processName.Text.Trim(), TitlePattern = _processTitle.Text.Trim() };
+            return new WindowTarget { ProcessName = name.Text.Trim(), TitlePattern = title.Text.Trim() };
         }
 
         private void LoadSelectedIntoEditor()
@@ -264,36 +366,66 @@ namespace Automation.App
             if (row == null) return; // nothing or several rows selected: leave the editor as it is
             var node = row.Node;
             _category.SelectedItem = node.Category;
-            if (node.Category == ActionCategory.Mouse)
+            switch (node.Category)
             {
-                var m = node.Mouse;
-                _mouseAction.SelectedItem = m.Action;
-                UpdateEditorVisibility(); // so the button list matches the action before selecting the button
-                _button.SelectedItem = m.Button;
-                _time.Milliseconds = m.TimeMs;
-                _delay.Milliseconds = m.DelayMs;
-                _processName.Text = m.Process.ProcessName ?? "";
-                _processTitle.Text = m.Process.TitlePattern ?? "";
-                _anchor.SelectedItem = m.Anchor;
-                _x.Value = Clamp(_x, m.X);
-                _y.Value = Clamp(_y, m.Y);
-                _notches.Value = Clamp(_notches, m.ScrollNotches);
-            }
-            else
-            {
-                _controlKind.SelectedItem = node.Control;
-                _loopType.SelectedItem = node.Loop.Mode;
-                _loopCount.Value = (decimal)Math.Min(node.Loop.Count, (long)_loopCount.Maximum);
-                _loopDuration.Milliseconds = node.Loop.DurationMs;
-                var until = node.Loop.GetUntil();
-                if (until.HasValue && until.Value >= _loopUntil.MinDate && until.Value <= _loopUntil.MaxDate) _loopUntil.Value = until.Value;
+                case ActionCategory.Mouse:
+                    var m = node.Mouse;
+                    _mouseAction.SelectedItem = m.Action;
+                    UpdateEditorVisibility(); // so the button list matches the action before selecting the button
+                    _button.SelectedItem = m.Button;
+                    _time.Milliseconds = m.TimeMs;
+                    _delay.Milliseconds = m.DelayMs;
+                    _processName.Text = m.Process.ProcessName ?? "";
+                    _processTitle.Text = m.Process.TitlePattern ?? "";
+                    _anchor.SelectedItem = m.Anchor;
+                    _x.Value = Clamp(_x, m.X);
+                    _y.Value = Clamp(_y, m.Y);
+                    _notches.Value = Clamp(_notches, m.ScrollNotches);
+                    break;
+
+                case ActionCategory.Keyboard:
+                    var k = node.Keyboard;
+                    _kbAction.SelectedItem = k.Action;
+                    UpdateEditorVisibility();
+                    if (k.Action == KeyboardAction.Text) _kbText.Text = k.Value;
+                    else _kbKey.Value = k.Value;
+                    _kbTime.Milliseconds = k.TimeMs;
+                    _kbDelay.Milliseconds = k.DelayMs;
+                    _kbProcessName.Text = k.Target.ProcessName ?? "";
+                    _kbProcessTitle.Text = k.Target.TitlePattern ?? "";
+                    break;
+
+                case ActionCategory.Command:
+                    _cmdKind.SelectedItem = node.Command.Kind;
+                    _cmdValue.Text = node.Command.Value;
+                    break;
+
+                default:
+                    _controlKind.SelectedItem = node.Control;
+                    if (node.Control == ControlKind.Wait)
+                    {
+                        var w = node.Wait;
+                        _waitProcessName.Text = w.Process.ProcessName ?? "";
+                        _waitProcessTitle.Text = w.Process.TitlePattern ?? "";
+                        _waitTime.Milliseconds = w.TimeMs;
+                        _waitRetry.Value = Clamp(_waitRetry, w.Retry);
+                    }
+                    else
+                    {
+                        _loopType.SelectedItem = node.Loop.Mode;
+                        _loopCount.Value = (decimal)Math.Min(node.Loop.Count, (long)_loopCount.Maximum);
+                        _loopDuration.Milliseconds = node.Loop.DurationMs;
+                        var until = node.Loop.GetUntil();
+                        if (until.HasValue && until.Value >= _loopUntil.MinDate && until.Value <= _loopUntil.MaxDate) _loopUntil.Value = until.Value;
+                    }
+                    break;
             }
         }
 
         // ---------------------------------------------------------------- tree editing
 
         /// <summary>
-        /// Add: inside the selected container (Loop), otherwise right after the selected action, otherwise at the end.
+        /// Add: inside the selected container (Loop, Wait), otherwise right after the selected action, otherwise at the end.
         /// </summary>
         private void AddAction()
         {
@@ -367,7 +499,7 @@ namespace Automation.App
             RefreshList(picked);
         }
 
-        /// <summary>In: moves the selected actions to the end of the Loop right before them.</summary>
+        /// <summary>In: moves the selected actions to the end of the Loop or Wait right before them.</summary>
         private void MoveIn()
         {
             var selected = SelectedRows();
@@ -386,7 +518,7 @@ namespace Automation.App
             }
             if (container == null || !container.IsContainer)
             {
-                SetStatus("In: the action right before the selection must be a Loop.");
+                SetStatus("In: the action right before the selection must be a Loop or a Wait.");
                 return;
             }
             var moving = list.Where(picked.Contains).ToList();
@@ -471,33 +603,68 @@ namespace Automation.App
             }
         }
 
+        private static string DescribeTarget(WindowTarget target)
+        {
+            if (target == null || target.IsEmpty) return "";
+            return string.IsNullOrWhiteSpace(target.ProcessName) ? "title" : target.ProcessName.Trim();
+        }
+
+        private static string Shorten(string text)
+        {
+            text = (text ?? "").Replace("\r", "").Replace("\n", " / ");
+            return text.Length > 40 ? text.Substring(0, 40) + "..." : text;
+        }
+
         private static ListViewItem Describe(Row row)
         {
             var n = row.Node;
             string indent = new string(' ', row.Depth * 4);
-            string name, details, time = "", delay = "";
-            if (n.Category == ActionCategory.Mouse)
+            string name = "", details = "", time = "", delay = "";
+            switch (n.Category)
             {
-                var m = n.Mouse;
-                name = m.Action.ToString();
-                string where = m.Process.IsEmpty
-                    ? "Screen"
-                    : (string.IsNullOrWhiteSpace(m.Process.ProcessName) ? "Title" : m.Process.ProcessName.Trim()) + "/" + m.Anchor;
-                bool hasButton = m.Action == MouseAction.Click || m.Action == MouseAction.MouseDown || m.Action == MouseAction.MouseUp;
-                details = (hasButton ? m.Button + " " : "") + where + " (" + m.X + ", " + m.Y + ")";
-                if (m.Action == MouseAction.ScrollUp || m.Action == MouseAction.ScrollDown) details += " x" + m.ScrollNotches;
-                time = TimeBox.Format(m.TimeMs);
-                delay = TimeBox.Format(m.DelayMs);
-            }
-            else
-            {
-                name = "Loop";
-                switch (n.Loop.Mode)
-                {
-                    case LoopType.Duration: details = "for " + TimeBox.Format(n.Loop.DurationMs); break;
-                    case LoopType.Until: details = "until " + (n.Loop.GetUntil()?.ToString(UntilFormat) ?? "?"); break;
-                    default: details = n.Loop.Count == 0 ? "forever" : n.Loop.Count + " time(s)"; break;
-                }
+                case ActionCategory.Mouse:
+                    var m = n.Mouse;
+                    name = m.Action.ToString();
+                    string where = m.Process.IsEmpty ? "Screen" : DescribeTarget(m.Process) + "/" + m.Anchor;
+                    bool hasButton = m.Action == MouseAction.Click || m.Action == MouseAction.MouseDown || m.Action == MouseAction.MouseUp;
+                    details = (hasButton ? m.Button + " " : "") + where + " (" + m.X + ", " + m.Y + ")";
+                    if (m.Action == MouseAction.ScrollUp || m.Action == MouseAction.ScrollDown) details += " x" + m.ScrollNotches;
+                    time = TimeBox.Format(m.TimeMs);
+                    delay = TimeBox.Format(m.DelayMs);
+                    break;
+
+                case ActionCategory.Keyboard:
+                    var k = n.Keyboard;
+                    name = k.Action.ToString();
+                    details = Shorten(k.Value);
+                    if (!k.Target.IsEmpty) details += "  -> " + DescribeTarget(k.Target);
+                    if (k.Action == KeyboardAction.KeyPress || k.Action == KeyboardAction.ComboKey || k.Action == KeyboardAction.Text)
+                        time = TimeBox.Format(k.TimeMs);
+                    delay = TimeBox.Format(k.DelayMs);
+                    break;
+
+                case ActionCategory.Command:
+                    name = n.Command.Kind.ToString();
+                    details = n.Command.Value;
+                    break;
+
+                default:
+                    if (n.Control == ControlKind.Wait)
+                    {
+                        name = "Wait";
+                        details = DescribeTarget(n.Wait.Process) + ", up to " + TimeBox.Format(n.Wait.TimeMs) + (n.Wait.Retry > 0 ? ", retry " + n.Wait.Retry : "");
+                    }
+                    else
+                    {
+                        name = "Loop";
+                        switch (n.Loop.Mode)
+                        {
+                            case LoopType.Duration: details = "for " + TimeBox.Format(n.Loop.DurationMs); break;
+                            case LoopType.Until: details = "until " + (n.Loop.GetUntil()?.ToString(UntilFormat) ?? "?"); break;
+                            default: details = n.Loop.Count == 0 ? "forever" : n.Loop.Count + " time(s)"; break;
+                        }
+                    }
+                    break;
             }
             var item = new ListViewItem(indent + name);
             item.SubItems.Add(details);
@@ -531,7 +698,7 @@ namespace Automation.App
 
         private void PickPosition()
         {
-            var process = ReadProcess();
+            var process = Target(_processName, _processTitle);
             if (!process.IsEmpty)
             {
                 IntPtr hwnd;
@@ -574,8 +741,8 @@ namespace Automation.App
             _y.Value = Clamp(_y, y);
         }
 
-        /// <summary>Lets the user click any window to fill in the process name.</summary>
-        private void PickProcess()
+        /// <summary>Lets the user click any window to fill in a process name box.</summary>
+        private void PickProcess(TextBox nameBox)
         {
             if (!RunOverlay(out Point p, out WindowInfo? info) || !info.HasValue) return;
             if (string.Equals(info.Value.ProcessName, Process.GetCurrentProcess().ProcessName, StringComparison.OrdinalIgnoreCase))
@@ -583,8 +750,16 @@ namespace Automation.App
                 SetStatus("That is this program's own window; pick another window.");
                 return;
             }
-            _processName.Text = info.Value.ProcessName;
+            nameBox.Text = info.Value.ProcessName;
             SetStatus("Process: " + info.Value.ProcessName + "  title: \"" + info.Value.Title + "\" (use Title to tell windows of the same program apart)");
+        }
+
+        private void BrowseCommandPath()
+        {
+            using (var dialog = new OpenFileDialog { Filter = "All files (*.*)|*.*" })
+            {
+                if (dialog.ShowDialog(this) == DialogResult.OK) _cmdValue.Text = dialog.FileName;
+            }
         }
 
         // ---------------------------------------------------------------- files
@@ -663,7 +838,7 @@ namespace Automation.App
             var snapshot = _script.Clone();
             _cts = new CancellationTokenSource();
             var token = _cts.Token;
-            var runner = new ScriptRunner(_mouse);
+            var runner = new ScriptRunner(_mouse, _keyboard);
             runner.NodeStarted += node =>
             {
                 var line = Describe(new Row { Node = node, Depth = 0 });
@@ -702,13 +877,28 @@ namespace Automation.App
             _startStop.Text = running ? "Stop (F6)" : "Start (F6)";
             if (running)
             {
-                // Esc is only grabbed globally while a script runs, so it never steals Esc from other programs otherwise.
-                HotKeyNative.RegisterHotKey(Handle, HotKeyEscapeId, HotKeyNative.MOD_NOREPEAT, (uint)Keys.Escape);
+                // While a script runs, F6 and Esc stop it through a keyboard hook that ignores keys the script sends
+                // itself (and does not swallow them), so a script can still send F6 or Esc to another program.
+                HotKeyNative.UnregisterHotKey(Handle, HotKeyToggleId);
+                if (!_stopHook.Start(() => _cts?.Cancel()))
+                {
+                    // Fallback if the hook cannot be installed: plain global hot keys (they also swallow the keys).
+                    _hotKeyFallback = true;
+                    HotKeyNative.RegisterHotKey(Handle, HotKeyToggleId, HotKeyNative.MOD_NOREPEAT, (uint)Keys.F6);
+                    HotKeyNative.RegisterHotKey(Handle, HotKeyEscapeId, HotKeyNative.MOD_NOREPEAT, (uint)Keys.Escape);
+                }
                 WindowState = FormWindowState.Minimized;
             }
             else
             {
-                HotKeyNative.UnregisterHotKey(Handle, HotKeyEscapeId);
+                _stopHook.Stop();
+                if (_hotKeyFallback)
+                {
+                    HotKeyNative.UnregisterHotKey(Handle, HotKeyEscapeId);
+                    HotKeyNative.UnregisterHotKey(Handle, HotKeyToggleId);
+                    _hotKeyFallback = false;
+                }
+                SetToggleHotKey(true);
                 WindowState = FormWindowState.Normal;
                 Activate();
             }
@@ -726,15 +916,24 @@ namespace Automation.App
 
         // ---------------------------------------------------------------- global hot keys
 
+        /// <summary>Registers or releases the global F6 start/stop key (it is released while the user records keys).</summary>
+        private void SetToggleHotKey(bool enabled)
+        {
+            if (!IsHandleCreated) return;
+            HotKeyNative.UnregisterHotKey(Handle, HotKeyToggleId);
+            if (enabled && !_running && !HotKeyNative.RegisterHotKey(Handle, HotKeyToggleId, HotKeyNative.MOD_NOREPEAT, (uint)Keys.F6))
+                SetStatus("F6 is used by another program; use the Start button.");
+        }
+
         protected override void OnHandleCreated(EventArgs e)
         {
             base.OnHandleCreated(e);
-            if (!HotKeyNative.RegisterHotKey(Handle, HotKeyToggleId, HotKeyNative.MOD_NOREPEAT, (uint)Keys.F6))
-                SetStatus("F6 is used by another program; use the Start button.");
+            SetToggleHotKey(true);
         }
 
         protected override void OnHandleDestroyed(EventArgs e)
         {
+            _stopHook.Stop();
             HotKeyNative.UnregisterHotKey(Handle, HotKeyToggleId);
             HotKeyNative.UnregisterHotKey(Handle, HotKeyEscapeId);
             base.OnHandleDestroyed(e);
@@ -776,6 +975,13 @@ namespace Automation.App
         private static decimal Clamp(NumericUpDown box, int value)
         {
             return Math.Max(box.Minimum, Math.Min(box.Maximum, value));
+        }
+
+        private static Button MakeButton(string text, EventHandler onClick)
+        {
+            var button = new Button { Text = text, AutoSize = true };
+            button.Click += onClick;
+            return button;
         }
 
         private static ToolStripButton MakeToolButton(string text, EventHandler onClick)

@@ -3,45 +3,46 @@
 Cập nhật lần cuối: 2026-11-05
 
 ## Hiện tại
-- Người dùng yêu cầu **thiết kế lại cơ chế** thành cây action (xem `docs/PROJECT.md` mục 5). Phần Khung + Mouse + Loop đã code xong, build sạch, Core đã kiểm tra bằng script; **chờ người dùng test giao diện**.
-- Nhánh đang làm: `feature_action_tree` (cắt từ `feature_m3_window_coords` vì thiết kế mới dùng lại code cửa sổ của M3, và M3 chưa merge). Chưa push. Khi người dùng nói "PR into preview" thì PR nhánh này vào `preview`; nó chứa cả M3 nên không cần PR riêng cho `feature_m3_window_coords`.
+- Giai đoạn tiếp theo đã code xong: **Keyboard, Command/Open, Control/Wait** (ngoài Mouse và Loop đã có). Build sạch, Core đã test bằng script với cửa sổ thật; **chờ người dùng test giao diện** (đặc biệt ô bắt phím).
+- Nhánh: `feature_keyboard_wait` (cắt từ `feature_action_tree`, chưa push). `feature_action_tree` (cây action) và M3 cũng chưa vào `preview`; khi người dùng nói "PR into preview" cần PR cả chuỗi này (xem Git bên dưới).
 - `preview` hiện có M1 + M2 (kịch bản dạng danh sách bước phẳng).
 
 ## Đã làm
-- [x] Yêu cầu, công nghệ (C# / .NET Framework 4.8 / WinForms, chỉ Windows), .NET SDK 10.0.403 để build.
-- [x] M1 (engine chuột), M2 (UI, JSON, runner, phím nóng F6/Esc): đã merge vào `preview`, người dùng đã test.
-- [x] M3 (tọa độ theo cửa sổ): code + test Core xong, nay được gộp vào thiết kế mới.
-- [x] **Cây action (version 2 của JSON):**
-  - Core: `ActionNode` (Category + `Mouse` hoặc `Loop` là sub-object, chỉ cái nào áp dụng mới có trong JSON; `Children` chỉ ghi cho Loop có con), `AutomationScript` (chỉ có `Actions`), `ScriptSerializer` (từ chối file version 1), `ScriptRunner` đệ quy với `RunContext`, `MouseController.Scroll`, `WindowLocator.IsForeground`.
-  - App: thanh công cụ New/Open/Save/Start-Stop; danh sách thụt lề chọn nhiều; panel phải có Add/Update/Delete/In/Out/Up/Down, Category, form Mouse và form Loop, `TimeBox` (số + đơn vị ms/s/min/h), Pick program, Pick position.
-  - Đã kiểm tra bằng script PowerShell nạp DLL: JSON round-trip lồng nhau giữ giá trị 0 (Time=0, Delay=0), file version 1 bị từ chối, Loop theo số lần/khoảng thời gian (thân không delay vẫn không treo)/tới thời điểm (quá khứ thì bỏ qua kèm thông báo), hủy giữa chừng, click theo cửa sổ với Anchor BottomRight trong Loop (khớp từng pixel, dời cửa sổ vẫn trúng), báo lỗi khi không thấy cửa sổ; cửa sổ Notepad thật bị che hoặc minimize thì runner khôi phục và đưa lên trước rồi click đúng chỗ; nếu điểm click bị cửa sổ chương trình khác che thì dừng với thông báo thay vì click nhầm. Giao diện đã chụp ảnh kiểm tra bố cục (không bị cắt, hàng ẩn/hiện đúng cột).
+- [x] M1, M2 (merge vào `preview`), M3 (tọa độ cửa sổ), cây action version 2 với Mouse + Loop (nhánh `feature_action_tree`).
+- [x] **Keyboard:** KeyPress / KeyDown / KeyUp / ComboKey / Text. Phím lưu theo tên (`KeyCodes`: A-Z, 0-9, F1-F24, Num0-9, LeftCtrl/RightCtrl, LeftShift, LeftAlt..., Enter, Tab...). `KeyCaptureBox` bắt phím người dùng bấm: chế độ một phím chỉ lấy phím đầu, chế độ combo lấy các phím giữ cùng nhau theo thứ tự bấm. Text gõ bằng Unicode (`KEYEVENTF_UNICODE`) nên gõ được tiếng Việt, `\n` thành Enter, `\t` thành Tab. Time: KeyPress/Combo là thời gian giữ phím; Text là tổng thời gian gõ chia đều cho các ký tự (0 = nhanh nhất). Target (process + title regex): nếu đặt thì cửa sổ được đưa lên trước và nếu không lên được thì **không gửi phím** (báo lỗi), tránh gõ nhầm vào chương trình khác.
+- [x] **Command/Open:** mở đường dẫn bằng shell (chương trình hoặc tài liệu). Cảnh báo: chạy file kịch bản của người khác sẽ mở bất cứ thứ gì trong đó.
+- [x] **Control/Wait:** chờ cửa sổ khớp Process/Title xuất hiện và lên trước, rồi chạy các action con. Time = thời gian mỗi lượt chờ, Retry = số lượt thử thêm. Hết lượt mà không được thì dừng script với lỗi "Timed out" (chọn mặc định này vì spec chưa nói rõ).
+- [x] **Phím dừng:** khi script chạy, F6/Esc dừng bằng hook bàn phím (`StopKeyHook`) bỏ qua phím do chính script gửi và không nuốt phím, nên script gửi F6/Esc cho chương trình khác được. Khi rảnh, F6 vẫn là hotkey toàn cục và được nhả ra khi đang bắt phím trong ô Key. Nếu không cài được hook thì quay về `RegisterHotKey`.
+- [x] Test script: round-trip JSON (Wait + con, Command, Text có xuống dòng), gõ chuỗi tiếng Việt vào cửa sổ test (từng ký tự khớp), KeyDown/KeyUp Shift + KeyPress, Combo, thời gian giữ phím (300 ms đo 310 ms), Wait thành công/hết hạn (retry hoạt động), tên phím sai và cửa sổ đích không có đều báo lỗi mà không gõ gì, Open chương trình thật và đường dẫn sai. Đã chụp ảnh kiểm tra bố cục các form Keyboard/Command/Wait.
 
 ## Việc tiếp theo
 - [ ] Người dùng test giao diện (checklist dưới), báo lỗi nếu có.
 - [ ] PR vào `preview` khi người dùng yêu cầu.
-- [ ] Keyboard, Command/Open, Wait, Image, Record; License (M5).
+- [ ] Image (nhận diện ảnh), Record; License (M5).
 
-### Checklist test giao diện
-1. Mở app: thanh công cụ ở trên, danh sách bên trái, panel phải có hàng nút Add/Update/Delete và In/Out/Up/Down; không bị cắt nút nào (thử scale 125%/150%).
-2. Category = Mouse: chọn Action = ScrollUp/ScrollDown thì Type chỉ còn Middle và hiện ô "Scroll notches"; đổi lại Click thì có đủ Left/Right/Middle.
-3. Time/Delay mặc định 500 milliseconds; đổi đơn vị sang seconds, thêm action: cột Time/Delay hiện đúng ("2 s").
-4. Process trống: Anchor bị tắt, X/Y là tọa độ màn hình; "Pick position..." chọn được điểm bất kỳ.
-5. "Pick program..." click vào một chương trình (ví dụ Notepad): ô Process được điền. Nhập Anchor, rồi "Pick position...": chương trình được đưa lên trước, chọn điểm trong nó thì X/Y là offset nhỏ. Tắt chương trình rồi Pick position: bị từ chối. Click ngoài chương trình/thanh tiêu đề: báo lỗi, không lưu.
-6. Category = Control (Loop): đổi "Loop by" giữa Count / Duration / Until thì hiện đúng ô tương ứng.
-7. Chọn Loop rồi Add một action: nó nằm trong Loop (thụt lề). Chọn một action bên dưới Loop và bấm In: vào trong Loop; bấm Out: ra ngoài, nằm ngay sau Loop.
-8. Chọn nhiều action cùng cấp: Up/Down/Delete hoạt động; chọn khác cấp rồi Up/Down/In/Out thì báo "cùng danh sách". Update đổi Loop sang Mouse khi còn con thì bị từ chối.
-9. Start (F6): app thu nhỏ, chạy đúng thứ tự trong Loop; Esc/F6 dừng; sau Start với action có Process thì cửa sổ được đưa lên trước và click đúng chỗ kể cả khi đã kéo cửa sổ chỗ khác.
-10. Save rồi Open lại: cây, Process, Anchor, Time/Delay và Loop giữ nguyên. Mở file cũ (version 1) thì báo không hỗ trợ.
+### Checklist test giao diện (giai đoạn Keyboard / Open / Wait)
+1. Category có đủ Control, Command, Mouse, Keyboard; mỗi loại hiện đúng form, không bị cắt.
+2. Keyboard, Action = KeyPress: bấm vào ô Key rồi nhấn một phím (thử Left Ctrl, F2, Tab, mũi tên, F6): ô hiện tên phím đầu tiên; nhấn Ctrl rồi A cùng lúc vẫn chỉ là LeftCtrl. Lúc đang bắt phím F6 không được khởi động script.
+3. Action = ComboKey: giữ Ctrl, Shift rồi bấm S: ô hiện LeftCtrl+LeftShift+S; nhả hết rồi bấm tổ hợp mới thì thay hoàn toàn.
+4. Action = Text: ô Text nhiều dòng, dán được đoạn văn tiếng Việt; Add rồi Update giữ nguyên nội dung. Time chỉ hiện với KeyPress / ComboKey / Text.
+5. Chạy script gồm Keyboard Text với Target = Notepad: Notepad được đưa lên trước và chữ (kể cả tiếng Việt, xuống dòng) được gõ vào. Thử không đặt Target: gõ vào cửa sổ đang có focus. Thử script gửi phím F6 hoặc Esc cho Notepad: không tự dừng script.
+6. Dừng script giữa chừng bằng F6 và bằng Esc (bằng tay): dừng ngay, phím đang giữ được nhả.
+7. Command/Open: nhập đường dẫn hoặc Browse, chạy: chương trình mở lên; đường dẫn sai thì báo lỗi.
+8. Control/Wait: tạo Wait (Process = notepad) có action con (dùng Add khi đang chọn Wait, hoặc In). Chạy khi chưa mở Notepad rồi mở Notepad trong thời gian chờ: action con chạy. Để hết Time: báo "Timed out waiting", script dừng. Thử Retry > 0.
+9. Save rồi Open lại: mọi action Keyboard / Command / Wait và cây con giữ nguyên.
 
 ### Ghi chú cho milestone sau
-- Trường mới có giá trị mặc định khác 0 phải đặt trong `[OnDeserializing] SetDefaults` của `ActionNode`/`AutomationScript` và không dùng `EmitDefaultValue=false` cho chúng (giá trị 0 do người dùng đặt sẽ bị mất khi nạp lại).
-- Keyboard: `RegisterHotKey` có thể bắt cả phím do `SendInput` tạo ra, nên action gửi F6/Esc có thể tự dừng kịch bản. Cần bỏ qua hotkey khi runner đang gửi phím, hoặc dùng tổ hợp có modifier làm phím dừng.
+- Trường mới có giá trị mặc định khác 0 phải đặt trong `[OnDeserializing] SetDefaults` của lớp tương ứng và không dùng `EmitDefaultValue=false` cho chúng (giá trị 0 do người dùng đặt sẽ bị mất khi nạp lại). Các sub-object (Mouse/Keyboard/Command/Loop/Wait) là tham chiếu nên dùng `EmitDefaultValue=false` an toàn.
 - Image sẽ đặt `RunContext` mới cho các action con (cửa sổ + vị trí ảnh làm gốc); action con của Image kế thừa Process của Image theo spec.
 - Khi Process khớp nhiều cửa sổ, runner lấy cửa sổ khớp đầu tiên theo z-order (ưu tiên không minimize); cần điền Title (regex) để chỉ rõ.
 - Đổi Anchor sau khi pick sẽ giữ nguyên số X/Y nhưng đổi nghĩa; phải pick lại.
-- Multi-select giữ lại bằng ListView thụt lề (TreeView của WinForms không chọn nhiều được). Chưa có thu gọn/mở rộng nhánh.
-
+- Multi-select giữ bằng ListView thụt lề (TreeView của WinForms không chọn nhiều được). Chưa có thu gọn/mở rộng nhánh.
 - Delay ngắn (<20 ms) và mỗi vòng lặp không delay dùng chờ có nhường CPU (không dùng timer) vì Windows 11 bỏ qua `timeBeginPeriod` khi app thu nhỏ; loop zero-delay chạy hết tốc độ một lõi CPU.
+- Phím Win không bắt được trong ô Key (hệ thống chặn); gõ Text không đi qua IME nên Unikey/EVKey không làm méo.
+- Game hoặc chương trình chạy admin: `SendInput` bị UIPI chặn nếu app không chạy admin (chưa có tùy chọn chạy admin).
+
+### Git
+- Chuỗi nhánh chưa vào `preview`: `feature_m3_window_coords` -> `feature_action_tree` -> `feature_keyboard_wait` (mỗi nhánh cắt từ nhánh trước). Một PR từ `feature_keyboard_wait` vào `preview` gồm tất cả.
 
 ## Ghi chú môi trường
 - Khi Claude chạy exe từ công cụ của nó, Windows có lúc báo "An Application Control policy has blocked this file", nhưng người dùng chạy trực tiếp thì bình thường. Nguyên nhân chưa xác định; cần thử trên máy sạch trước khi phát hành.

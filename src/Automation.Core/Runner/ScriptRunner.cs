@@ -18,9 +18,13 @@ namespace Automation.Core.Runner
         private readonly HashSet<MouseButton> _held = new HashSet<MouseButton>();
         private readonly Dictionary<string, IntPtr> _windowCache = new Dictionary<string, IntPtr>();
 
-        public ScriptRunner(MouseController mouse)
+        private readonly KeyboardController _keyboard;
+        private readonly HashSet<int> _heldKeys = new HashSet<int>();
+
+        public ScriptRunner(MouseController mouse, KeyboardController keyboard = null)
         {
             _mouse = mouse ?? throw new ArgumentNullException(nameof(mouse));
+            _keyboard = keyboard ?? new KeyboardController();
         }
 
         /// <summary>Raised (from the runner thread) with the node that is about to run.</summary>
@@ -43,6 +47,7 @@ namespace Automation.Core.Runner
             finally
             {
                 ReleaseHeldButtons();
+                ReleaseHeldKeys();
                 NativeMethods.timeEndPeriod(1);
             }
         }
@@ -73,10 +78,122 @@ namespace Automation.Core.Runner
                 case ActionCategory.Mouse:
                     ExecuteMouse(node, context, token);
                     break;
+                case ActionCategory.Keyboard:
+                    ExecuteKeyboard(node, token);
+                    break;
+                case ActionCategory.Command:
+                    ExecuteCommand(node);
+                    break;
                 case ActionCategory.Control:
-                    ExecuteLoop(node, context, token);
+                    if (node.Control == ControlKind.Wait) ExecuteWait(node, context, token);
+                    else ExecuteLoop(node, context, token);
                     break;
             }
+        }
+
+        // ---------------------------------------------------------------- keyboard and command
+
+        private void ExecuteKeyboard(ActionNode node, CancellationToken token)
+        {
+            var k = node.Keyboard;
+            if (!k.Target.IsEmpty)
+            {
+                // Keys go to whatever is in front, so bring the target there first and never type into another program.
+                IntPtr hwnd = FindWindow(k.Target);
+                Activate(hwnd, token);
+                if (!WindowLocator.IsActive(hwnd))
+                    throw new InvalidOperationException("Could not bring " + Describe(k.Target) + " to the front; keys were not sent.");
+            }
+
+            int time = ToInt(k.TimeMs);
+            try
+            {
+                switch (k.Action)
+                {
+                    case KeyboardAction.KeyPress:
+                        _keyboard.Press(KeyCodes.ParseKey(k.Value), time, token);
+                        break;
+                    case KeyboardAction.KeyDown:
+                        int down = KeyCodes.ParseKey(k.Value);
+                        _keyboard.Down(down);
+                        _heldKeys.Add(down);
+                        break;
+                    case KeyboardAction.KeyUp:
+                        int up = KeyCodes.ParseKey(k.Value);
+                        _keyboard.Up(up);
+                        _heldKeys.Remove(up);
+                        break;
+                    case KeyboardAction.ComboKey:
+                        _keyboard.Combo(KeyCodes.ParseCombo(k.Value), time, token);
+                        break;
+                    case KeyboardAction.Text:
+                        _keyboard.TypeText(k.Value, time, token);
+                        break;
+                }
+            }
+            catch (ArgumentException ex)
+            {
+                throw new InvalidOperationException(ex.Message);
+            }
+            Wait(k.DelayMs, token);
+        }
+
+        private static void ExecuteCommand(ActionNode node)
+        {
+            var c = node.Command;
+            if (string.IsNullOrWhiteSpace(c.Value))
+                throw new InvalidOperationException("Open: no path is set.");
+            try
+            {
+                Process.Start(new ProcessStartInfo(c.Value.Trim()) { UseShellExecute = true });
+            }
+            catch (Exception ex) when (ex is System.ComponentModel.Win32Exception || ex is InvalidOperationException)
+            {
+                throw new InvalidOperationException("Cannot open \"" + c.Value.Trim() + "\": " + ex.Message);
+            }
+        }
+
+        /// <summary>Releases keys left pressed by a KeyDown action when the run stops early.</summary>
+        private void ReleaseHeldKeys()
+        {
+            foreach (int key in _heldKeys)
+            {
+                try { _keyboard.Up(key); }
+                catch (InvalidOperationException) { }
+            }
+            _heldKeys.Clear();
+        }
+
+        // ---------------------------------------------------------------- wait
+
+        /// <summary>
+        /// Waits until a window matching the process appears and is in front, then runs the children. Each attempt
+        /// lasts TimeMs; after Retry more attempts the run stops with an error.
+        /// </summary>
+        private void ExecuteWait(ActionNode node, RunContext context, CancellationToken token)
+        {
+            var w = node.Wait;
+            if (w.Process.IsEmpty)
+                throw new InvalidOperationException("Wait: choose a process or a title first.");
+
+            int attempts = 1 + Math.Max(0, w.Retry);
+            for (int attempt = 1; attempt <= attempts; attempt++)
+            {
+                if (attempts > 1) Message?.Invoke("Waiting for " + Describe(w.Process) + " (attempt " + attempt + " / " + attempts + ")");
+                var watch = Stopwatch.StartNew();
+                do
+                {
+                    token.ThrowIfCancellationRequested();
+                    IntPtr hwnd = WindowLocator.Find(w.Process);
+                    if (hwnd != IntPtr.Zero && TryActivate(hwnd, token))
+                    {
+                        ExecuteList(node.Children, context, token);
+                        return;
+                    }
+                    Wait(200, token);
+                } while (watch.ElapsedMilliseconds < w.TimeMs);
+            }
+            throw new InvalidOperationException("Timed out waiting for " + Describe(w.Process) + ".");
         }
 
         // ---------------------------------------------------------------- loop
@@ -190,6 +307,17 @@ namespace Automation.Core.Runner
             Wait(SettleAfterActivateMs, token);
             if (WindowLocator.IsMinimized(hwnd))
                 throw new InvalidOperationException("The target window is minimized and could not be restored.");
+        }
+
+        /// <summary>Like Activate, but reports whether the window is now in front instead of failing.</summary>
+        private static bool TryActivate(IntPtr hwnd, CancellationToken token)
+        {
+            if (!(WindowLocator.IsActive(hwnd) && !WindowLocator.IsMinimized(hwnd)))
+            {
+                WindowLocator.BringToFront(hwnd);
+                Wait(SettleAfterActivateMs, token);
+            }
+            return WindowLocator.IsActive(hwnd) && !WindowLocator.IsMinimized(hwnd);
         }
 
         private static string Describe(WindowTarget target)

@@ -78,6 +78,92 @@ namespace Automation.Core.Model
         }
     }
 
+    /// <summary>Settings of a Keyboard action.</summary>
+    [DataContract]
+    public sealed class KeyboardSettings
+    {
+        public KeyboardAction Action { get; set; }
+
+        /// <summary>
+        /// KeyPress / KeyUp / KeyDown: one key name (see KeyCodes). ComboKey: key names joined by "+" in press order.
+        /// Text: the text to type.
+        /// </summary>
+        [DataMember(Order = 2)] public string Value { get; set; } = "";
+
+        /// <summary>KeyPress and ComboKey: how long the keys are held. Text: total typing time, spread over the characters.</summary>
+        [DataMember(Order = 3)] public long TimeMs { get; set; } = 500;
+
+        /// <summary>Wait after the action finished.</summary>
+        [DataMember(Order = 4)] public long DelayMs { get; set; } = 500;
+
+        /// <summary>Window that must be in front when the keys are sent. Empty sends to whatever has the focus.</summary>
+        [DataMember(Order = 5)] public WindowTarget Target { get; set; } = new WindowTarget();
+
+        [DataMember(Name = "Action", Order = 1)]
+        private string ActionName
+        {
+            get { return Action.ToString(); }
+            set { Action = ActionNode.Parse(value, KeyboardAction.KeyPress); }
+        }
+
+        [OnDeserializing]
+        private void SetDefaults(StreamingContext context)
+        {
+            Value = "";
+            TimeMs = 500;
+            DelayMs = 500;
+            Target = new WindowTarget();
+        }
+
+        public KeyboardSettings Clone()
+        {
+            var copy = (KeyboardSettings)MemberwiseClone();
+            copy.Target = (Target ?? new WindowTarget()).Clone();
+            return copy;
+        }
+
+        internal void Normalize()
+        {
+            if (Value == null) Value = "";
+            if (Target == null) Target = new WindowTarget();
+            if (TimeMs < 0) TimeMs = 0;
+            if (DelayMs < 0) DelayMs = 0;
+        }
+    }
+
+    /// <summary>Settings of a Command action.</summary>
+    [DataContract]
+    public sealed class CommandSettings
+    {
+        public CommandKind Kind { get; set; }
+
+        /// <summary>Open: path of the program or document to open.</summary>
+        [DataMember(Order = 2)] public string Value { get; set; } = "";
+
+        [DataMember(Name = "Kind", Order = 1)]
+        private string KindName
+        {
+            get { return Kind.ToString(); }
+            set { Kind = ActionNode.Parse(value, CommandKind.Open); }
+        }
+
+        [OnDeserializing]
+        private void SetDefaults(StreamingContext context)
+        {
+            Value = "";
+        }
+
+        public CommandSettings Clone()
+        {
+            return (CommandSettings)MemberwiseClone();
+        }
+
+        internal void Normalize()
+        {
+            if (Value == null) Value = "";
+        }
+    }
+
     /// <summary>Settings of a Loop action.</summary>
     [DataContract]
     public sealed class LoopSettings
@@ -131,8 +217,44 @@ namespace Automation.Core.Model
     }
 
     /// <summary>
-    /// One node of the action tree. The settings of the node's category live in a sub-object (Mouse or Loop);
-    /// the other one is absent from the JSON. Only containers (Loop) have children.
+    /// Settings of a Wait action: waits for a program's window to exist and come to the front, then runs the children.
+    /// </summary>
+    [DataContract]
+    public sealed class WaitSettings
+    {
+        [DataMember(Order = 1)] public WindowTarget Process { get; set; } = new WindowTarget();
+
+        /// <summary>How long one attempt waits for the window to appear and become active.</summary>
+        [DataMember(Order = 2)] public long TimeMs { get; set; } = 10000;
+
+        /// <summary>Extra attempts after the first one times out.</summary>
+        [DataMember(Order = 3)] public int Retry { get; set; }
+
+        [OnDeserializing]
+        private void SetDefaults(StreamingContext context)
+        {
+            Process = new WindowTarget();
+            TimeMs = 10000;
+        }
+
+        public WaitSettings Clone()
+        {
+            var copy = (WaitSettings)MemberwiseClone();
+            copy.Process = (Process ?? new WindowTarget()).Clone();
+            return copy;
+        }
+
+        internal void Normalize()
+        {
+            if (Process == null) Process = new WindowTarget();
+            if (TimeMs < 0) TimeMs = 0;
+            if (Retry < 0) Retry = 0;
+        }
+    }
+
+    /// <summary>
+    /// One node of the action tree. The settings of the node's category live in a sub-object (Mouse, Keyboard,
+    /// Command, Loop or Wait); the others are absent from the JSON. Only Control actions (Loop, Wait) have children.
     /// </summary>
     [DataContract]
     public sealed class ActionNode
@@ -140,17 +262,17 @@ namespace Automation.Core.Model
         public ActionCategory Category { get; set; }
         public ControlKind Control { get; set; }
 
-        /// <summary>Set when Category is Mouse.</summary>
         [DataMember(Order = 3, EmitDefaultValue = false)] public MouseSettings Mouse { get; set; }
-
-        /// <summary>Set when Category is Control and Control is Loop.</summary>
-        [DataMember(Order = 4, EmitDefaultValue = false)] public LoopSettings Loop { get; set; }
+        [DataMember(Order = 4, EmitDefaultValue = false)] public KeyboardSettings Keyboard { get; set; }
+        [DataMember(Order = 5, EmitDefaultValue = false)] public CommandSettings Command { get; set; }
+        [DataMember(Order = 6, EmitDefaultValue = false)] public LoopSettings Loop { get; set; }
+        [DataMember(Order = 7, EmitDefaultValue = false)] public WaitSettings Wait { get; set; }
 
         public List<ActionNode> Children { get; set; } = new List<ActionNode>();
 
         public bool IsContainer
         {
-            get { return Category == ActionCategory.Control && Control == ControlKind.Loop; }
+            get { return Category == ActionCategory.Control; }
         }
 
         public static ActionNode NewMouse(MouseSettings settings)
@@ -158,9 +280,24 @@ namespace Automation.Core.Model
             return new ActionNode { Category = ActionCategory.Mouse, Mouse = settings ?? new MouseSettings() };
         }
 
+        public static ActionNode NewKeyboard(KeyboardSettings settings)
+        {
+            return new ActionNode { Category = ActionCategory.Keyboard, Keyboard = settings ?? new KeyboardSettings() };
+        }
+
+        public static ActionNode NewCommand(CommandSettings settings)
+        {
+            return new ActionNode { Category = ActionCategory.Command, Command = settings ?? new CommandSettings() };
+        }
+
         public static ActionNode NewLoop(LoopSettings settings)
         {
             return new ActionNode { Category = ActionCategory.Control, Control = ControlKind.Loop, Loop = settings ?? new LoopSettings() };
+        }
+
+        public static ActionNode NewWait(WaitSettings settings)
+        {
+            return new ActionNode { Category = ActionCategory.Control, Control = ControlKind.Wait, Wait = settings ?? new WaitSettings() };
         }
 
         [DataMember(Name = "Category", Order = 1)]
@@ -178,7 +315,7 @@ namespace Automation.Core.Model
         }
 
         // Written only for containers that have children, so leaf nodes stay small.
-        [DataMember(Name = "Children", Order = 5, EmitDefaultValue = false)]
+        [DataMember(Name = "Children", Order = 8, EmitDefaultValue = false)]
         private List<ActionNode> ChildrenData
         {
             get { return IsContainer && Children.Count > 0 ? Children : null; }
@@ -201,28 +338,28 @@ namespace Automation.Core.Model
         {
             var copy = (ActionNode)MemberwiseClone();
             copy.Mouse = Mouse?.Clone();
+            copy.Keyboard = Keyboard?.Clone();
+            copy.Command = Command?.Clone();
             copy.Loop = Loop?.Clone();
+            copy.Wait = Wait?.Clone();
             copy.Children = Children.Select(c => c.Clone()).ToList();
             return copy;
         }
 
-        /// <summary>Repairs values that a hand-edited file may have left invalid.</summary>
+        /// <summary>Repairs values that a hand-edited file may have left invalid, and keeps only the sub-object that applies.</summary>
         internal void Normalize()
         {
             if (Children == null) Children = new List<ActionNode>();
             Children.RemoveAll(c => c == null);
-            if (Category == ActionCategory.Mouse)
-            {
-                if (Mouse == null) Mouse = new MouseSettings();
-                Mouse.Normalize();
-                Loop = null;
-            }
-            else
-            {
-                if (Loop == null) Loop = new LoopSettings();
-                Loop.Normalize();
-                Mouse = null;
-            }
+
+            var mouse = Category == ActionCategory.Mouse ? (Mouse ?? new MouseSettings()) : null;
+            var keyboard = Category == ActionCategory.Keyboard ? (Keyboard ?? new KeyboardSettings()) : null;
+            var command = Category == ActionCategory.Command ? (Command ?? new CommandSettings()) : null;
+            var loop = Category == ActionCategory.Control && Control == ControlKind.Loop ? (Loop ?? new LoopSettings()) : null;
+            var wait = Category == ActionCategory.Control && Control == ControlKind.Wait ? (Wait ?? new WaitSettings()) : null;
+            Mouse = mouse; Keyboard = keyboard; Command = command; Loop = loop; Wait = wait;
+            mouse?.Normalize(); keyboard?.Normalize(); command?.Normalize(); loop?.Normalize(); wait?.Normalize();
+
             if (!IsContainer) Children.Clear();
             foreach (var child in Children) child.Normalize();
         }

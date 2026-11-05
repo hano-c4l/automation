@@ -57,7 +57,7 @@ Automation.sln
 
 **Cơ chế (thiết kế lại ở phiên bản 2, thay danh sách bước phẳng):** kịch bản là **cây action**.
 - UI: thanh công cụ (New/Open/Save/Start-Stop, sau này thêm nhập License); panel trái là danh sách action thụt lề theo cấp (chọn nhiều được); panel phải là cài đặt action với các nút Add, Update, Delete, In, Out, Up, Down (Record để sau).
-- Category: Control, Command, Mouse, Keyboard. **Đã làm:** Mouse và Control/Loop. **Chưa làm:** Keyboard (Key press/up/down, Combo, Text, Target), Command/Open, Control/Wait, Control/Image, Record.
+- Category: Control, Command, Mouse, Keyboard. **Đã làm:** Mouse, Keyboard (KeyPress/KeyUp/KeyDown/ComboKey/Text, Target), Command/Open, Control/Loop, Control/Wait. **Chưa làm:** Control/Image, Record.
 - Mouse: Action (Click, MouseUp, MouseDown, Move, ScrollUp, ScrollDown; scroll bắt buộc dùng nút giữa), Type (Left/Right/Middle), Time (thời gian di chuyển chuột tới vị trí; với Keyboard sau này là thời gian giữ phím), Delay (chờ sau action), Process (tên process + regex tiêu đề), Anchor, vị trí X/Y. Process trống = tọa độ tuyệt đối trên desktop; có Process = offset so với vùng client của cửa sổ đó theo Anchor.
 - Loop: chứa các action con (Add khi đang chọn Loop, hoặc In). Kiểu lặp: theo số lần (0 = vô hạn), theo khoảng thời gian, hoặc tới một thời điểm. Thời gian/thời điểm chỉ kiểm tra giữa các vòng nên vòng cuối có thể vượt mốc tối đa bằng một lượt thân loop.
 - Không còn cài đặt cấp kịch bản (start delay, lặp toàn bộ, target chung, Repeat từng bước): muốn lặp thì bọc trong Loop, muốn chờ thì dùng Delay.
@@ -86,7 +86,7 @@ Automation.sln
 2. Giao diện danh sách bước, overlay chọn điểm, lưu/mở JSON, phím nóng.
 3. Tọa độ theo cửa sổ.
 3b. Thiết kế lại thành cây action (Loop, Process/Anchor theo từng action, Scroll, Time/Delay có đơn vị) — nhánh `feature_action_tree`, thay thế UI của M3.
-4. Keyboard (Key/Combo/Text), Command/Open, Control/Wait, rồi Image (nhận diện ảnh) và Record.
+4. Keyboard (Key/Combo/Text), Command/Open, Control/Wait — đã code trên nhánh `feature_keyboard_wait`. Sau đó: Image (nhận diện ảnh) và Record.
 5. License theo máy và công cụ tạo key.
 
 ## 7. Quy trình git (theo CLAUDE.md)

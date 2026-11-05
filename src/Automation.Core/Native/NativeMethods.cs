@@ -50,6 +50,38 @@ namespace Automation.Core.Native
             public MOUSEINPUT mi;
         }
 
+        public const uint INPUT_KEYBOARD = 1;
+        public const uint KEYEVENTF_EXTENDEDKEY = 0x0001;
+        public const uint KEYEVENTF_KEYUP = 0x0002;
+        public const uint KEYEVENTF_UNICODE = 0x0004;
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct KEYBDINPUT
+        {
+            public ushort wVk;
+            public ushort wScan;
+            public uint dwFlags;
+            public uint time;
+            public IntPtr dwExtraInfo;
+        }
+
+        // Same size as INPUT (40 bytes on x64, 28 on x86): the two trailing ints pad the keyboard member up to the
+        // size of the larger mouse member. KeyboardController checks this at startup.
+        [StructLayout(LayoutKind.Sequential)]
+        public struct KEYINPUT
+        {
+            public uint type;
+            public KEYBDINPUT ki;
+            public int pad1;
+            public int pad2;
+        }
+
+        [DllImport("user32.dll", EntryPoint = "SendInput", SetLastError = true)]
+        public static extern uint SendKeyInput(uint nInputs, KEYINPUT[] pInputs, int cbSize);
+
+        [DllImport("user32.dll")]
+        public static extern uint MapVirtualKey(uint code, uint mapType);
+
         [StructLayout(LayoutKind.Sequential)]
         public struct RECT
         {

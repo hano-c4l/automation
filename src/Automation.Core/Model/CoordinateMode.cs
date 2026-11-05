@@ -13,7 +13,9 @@ namespace Automation.Core.Model
     public enum ActionCategory
     {
         Control,
-        Mouse
+        Command,
+        Mouse,
+        Keyboard
     }
 
     public enum MouseAction
@@ -26,9 +28,24 @@ namespace Automation.Core.Model
         ScrollDown
     }
 
+    public enum KeyboardAction
+    {
+        KeyPress,
+        KeyUp,
+        KeyDown,
+        ComboKey,
+        Text
+    }
+
+    public enum CommandKind
+    {
+        Open
+    }
+
     public enum ControlKind
     {
-        Loop
+        Loop,
+        Wait
     }
 
     public enum LoopType
