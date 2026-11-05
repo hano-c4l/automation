@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Runtime.Serialization;
+using Automation.Core.Imaging;
 using Automation.Core.Input;
 
 namespace Automation.Core.Model
@@ -246,6 +247,85 @@ namespace Automation.Core.Model
     }
 
     /// <summary>
+    /// Settings of an Image action: looks for a picture inside a range and, when it is found, runs the children
+    /// relative to where it was found.
+    /// </summary>
+    [DataContract]
+    public sealed class ImageSettings
+    {
+        /// <summary>Window the range is relative to. Empty means the desktop.</summary>
+        [DataMember(Order = 1)] public WindowTarget Process { get; set; } = new WindowTarget();
+
+        /// <summary>With a Process: the point of its client area that the range is measured from.</summary>
+        public WindowAnchor Anchor { get; set; }
+
+        /// <summary>Top-left of the search range, as an offset from the anchor (or absolute desktop pixels without a Process).</summary>
+        [DataMember(Order = 3)] public int RangeX { get; set; }
+        [DataMember(Order = 4)] public int RangeY { get; set; }
+
+        /// <summary>Size of the search range; 0 means the whole client area (or the whole desktop without a Process).</summary>
+        [DataMember(Order = 5)] public int RangeWidth { get; set; }
+        [DataMember(Order = 6)] public int RangeHeight { get; set; }
+
+        /// <summary>Minimum similarity in percent (1-100) for the picture to count as found.</summary>
+        [DataMember(Order = 7)] public int Accuracy { get; set; } = 90;
+
+        [DataMember(Order = 8)] public int ImageWidth { get; set; }
+        [DataMember(Order = 9)] public int ImageHeight { get; set; }
+
+        /// <summary>The picture to look for: deflate-compressed BGRA pixels, base64 (see RawImage).</summary>
+        [DataMember(Order = 10, EmitDefaultValue = false)] public string ImageData { get; set; }
+
+        [DataMember(Name = "Anchor", Order = 2)]
+        private string AnchorName
+        {
+            get { return Anchor.ToString(); }
+            set { Anchor = ActionNode.Parse(value, WindowAnchor.TopLeft); }
+        }
+
+        public bool HasImage
+        {
+            get { return !string.IsNullOrEmpty(ImageData) && ImageWidth > 0 && ImageHeight > 0; }
+        }
+
+        /// <exception cref="System.IO.InvalidDataException">There is no picture, or its data is damaged.</exception>
+        public RawImage GetImage()
+        {
+            return RawImage.Decode(ImageWidth, ImageHeight, ImageData);
+        }
+
+        public void SetImage(RawImage image)
+        {
+            ImageWidth = image.Width;
+            ImageHeight = image.Height;
+            ImageData = image.Encode();
+        }
+
+        [OnDeserializing]
+        private void SetDefaults(StreamingContext context)
+        {
+            Process = new WindowTarget();
+            Accuracy = 90;
+        }
+
+        public ImageSettings Clone()
+        {
+            var copy = (ImageSettings)MemberwiseClone();
+            copy.Process = (Process ?? new WindowTarget()).Clone();
+            return copy;
+        }
+
+        internal void Normalize()
+        {
+            if (Process == null) Process = new WindowTarget();
+            if (Accuracy < 1) Accuracy = 1;
+            if (Accuracy > 100) Accuracy = 100;
+            if (RangeWidth < 0) RangeWidth = 0;
+            if (RangeHeight < 0) RangeHeight = 0;
+        }
+    }
+
+    /// <summary>
     /// One node of the action tree. The settings of the node's category live in a sub-object (Mouse, Keyboard,
     /// Command, Loop or Wait); the others are absent from the JSON. Only Control actions (Loop, Wait) have children.
     /// </summary>
@@ -263,6 +343,7 @@ namespace Automation.Core.Model
         [DataMember(Order = 5, EmitDefaultValue = false)] public CommandSettings Command { get; set; }
         [DataMember(Order = 6, EmitDefaultValue = false)] public LoopSettings Loop { get; set; }
         [DataMember(Order = 7, EmitDefaultValue = false)] public WaitSettings Wait { get; set; }
+        [DataMember(Order = 9, EmitDefaultValue = false)] public ImageSettings Image { get; set; }
 
         public List<ActionNode> Children { get; set; } = new List<ActionNode>();
 
@@ -289,6 +370,11 @@ namespace Automation.Core.Model
         public static ActionNode NewLoop(LoopSettings settings)
         {
             return new ActionNode { Category = ActionCategory.Control, Control = ControlKind.Loop, Loop = settings ?? new LoopSettings() };
+        }
+
+        public static ActionNode NewImage(ImageSettings settings)
+        {
+            return new ActionNode { Category = ActionCategory.Control, Control = ControlKind.Image, Image = settings ?? new ImageSettings() };
         }
 
         public static ActionNode NewWait(WaitSettings settings)
@@ -338,6 +424,7 @@ namespace Automation.Core.Model
             copy.Command = Command?.Clone();
             copy.Loop = Loop?.Clone();
             copy.Wait = Wait?.Clone();
+            copy.Image = Image?.Clone();
             copy.Children = Children.Select(c => c.Clone()).ToList();
             return copy;
         }
@@ -353,8 +440,9 @@ namespace Automation.Core.Model
             var command = Category == ActionCategory.Command ? (Command ?? new CommandSettings()) : null;
             var loop = Category == ActionCategory.Control && Control == ControlKind.Loop ? (Loop ?? new LoopSettings()) : null;
             var wait = Category == ActionCategory.Control && Control == ControlKind.Wait ? (Wait ?? new WaitSettings()) : null;
-            Mouse = mouse; Keyboard = keyboard; Command = command; Loop = loop; Wait = wait;
-            mouse?.Normalize(); keyboard?.Normalize(); command?.Normalize(); loop?.Normalize(); wait?.Normalize();
+            var image = Category == ActionCategory.Control && Control == ControlKind.Image ? (Image ?? new ImageSettings()) : null;
+            Mouse = mouse; Keyboard = keyboard; Command = command; Loop = loop; Wait = wait; Image = image;
+            mouse?.Normalize(); keyboard?.Normalize(); command?.Normalize(); loop?.Normalize(); wait?.Normalize(); image?.Normalize();
 
             if (!IsContainer) Children.Clear();
             foreach (var child in Children) child.Normalize();

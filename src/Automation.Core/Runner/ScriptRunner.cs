@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
+using Automation.Core.Imaging;
 using Automation.Core.Input;
 using Automation.Core.Model;
 using Automation.Core.Native;
@@ -59,6 +60,9 @@ namespace Automation.Core.Runner
         private sealed class RunContext
         {
             public WindowTarget Window = null;
+
+            /// <summary>Where an enclosing Image action found its picture; child positions are relative to it.</summary>
+            public ClientArea? Image = null;
         }
 
         private void ExecuteList(List<ActionNode> nodes, RunContext context, CancellationToken token)
@@ -86,6 +90,7 @@ namespace Automation.Core.Runner
                     break;
                 case ActionCategory.Control:
                     if (node.Control == ControlKind.Wait) ExecuteWait(node, context, token);
+                    else if (node.Control == ControlKind.Image) ExecuteImage(node, context, token);
                     else ExecuteLoop(node, context, token);
                     break;
             }
@@ -153,6 +158,28 @@ namespace Automation.Core.Runner
                 catch (InvalidOperationException) { }
             }
             _heldKeys.Clear();
+        }
+
+        // ---------------------------------------------------------------- image
+
+        /// <summary>
+        /// Looks for the picture; when found, runs the children with the picture's position and the Image's process
+        /// as their reference. When not found the children are skipped and the run continues.
+        /// </summary>
+        private void ExecuteImage(ActionNode node, RunContext context, CancellationToken token)
+        {
+            var im = node.Image;
+            if (!im.HasImage) throw new InvalidOperationException("Image: no picture is set.");
+
+            WindowTarget process = !im.Process.IsEmpty ? im.Process : context.Window;
+            LocateResult found = ImageLocator.Locate(im, process, token);
+            if (!found.Found)
+            {
+                string best = found.Score >= 0 ? " (best match " + (int)Math.Round(found.Score * 100) + "%, needs " + im.Accuracy + "%)" : "";
+                Message?.Invoke("Image not found" + best + ".");
+                return;
+            }
+            ExecuteList(node.Children, new RunContext { Window = process, Image = found.Rect }, token);
         }
 
         // ---------------------------------------------------------------- wait
@@ -236,12 +263,18 @@ namespace Automation.Core.Runner
         {
             var m = node.Mouse;
             int x = m.X, y = m.Y;
-            WindowTarget target = !m.Process.IsEmpty ? m.Process : context.Window;
-            if (target != null && !target.IsEmpty)
+            // Inside an Image action the process is inherited and the position is measured from the found picture.
+            bool inImage = context.Image.HasValue;
+            WindowTarget target = inImage ? context.Window : (!m.Process.IsEmpty ? m.Process : context.Window);
+            if (inImage && (target == null || target.IsEmpty))
+            {
+                WindowLocator.ToScreen(context.Image.Value, m.Anchor, m.X, m.Y, out x, out y);
+            }
+            else if (target != null && !target.IsEmpty)
             {
                 IntPtr hwnd = FindWindow(target);
                 Activate(hwnd, token);
-                var area = WindowLocator.GetClientArea(hwnd);
+                var area = inImage ? context.Image.Value : WindowLocator.GetClientArea(hwnd);
                 WindowLocator.ToScreen(area, m.Anchor, m.X, m.Y, out x, out y);
                 // Never act on whatever program happens to cover the point (activation is best effort).
                 var under = WindowLocator.WindowAt(x, y);

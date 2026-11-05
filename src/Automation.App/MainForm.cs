@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using Automation.Core.Imaging;
 using Automation.Core.Input;
 using Automation.Core.Model;
 using Automation.Core.Runner;
@@ -66,6 +67,7 @@ namespace Automation.App
         private readonly TimeBox _delay = new TimeBox(500);
         private readonly TextBox _processName = new TextBox { Width = 200 };
         private readonly TextBox _processTitle = new TextBox { Width = 200 };
+        private readonly Button _pickProcessButton = new Button { Text = "Pick program...", AutoSize = true };
         private readonly ComboBox _anchor = MakeCombo(typeof(WindowAnchor));
         private readonly NumericUpDown _x = MakeNumber(-20000, 20000, 0);
         private readonly NumericUpDown _y = MakeNumber(-20000, 20000, 0);
@@ -93,6 +95,24 @@ namespace Automation.App
         private readonly TimeBox _waitTime = new TimeBox(10000);
         private readonly NumericUpDown _waitRetry = MakeNumber(0, 1000, 0);
         private readonly Button _waitPick = new Button { Text = "Pick program...", AutoSize = true };
+
+        // Editor: image
+        private readonly TextBox _imgProcessName = new TextBox { Width = 200 };
+        private readonly TextBox _imgProcessTitle = new TextBox { Width = 200 };
+        private readonly ComboBox _imgAnchor = MakeCombo(typeof(WindowAnchor));
+        private readonly NumericUpDown _imgX = MakeNumber(-20000, 20000, 0);
+        private readonly NumericUpDown _imgY = MakeNumber(-20000, 20000, 0);
+        private readonly NumericUpDown _imgW = MakeNumber(0, 20000, 0);
+        private readonly NumericUpDown _imgH = MakeNumber(0, 20000, 0);
+        private readonly NumericUpDown _imgAccuracy = MakeNumber(1, 100, 90);
+        private readonly PictureBox _imgPreview = new PictureBox { Width = 200, Height = 90, SizeMode = PictureBoxSizeMode.Zoom, BorderStyle = BorderStyle.FixedSingle };
+        private readonly Label _imgInfo = new Label { AutoSize = true, Text = "No picture" };
+        private readonly Button _imgPickProcess = new Button { Text = "Pick program...", AutoSize = true };
+        private readonly Button _imgPickRange = new Button { Text = "Pick range...", AutoSize = true };
+        private readonly Button _imgCapture = new Button { Text = "Capture picture...", AutoSize = true };
+        private readonly Button _imgLoad = new Button { Text = "Load file...", AutoSize = true };
+        private readonly Button _imgFind = new Button { Text = "Find now", AutoSize = true };
+        private RawImage _imageRaw;
 
         private readonly GroupBox _mouseBox = new GroupBox { Text = "Mouse", Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8) };
         private readonly GroupBox _keyboardBox = new GroupBox { Text = "Keyboard", Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8) };
@@ -154,7 +174,8 @@ namespace Automation.App
             AddRow(common, "Category", _category);
 
             // Mouse
-            var pickProcess = MakeButton("Pick program...", (s, e) => PickProcess(_processName));
+            _pickProcessButton.Click += (s, e) => PickProcess(_processName);
+            var pickProcess = _pickProcessButton;
             var pickPosition = MakeButton("Pick position...", (s, e) => PickPosition());
             var mouseTable = NewTable();
             AddRow(mouseTable, "Action", _mouseAction);
@@ -199,6 +220,21 @@ namespace Automation.App
             AddRow(controlTable, "", _waitPick);
             AddRow(controlTable, "Wait up to", _waitTime);
             AddRow(controlTable, "Retry", _waitRetry);
+            AddRow(controlTable, "Process", _imgProcessName);
+            AddRow(controlTable, "Title (regex)", _imgProcessTitle);
+            AddRow(controlTable, "", _imgPickProcess);
+            AddRow(controlTable, "Anchor", _imgAnchor);
+            AddRow(controlTable, "Range X", _imgX);
+            AddRow(controlTable, "Range Y", _imgY);
+            AddRow(controlTable, "Width (0 = all)", _imgW);
+            AddRow(controlTable, "Height (0 = all)", _imgH);
+            AddRow(controlTable, "", _imgPickRange);
+            AddRow(controlTable, "Picture", _imgPreview);
+            AddRow(controlTable, "", _imgInfo);
+            AddRow(controlTable, "", _imgCapture);
+            AddRow(controlTable, "", _imgLoad);
+            AddRow(controlTable, "Accuracy (%)", _imgAccuracy);
+            AddRow(controlTable, "", _imgFind);
             _controlBox.Controls.Add(controlTable);
 
             // Docked top-to-bottom: the control added last is docked first.
@@ -221,7 +257,7 @@ namespace Automation.App
 
         private void WireEvents()
         {
-            _list.SelectedIndexChanged += (s, e) => LoadSelectedIntoEditor();
+            _list.SelectedIndexChanged += (s, e) => { LoadSelectedIntoEditor(); UpdateEditorVisibility(); };
             _list.SizeChanged += (s, e) => FitDetailsColumn();
             _list.KeyDown += (s, e) =>
             {
@@ -243,6 +279,11 @@ namespace Automation.App
 
             // F6 is a global hot key while idle; it must not be swallowed while the user records F6 as a key.
             _waitPick.Click += (s, e) => PickProcess(_waitProcessName);
+            _imgPickProcess.Click += (s, e) => PickProcess(_imgProcessName);
+            _imgPickRange.Click += (s, e) => PickRange();
+            _imgCapture.Click += (s, e) => CaptureImage();
+            _imgLoad.Click += (s, e) => LoadImageFile();
+            _imgFind.Click += (s, e) => FindNow();
             _kbKey.Enter += (s, e) => SetToggleHotKey(false);
             _kbKey.Leave += (s, e) => SetToggleHotKey(true);
         }
@@ -273,17 +314,29 @@ namespace Automation.App
             SetRowVisible(_kbTime, kb == KeyboardAction.KeyPress || kb == KeyboardAction.ComboKey || isText);
 
             // Control
-            bool loop = (ControlKind)_controlKind.SelectedItem == ControlKind.Loop;
+            var controlKind = (ControlKind)_controlKind.SelectedItem;
+            bool loop = controlKind == ControlKind.Loop;
+            bool wait = controlKind == ControlKind.Wait;
+            bool image = controlKind == ControlKind.Image;
             var loopType = (LoopType)_loopType.SelectedItem;
             SetRowVisible(_loopType, loop);
             SetRowVisible(_loopCount, loop && loopType == LoopType.Count);
             SetRowVisible(_loopDuration, loop && loopType == LoopType.Duration);
             SetRowVisible(_loopUntil, loop && loopType == LoopType.Until);
-            SetRowVisible(_waitProcessName, !loop);
-            SetRowVisible(_waitProcessTitle, !loop);
-            SetRowVisible(_waitTime, !loop);
-            SetRowVisible(_waitRetry, !loop);
-            SetRowVisible(_waitPick, !loop);
+            SetRowVisible(_waitProcessName, wait);
+            SetRowVisible(_waitProcessTitle, wait);
+            SetRowVisible(_waitTime, wait);
+            SetRowVisible(_waitRetry, wait);
+            SetRowVisible(_waitPick, wait);
+            foreach (var c in new Control[] { _imgProcessName, _imgProcessTitle, _imgPickProcess, _imgAnchor, _imgX, _imgY, _imgW, _imgH,
+                                              _imgPickRange, _imgPreview, _imgInfo, _imgCapture, _imgLoad, _imgAccuracy, _imgFind })
+                SetRowVisible(c, image);
+            _imgAnchor.Enabled = _imgProcessName.Text.Trim().Length > 0 || _imgProcessTitle.Text.Trim().Length > 0;
+
+            // Inside an Image the process is inherited and the position is measured from the found picture.
+            bool inImage = ImageContext() != null;
+            _processName.Enabled = _processTitle.Enabled = _pickProcessButton.Enabled = !inImage;
+            if (inImage) _anchor.Enabled = true;
         }
 
         /// <summary>Scroll actions always use the middle button; the other actions allow all three.</summary>
@@ -343,6 +396,8 @@ namespace Automation.App
                     });
 
                 default:
+                    if ((ControlKind)_controlKind.SelectedItem == ControlKind.Image)
+                        return ActionNode.NewImage(BuildImageSettings());
                     if ((ControlKind)_controlKind.SelectedItem == ControlKind.Wait)
                     {
                         return ActionNode.NewWait(new WaitSettings
@@ -361,6 +416,22 @@ namespace Automation.App
                     loop.SetUntil(_loopUntil.Value);
                     return ActionNode.NewLoop(loop);
             }
+        }
+
+        private ImageSettings BuildImageSettings()
+        {
+            var settings = new ImageSettings
+            {
+                Process = Target(_imgProcessName, _imgProcessTitle),
+                Anchor = (WindowAnchor)_imgAnchor.SelectedItem,
+                RangeX = (int)_imgX.Value,
+                RangeY = (int)_imgY.Value,
+                RangeWidth = (int)_imgW.Value,
+                RangeHeight = (int)_imgH.Value,
+                Accuracy = (int)_imgAccuracy.Value
+            };
+            if (_imageRaw != null) settings.SetImage(_imageRaw);
+            return settings;
         }
 
         private static WindowTarget Target(TextBox name, TextBox title)
@@ -409,7 +480,26 @@ namespace Automation.App
 
                 default:
                     _controlKind.SelectedItem = node.Control;
-                    if (node.Control == ControlKind.Wait)
+                    if (node.Control == ControlKind.Image)
+                    {
+                        var im = node.Image;
+                        _imgProcessName.Text = im.Process.ProcessName ?? "";
+                        _imgProcessTitle.Text = im.Process.TitlePattern ?? "";
+                        _imgAnchor.SelectedItem = im.Anchor;
+                        _imgX.Value = Clamp(_imgX, im.RangeX);
+                        _imgY.Value = Clamp(_imgY, im.RangeY);
+                        _imgW.Value = Clamp(_imgW, im.RangeWidth);
+                        _imgH.Value = Clamp(_imgH, im.RangeHeight);
+                        _imgAccuracy.Value = Clamp(_imgAccuracy, im.Accuracy);
+                        RawImage raw = null;
+                        if (im.HasImage)
+                        {
+                            try { raw = im.GetImage(); }
+                            catch (InvalidDataException) { SetStatus("The picture stored in this action is damaged; capture it again."); }
+                        }
+                        SetImage(raw);
+                    }
+                    else if (node.Control == ControlKind.Wait)
                     {
                         var w = node.Wait;
                         _waitProcessName.Text = w.Process.ProcessName ?? "";
@@ -450,11 +540,14 @@ namespace Automation.App
             else
                 _script.Actions.Add(node);
             RefreshList(new[] { node });
+            _name.Clear(); // the next action should not inherit this alias
         }
 
         /// <summary>Returns a message if the action could never run (for example a key that is not set), otherwise null.</summary>
         private static string Validate(ActionNode node)
         {
+            if (node.Category == ActionCategory.Control && node.Control == ControlKind.Image && !node.Image.HasImage)
+                return "Capture or load a picture first.";
             if (node.Category == ActionCategory.Keyboard)
             {
                 var k = node.Keyboard;
@@ -693,7 +786,17 @@ namespace Automation.App
                     break;
 
                 default:
-                    if (n.Control == ControlKind.Wait)
+                    if (n.Control == ControlKind.Image)
+                    {
+                        var im = n.Image;
+                        action = "Image";
+                        process = DescribeTarget(im.Process);
+                        string range = im.RangeWidth > 0 && im.RangeHeight > 0
+                            ? "range " + im.RangeWidth + "x" + im.RangeHeight + " at (" + im.RangeX + ", " + im.RangeY + ")" + (im.Process.IsEmpty ? "" : " " + im.Anchor)
+                            : "whole area";
+                        details = im.ImageWidth + "x" + im.ImageHeight + " picture, " + im.Accuracy + "%, " + range;
+                    }
+                    else if (n.Control == ControlKind.Wait)
                     {
                         action = "Wait";
                         process = DescribeTarget(n.Wait.Process);
@@ -746,6 +849,9 @@ namespace Automation.App
 
         private void PickPosition()
         {
+            var imageNode = ImageContext();
+            if (imageNode != null) { PickPositionInImage(imageNode.Image); return; }
+
             var process = Target(_processName, _processTitle);
             if (!process.IsEmpty)
             {
@@ -807,6 +913,249 @@ namespace Automation.App
             using (var dialog = new OpenFileDialog { Filter = "All files (*.*)|*.*" })
             {
                 if (dialog.ShowDialog(this) == DialogResult.OK) _cmdValue.Text = dialog.FileName;
+            }
+        }
+
+        // ---------------------------------------------------------------- image
+
+        /// <summary>The Image action that the action being edited belongs to (or is about to be added to), if any.</summary>
+        private ActionNode ImageContext()
+        {
+            var row = SingleSelectedRow();
+            if (row == null) return null;
+            var node = row.Node.IsContainer ? row.Node : row.Parent;
+            while (node != null)
+            {
+                if (node.Category == ActionCategory.Control && node.Control == ControlKind.Image) return node;
+                var parentRow = _rows.FirstOrDefault(r => ReferenceEquals(r.Node, node));
+                node = parentRow?.Parent;
+            }
+            return null;
+        }
+
+        /// <summary>Shows the overlay and returns the clicked point, without touching this window's state.</summary>
+        private static bool ShowPointOverlay(out Point point)
+        {
+            Point? picked = null;
+            using (var picker = new PointPickerForm())
+            {
+                if (picker.ShowDialog() == DialogResult.OK) picked = picker.SelectedPoint;
+            }
+            Thread.Sleep(150); // let the overlay disappear
+            point = picked ?? Point.Empty;
+            return picked.HasValue;
+        }
+
+        private void Minimize()
+        {
+            WindowState = FormWindowState.Minimized;
+            Application.DoEvents();
+            Thread.Sleep(250);
+        }
+
+        private void Restore()
+        {
+            WindowState = FormWindowState.Normal;
+            Activate();
+        }
+
+        /// <summary>
+        /// Pick a position inside an Image action: the picture must be on screen right now; the point is stored as an
+        /// offset from the chosen anchor of the picture's current rectangle.
+        /// </summary>
+        private void PickPositionInImage(ImageSettings image)
+        {
+            if (!image.HasImage) { SetStatus("The Image action has no picture yet."); return; }
+            var process = image.Process;
+            if (!process.IsEmpty && !ActivateProcess(process)) return;
+
+            Minimize();
+            LocateResult found;
+            try
+            {
+                found = ImageLocator.Locate(image, process);
+            }
+            catch (Exception ex) when (ex is InvalidOperationException || ex is ArgumentException)
+            {
+                Restore();
+                SetStatus(ex.Message);
+                return;
+            }
+            if (!found.Found)
+            {
+                Restore();
+                SetStatus("The picture is not visible on screen right now" + (found.Score >= 0 ? " (best match " + (int)Math.Round(found.Score * 100) + "%)" : "") + "; show it, then pick again.");
+                return;
+            }
+
+            bool picked = ShowPointOverlay(out Point p);
+            Restore();
+            if (!picked) return;
+            WindowLocator.FromScreen(found.Rect, (WindowAnchor)_anchor.SelectedItem, p.X, p.Y, out int x, out int y);
+            _x.Value = Clamp(_x, x);
+            _y.Value = Clamp(_y, y);
+        }
+
+        /// <summary>Brings the program's window to the front while this window is still in front; false (with a status message) if it is missing.</summary>
+        private bool ActivateProcess(WindowTarget process)
+        {
+            IntPtr hwnd;
+            try { hwnd = WindowLocator.Find(process); }
+            catch (ArgumentException ex) { SetStatus(ex.Message); return false; }
+            if (hwnd == IntPtr.Zero)
+            {
+                SetStatus("The program is not running; start it first, or clear Process.");
+                return false;
+            }
+            WindowLocator.BringToFront(hwnd);
+            Thread.Sleep(200);
+            return true;
+        }
+
+        /// <summary>Lets the user drag a rectangle on screen; Process (if set) is activated first.</summary>
+        private bool PickRegion(WindowTarget process, bool capture, out Rectangle region, out RawImage image)
+        {
+            region = Rectangle.Empty;
+            image = null;
+            if (!process.IsEmpty && !ActivateProcess(process)) return false;
+
+            Minimize();
+            bool ok;
+            using (var picker = new RegionPickerForm())
+            {
+                ok = picker.ShowDialog() == DialogResult.OK;
+                if (ok) region = picker.SelectedRegion;
+            }
+            Thread.Sleep(200); // let the overlay disappear before capturing the screen
+            if (ok && capture)
+            {
+                try { image = ScreenCapture.Capture(region.X, region.Y, region.Width, region.Height); }
+                catch (InvalidOperationException ex) { SetStatus(ex.Message); ok = false; }
+            }
+            Restore();
+            return ok;
+        }
+
+        private void PickRange()
+        {
+            var process = Target(_imgProcessName, _imgProcessTitle);
+            if (!PickRegion(process, false, out Rectangle region, out _)) return;
+
+            int x = region.X, y = region.Y;
+            if (!process.IsEmpty)
+            {
+                IntPtr hwnd;
+                try { hwnd = WindowLocator.Find(process); }
+                catch (ArgumentException ex) { SetStatus(ex.Message); return; }
+                if (hwnd == IntPtr.Zero) { SetStatus("The program is no longer available."); return; }
+                WindowLocator.FromScreen(WindowLocator.GetClientArea(hwnd), (WindowAnchor)_imgAnchor.SelectedItem, region.X, region.Y, out x, out y);
+            }
+            _imgX.Value = Clamp(_imgX, x);
+            _imgY.Value = Clamp(_imgY, y);
+            _imgW.Value = Clamp(_imgW, region.Width);
+            _imgH.Value = Clamp(_imgH, region.Height);
+        }
+
+        private void CaptureImage()
+        {
+            if (!PickRegion(Target(_imgProcessName, _imgProcessTitle), true, out Rectangle region, out RawImage image)) return;
+            AcceptImage(image);
+        }
+
+        private void LoadImageFile()
+        {
+            using (var dialog = new OpenFileDialog { Filter = "Images (*.png;*.bmp;*.jpg;*.jpeg;*.gif)|*.png;*.bmp;*.jpg;*.jpeg;*.gif|All files (*.*)|*.*" })
+            {
+                if (dialog.ShowDialog(this) != DialogResult.OK) return;
+                try
+                {
+                    using (var loaded = new Bitmap(dialog.FileName))
+                        AcceptImage(FromBitmap(loaded));
+                }
+                catch (Exception ex) when (ex is ArgumentException || ex is IOException || ex is OutOfMemoryException)
+                {
+                    SetStatus("Cannot read the picture: " + ex.Message);
+                }
+            }
+        }
+
+        /// <summary>Takes a new template picture, refusing one that has no pattern to look for.</summary>
+        private void AcceptImage(RawImage image)
+        {
+            if (!ImageMatcher.HasEnoughDetail(image))
+            {
+                SetStatus("That area is almost a single colour; pick an area with some detail (text, an icon, an edge).");
+                return;
+            }
+            SetImage(image);
+            SetStatus(image.Width > 300 || image.Height > 300
+                ? "Picture set. It is large (" + image.Width + "x" + image.Height + "): searching will be slower and the script file bigger; a smaller distinctive part works better."
+                : "Picture set (" + image.Width + "x" + image.Height + "). Press Add or Update to keep it.");
+        }
+
+        private void SetImage(RawImage image)
+        {
+            _imageRaw = image;
+            var old = _imgPreview.Image;
+            _imgPreview.Image = image == null ? null : ToBitmap(image);
+            old?.Dispose();
+            _imgInfo.Text = image == null ? "No picture" : image.Width + " x " + image.Height + " px";
+        }
+
+        /// <summary>Shows where the picture is on screen right now and how well it matches, to help choose the accuracy.</summary>
+        private void FindNow()
+        {
+            if (_imageRaw == null) { SetStatus("Capture or load a picture first."); return; }
+            var settings = BuildImageSettings();
+            if (!settings.Process.IsEmpty && !ActivateProcess(settings.Process)) return;
+
+            Minimize(); // this window must not cover what is searched
+            string message;
+            try
+            {
+                var found = ImageLocator.Locate(settings, settings.Process);
+                int percent = found.Score >= 0 ? (int)Math.Round(found.Score * 100) : 0;
+                message = found.Found
+                    ? "Found at screen (" + found.Rect.Left + ", " + found.Rect.Top + "), match " + percent + "%."
+                    : "Not found" + (found.Score >= 0 ? " (best match " + percent + "%, needs " + settings.Accuracy + "%)." : ".");
+            }
+            catch (Exception ex) when (ex is InvalidOperationException || ex is ArgumentException)
+            {
+                message = ex.Message;
+            }
+            Restore();
+            SetStatus(message);
+        }
+
+        private static Bitmap ToBitmap(RawImage image)
+        {
+            var bitmap = new Bitmap(image.Width, image.Height, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            var data = bitmap.LockBits(new Rectangle(0, 0, image.Width, image.Height), System.Drawing.Imaging.ImageLockMode.WriteOnly, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            try
+            {
+                var bytes = (byte[])image.Bgra.Clone();
+                for (int i = 3; i < bytes.Length; i += 4) bytes[i] = 255; // screen captures carry no alpha
+                for (int y = 0; y < image.Height; y++)
+                    System.Runtime.InteropServices.Marshal.Copy(bytes, y * image.Width * 4, data.Scan0 + y * data.Stride, image.Width * 4);
+            }
+            finally { bitmap.UnlockBits(data); }
+            return bitmap;
+        }
+
+        private static RawImage FromBitmap(Bitmap source)
+        {
+            using (var bitmap = new Bitmap(source.Width, source.Height, System.Drawing.Imaging.PixelFormat.Format32bppArgb))
+            {
+                using (var g = Graphics.FromImage(bitmap)) g.DrawImage(source, 0, 0, source.Width, source.Height);
+                var data = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height), System.Drawing.Imaging.ImageLockMode.ReadOnly, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+                try
+                {
+                    var bytes = new byte[bitmap.Width * bitmap.Height * 4];
+                    for (int y = 0; y < bitmap.Height; y++)
+                        System.Runtime.InteropServices.Marshal.Copy(data.Scan0 + y * data.Stride, bytes, y * bitmap.Width * 4, bitmap.Width * 4);
+                    return new RawImage(bitmap.Width, bitmap.Height, bytes);
+                }
+                finally { bitmap.UnlockBits(data); }
             }
         }
 
@@ -977,6 +1326,12 @@ namespace Automation.App
             HotKeyNative.UnregisterHotKey(Handle, HotKeyToggleId);
             if (enabled && !_running && !HotKeyNative.RegisterHotKey(Handle, HotKeyToggleId, HotKeyNative.MOD_NOREPEAT, (uint)Keys.F6))
                 SetStatus("F6 is used by another program; use the Start button.");
+        }
+
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+            FitDetailsColumn();
         }
 
         protected override void OnHandleCreated(EventArgs e)

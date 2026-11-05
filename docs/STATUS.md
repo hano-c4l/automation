@@ -3,48 +3,49 @@
 Cập nhật lần cuối: 2026-11-05
 
 ## Hiện tại
-- Giai đoạn tiếp theo đã code xong: **Keyboard, Command/Open, Control/Wait** (ngoài Mouse và Loop đã có). Build sạch, Core đã test bằng script với cửa sổ thật; **chờ người dùng test giao diện** (đặc biệt ô bắt phím).
-- Nhánh: `feature_keyboard_wait` (cắt từ `feature_action_tree`, chưa push). `feature_action_tree` (cây action) và M3 cũng chưa vào `preview`; khi người dùng nói "PR into preview" cần PR cả chuỗi này (xem Git bên dưới).
-- `preview` hiện có M1 + M2 (kịch bản dạng danh sách bước phẳng).
+- Nhánh `feature_name_columns` (cắt từ `preview` sau PR #3, chưa push) gồm hai phần: (1) chỉnh phần cũ theo yêu cầu: field **Name**, bỏ Target của Keyboard, đổi cột danh sách, menu Open/Save/Save As; (2) action mới **Control/Image** (nhận diện ảnh). Build sạch, Core và UI đã test bằng harness C#; **chờ người dùng test thao tác tay trên giao diện** (đặc biệt kéo chọn vùng, chụp ảnh, pick vị trí trong Image).
+- `preview` đã có: M1-M3, cây action, Keyboard, Open, Wait (PR #3).
 
 ## Đã làm
-- [x] M1, M2 (merge vào `preview`), M3 (tọa độ cửa sổ), cây action version 2 với Mouse + Loop (nhánh `feature_action_tree`).
-- [x] **Keyboard:** KeyPress / KeyDown / KeyUp / ComboKey / Text. Phím lưu theo tên (`KeyCodes`: A-Z, 0-9, F1-F24, Num0-9, LeftCtrl/RightCtrl, LeftShift, LeftAlt..., Enter, Tab...). `KeyCaptureBox` bắt phím người dùng bấm: chế độ một phím chỉ lấy phím đầu, chế độ combo lấy các phím giữ cùng nhau theo thứ tự bấm. Text gõ bằng Unicode (`KEYEVENTF_UNICODE`) nên gõ được tiếng Việt, `\n` thành Enter, `\t` thành Tab. Time: KeyPress/Combo là thời gian giữ phím; Text là tổng thời gian gõ chia đều cho các ký tự (0 = nhanh nhất). Target (process + title regex): nếu đặt thì cửa sổ được đưa lên trước và nếu không lên được thì **không gửi phím** (báo lỗi), tránh gõ nhầm vào chương trình khác.
-- [x] **Command/Open:** mở đường dẫn bằng shell (chương trình hoặc tài liệu). Cảnh báo: chạy file kịch bản của người khác sẽ mở bất cứ thứ gì trong đó.
-- [x] **Control/Wait:** chờ cửa sổ khớp Process/Title xuất hiện và lên trước, rồi chạy các action con. Time = thời gian mỗi lượt chờ, Retry = số lượt thử thêm. Hết lượt mà không được thì dừng script với lỗi "Timed out" (chọn mặc định này vì spec chưa nói rõ).
-- [x] **Phím dừng:** khi script chạy, F6/Esc dừng bằng hook bàn phím (`StopKeyHook`) bỏ qua phím do chính script gửi và không nuốt phím, nên script gửi F6/Esc cho chương trình khác được. Khi rảnh, F6 vẫn là hotkey toàn cục và được nhả ra khi đang bắt phím trong ô Key. Nếu không cài được hook thì quay về `RegisterHotKey`.
-- [x] Test script (chuỗi tiếng Việt dựng từ code point, không phụ thuộc encoding file; ô bắt phím thử bằng phím giả lập; hook thử qua MainForm.StartAsync thật): gõ tiếng Việt đúng từng ký tự (kể cả U+1EC7, U+1EC5, U+1ED3, U+01B0, U+01A1, U+0111) và round-trip JSON khớp; ô Key bắt đúng LeftCtrl/RightCtrl/F2/Tab/Left/F6 và combo LeftCtrl+LeftShift+S, F6 khi đang bắt không khởi động script; script gửi F6 + Esc tới cửa sổ test thì kết thúc bình thường ("Finished"), cửa sổ nhận đủ cả hai phím, hook chỉ bật khi đang chạy; giữ phím 700 ms chỉ ra một ký tự (không auto-repeat); Add/Update từ chối phím trống hoặc sai. Các test khác: round-trip JSON (Wait + con, Command, Text có xuống dòng), gõ chuỗi tiếng Việt vào cửa sổ test (từng ký tự khớp), KeyDown/KeyUp Shift + KeyPress, Combo, thời gian giữ phím (300 ms đo 310 ms), Wait thành công/hết hạn (retry hoạt động), tên phím sai và cửa sổ đích không có đều báo lỗi mà không gõ gì, Open chương trình thật và đường dẫn sai. Đã chụp ảnh kiểm tra bố cục các form Keyboard/Command/Wait.
+- [x] M1, M2, M3, cây action, Mouse/Loop, Keyboard, Command/Open, Control/Wait (đã vào `preview`).
+- [x] **Name:** mọi action có alias tùy chọn (`ActionNode.Name`). Cột Name đứng đầu danh sách, thụt lề theo cấp; để trống thì hiện loại action. Ô Name được xóa sau mỗi lần Add.
+- [x] **Keyboard không còn Target/Process** (không phụ thuộc tọa độ): phím gửi tới cửa sổ đang có focus. Muốn gửi tới chương trình cụ thể thì đặt một Click hoặc Wait ngay trước. File cũ có trường Target sẽ bị bỏ qua khi nạp.
+- [x] **Danh sách:** các cột Name | Action | Process | Details | Time | Delay. Process tách riêng (trống nếu action không có), Details chỉ còn thông tin cơ bản và được kéo dài theo bề rộng còn lại.
+- [x] **Menu:** New, Open, Save (ghi thẳng vào file hiện tại, chưa có file thì hỏi đường dẫn), Save As.
+- [x] **Control/Image:** Process + Anchor + Range (X, Y, rộng, cao; 0 = cả vùng client hoặc cả màn hình khi không có Process) + ảnh mẫu + Accuracy (%, mặc định 90). Nếu tìm thấy thì chạy các action con; không thấy thì bỏ qua con, báo "Image not found (best match N%)" và script chạy tiếp. Action Mouse con kế thừa Process của Image (ô Process bị khóa), Anchor/X/Y tính theo hình chữ nhật nơi ảnh được tìm thấy (ví dụ ảnh ở (100,200) trong cửa sổ, TopLeft (10,20) thì click tại (110,220) theo cửa sổ). Nút: Capture picture (kéo chọn vùng màn hình), Load file, Pick range, Find now (cho biết vị trí và % khớp), Pick position trong Image (ảnh phải đang hiện trên màn hình).
+  - Thuật toán: ZNCC (so khớp mẫu chuẩn hóa trừ trung bình) trên ảnh xám, tìm thô trên ảnh thu nhỏ 2-4 lần rồi tinh chỉnh ở độ phân giải đầy đủ; thêm kiểm tra màu trung bình để loại nút cùng hình khác màu. Ảnh mẫu gần như một màu bị từ chối khi chụp.
+  - Ảnh lưu trong chính file script (pixel nén Deflate + base64), Core không phụ thuộc System.Drawing (chụp màn hình bằng GDI).
+  - Test harness: nút trống không khớp nút có chữ (decoy); bản sáng hơn + nhiễu vẫn khớp (~60 ms cho ảnh 1920x1080); cùng hình khác màu không khớp; ảnh mẫu nhỏ; ảnh phẳng bị từ chối; dữ liệu ảnh hỏng báo lỗi; JSON round-trip; cửa sổ thật: ví dụ (100,200)+(10,20) trúng (110,220), Center, BottomRight, vùng tìm có/không chứa ảnh, ảnh biến mất, cửa sổ không tồn tại, tìm trên desktop không Process. Giao diện: Add không ảnh bị từ chối, ảnh phẳng bị từ chối, thêm con vào trong Image, Process bị khóa, pick vị trí khi ảnh không hiện cho thông báo rõ, lưu/mở lại.
 
 ## Việc tiếp theo
 - [ ] Người dùng test giao diện (checklist dưới), báo lỗi nếu có.
 - [ ] PR vào `preview` khi người dùng yêu cầu.
-- [ ] Image (nhận diện ảnh), Record; License (M5).
+- [ ] Record; License (M5).
 
-### Checklist test giao diện (giai đoạn Keyboard / Open / Wait)
-1. Category có đủ Control, Command, Mouse, Keyboard; mỗi loại hiện đúng form, không bị cắt.
-2. Keyboard, Action = KeyPress: bấm vào ô Key rồi nhấn một phím (thử Left Ctrl, F2, Tab, mũi tên, F6): ô hiện tên phím đầu tiên; nhấn Ctrl rồi A cùng lúc vẫn chỉ là LeftCtrl. Lúc đang bắt phím F6 không được khởi động script.
-3. Action = ComboKey: giữ Ctrl, Shift rồi bấm S: ô hiện LeftCtrl+LeftShift+S; nhả hết rồi bấm tổ hợp mới thì thay hoàn toàn.
-4. Action = Text: ô Text nhiều dòng, dán được đoạn văn tiếng Việt; Add rồi Update giữ nguyên nội dung. Time chỉ hiện với KeyPress / ComboKey / Text.
-5. Chạy script gồm Keyboard Text (thử cả khi Unikey/EVKey đang bật) với Target = Notepad: Notepad được đưa lên trước và chữ (kể cả tiếng Việt, xuống dòng) được gõ vào. Thử không đặt Target: gõ vào cửa sổ đang có focus. Thử script gửi phím F6 hoặc Esc cho Notepad: không tự dừng script.
-6. Dừng script giữa chừng bằng F6 và bằng Esc (bằng tay): dừng ngay, phím đang giữ được nhả.
-7. Command/Open: nhập đường dẫn hoặc Browse, chạy: chương trình mở lên; đường dẫn sai thì báo lỗi.
-8. Control/Wait: tạo Wait (Process = notepad) có action con (dùng Add khi đang chọn Wait, hoặc In). Chạy khi chưa mở Notepad rồi mở Notepad trong thời gian chờ: action con chạy. Để hết Time: báo "Timed out waiting", script dừng. Thử Retry > 0.
-9. Save rồi Open lại: mọi action Keyboard / Command / Wait và cây con giữ nguyên.
+### Checklist test giao diện (Name, cột, menu, Image)
+1. Cột danh sách: Name, Action, Process, Details, Time, Delay; Details rộng; Name để trống thì hiện loại action; đặt Name thì hiện alias, thụt lề theo cây.
+2. Keyboard không còn ô Target.
+3. Save lưu thẳng vào file đang mở (không hỏi); Save As hỏi chỗ mới; file mới chưa lưu thì Save hỏi đường dẫn.
+4. Image: Category Control, Type Image. "Capture picture..." kéo chọn một nút/biểu tượng trên màn hình: ảnh hiện trong ô Picture; chọn vùng gần như một màu thì bị từ chối. Add.
+5. "Find now" (khi ảnh đang hiện trên màn hình): báo vị trí và % khớp; che ảnh đi rồi bấm lại: báo Not found và best match.
+6. Đặt Process cho Image, đặt Anchor, "Pick range..." kéo vùng trong cửa sổ đó; Width/Height/X/Y được điền (X/Y là offset theo Anchor). Thử Width/Height = 0 để tìm cả cửa sổ.
+7. Chọn Image rồi thêm action Mouse (Add khi đang chọn Image): nằm trong Image, ô Process bị khóa. "Pick position..." lúc ảnh đang hiện: X/Y là offset so với góc/tâm ảnh theo Anchor. Chạy script: chuột đi tới đúng điểm đó kể cả khi ảnh đã dời chỗ trên màn hình/cửa sổ.
+8. Chạy khi ảnh không có trên màn hình: action con bị bỏ qua, thanh trạng thái báo "Image not found (best match ...)", script tiếp tục.
+9. Save rồi Open lại: ảnh, vùng, Accuracy, Name và con giữ nguyên.
 
 ### Ghi chú cho milestone sau
-- Trường mới có giá trị mặc định khác 0 phải đặt trong `[OnDeserializing] SetDefaults` của lớp tương ứng và không dùng `EmitDefaultValue=false` cho chúng (giá trị 0 do người dùng đặt sẽ bị mất khi nạp lại). Các sub-object (Mouse/Keyboard/Command/Loop/Wait) là tham chiếu nên dùng `EmitDefaultValue=false` an toàn.
-- Image sẽ đặt `RunContext` mới cho các action con (cửa sổ + vị trí ảnh làm gốc); action con của Image kế thừa Process của Image theo spec.
+- Trường mới có giá trị mặc định khác 0 phải đặt trong `[OnDeserializing] SetDefaults` của lớp tương ứng và không dùng `EmitDefaultValue=false` cho chúng. Các sub-object (Mouse/Keyboard/Command/Loop/Wait/Image) là tham chiếu nên dùng `EmitDefaultValue=false` an toàn.
+- `ImageLocator.Locate` là điểm duy nhất biến cài đặt Image thành phép tìm trên màn hình (runner, Find now, Pick position trong Image đều dùng).
 - Khi Process khớp nhiều cửa sổ, runner lấy cửa sổ khớp đầu tiên theo z-order (ưu tiên không minimize); cần điền Title (regex) để chỉ rõ.
 - Đổi Anchor sau khi pick sẽ giữ nguyên số X/Y nhưng đổi nghĩa; phải pick lại.
 - Multi-select giữ bằng ListView thụt lề (TreeView của WinForms không chọn nhiều được). Chưa có thu gọn/mở rộng nhánh.
-- Delay ngắn (<20 ms) và mỗi vòng lặp không delay dùng chờ có nhường CPU (không dùng timer) vì Windows 11 bỏ qua `timeBeginPeriod` khi app thu nhỏ; loop zero-delay chạy hết tốc độ một lõi CPU.
-- Phím Win không bắt được trong ô Key (hệ thống chặn). Gõ Text dùng Unicode packet; chưa thử khi Unikey/EVKey đang bật (có thể làm méo) — xem checklist.
+- Delay ngắn (<20 ms) và mỗi vòng lặp không delay dùng chờ có nhường CPU (không dùng timer) vì Windows 11 bỏ qua `timeBeginPeriod` khi app thu nhỏ.
+- Phím Win không bắt được trong ô Key. Gõ Text dùng Unicode packet; chưa thử khi Unikey/EVKey đang bật.
+- Chụp màn hình bằng BitBlt có thể ra màu đen với nội dung DirectX/toàn màn hình độc quyền (game). Accuracy là ngưỡng giống nhau, không xử lý ảnh mẫu bị che một phần.
 - Game hoặc chương trình chạy admin: `SendInput` bị UIPI chặn nếu app không chạy admin (chưa có tùy chọn chạy admin).
 
-### Git
-- Chuỗi nhánh chưa vào `preview`: `feature_m3_window_coords` -> `feature_action_tree` -> `feature_keyboard_wait` (mỗi nhánh cắt từ nhánh trước). Một PR từ `feature_keyboard_wait` vào `preview` gồm tất cả.
-
 ## Ghi chú môi trường
+- PowerShell của Claude nạp DLL vừa build bị Application Control chặn (lỗi 0x800711C7); chạy test bằng harness C# (`dotnet run` project trong thư mục scratchpad, tham chiếu Core/App) thì chạy được. Dùng harness, không tìm cách lách chính sách.
 - Khi Claude chạy exe từ công cụ của nó, Windows có lúc báo "An Application Control policy has blocked this file", nhưng người dùng chạy trực tiếp thì bình thường. Nguyên nhân chưa xác định; cần thử trên máy sạch trước khi phát hành.
 - Build lỗi "file is being used" khi exe đang chạy: tắt app trước khi build (hoặc build ra thư mục khác bằng `-p:OutDir=`).
 - Lỗi cú pháp heredoc nhiều dòng trong Bash tool: tạo file bằng công cụ Write thay vì `cat <<EOF`.

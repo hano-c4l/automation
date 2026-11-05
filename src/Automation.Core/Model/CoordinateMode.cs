@@ -45,7 +45,8 @@ namespace Automation.Core.Model
     public enum ControlKind
     {
         Loop,
-        Wait
+        Wait,
+        Image
     }
 
     public enum LoopType
