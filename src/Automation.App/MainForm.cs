@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using Automation.Core.Expressions;
 using Automation.Core.Imaging;
 using Automation.Core.Input;
 using Automation.Core.Model;
@@ -37,7 +38,7 @@ namespace Automation.App
             public ActionNode Parent;          // null for top-level actions
             public List<ActionNode> Siblings;  // the list that contains Node
             public int Depth;
-            public bool InImage;               // positions of this action are measured from a found picture
+            public bool IsEnd;                 // the "End" line of a Condition (Node is the Condition itself)
         }
 
         private readonly List<Row> _rows = new List<Row>();
@@ -113,7 +114,45 @@ namespace Automation.App
         private readonly Button _imgCapture = new Button { Text = "Capture picture...", AutoSize = true };
         private readonly Button _imgLoad = new Button { Text = "Load file...", AutoSize = true };
         private readonly Button _imgFind = new Button { Text = "Find now", AutoSize = true };
+        private readonly TextBox _imgId = new TextBox { Width = 200 };
+        private readonly ComboBox _imgResultAnchor = MakeCombo(typeof(WindowAnchor));
         private RawImage _imageRaw;
+
+        // Editor: variable
+        private readonly TextBox _varId = new TextBox { Width = 200 };
+        private readonly ComboBox _varType = MakeCombo(typeof(VariableType));
+        private readonly CheckBox _varUseExpr = new CheckBox { Text = "Use an expression", AutoSize = true };
+        private readonly TextBox _varExpr = new TextBox { Width = 200 };
+        private readonly Label _varHint = new Label { AutoSize = true, MaximumSize = new Size(230, 0), Text = "Example: {abc} + 1  (changes the variable abc)" };
+        private readonly TextBox _varText = new TextBox { Width = 200 };
+        private readonly CheckBox _varBool = new CheckBox { Text = "true", AutoSize = true };
+        private readonly DateTimePicker _varDate = new DateTimePicker { Format = DateTimePickerFormat.Short, Width = 200 };
+        private readonly DateTimePicker _varDateTime = new DateTimePicker { Format = DateTimePickerFormat.Custom, CustomFormat = UntilFormat, Width = 200 };
+        private readonly TextBox _varProcName = new TextBox { Width = 200 };
+        private readonly TextBox _varProcTitle = new TextBox { Width = 200 };
+        private readonly Button _varPickProc = new Button { Text = "Pick program...", AutoSize = true };
+        private readonly ComboBox _varAnchor = MakeCombo(typeof(WindowAnchor));
+        private readonly NumericUpDown _varX = MakeNumber(-20000, 20000, 0);
+        private readonly NumericUpDown _varY = MakeNumber(-20000, 20000, 0);
+        private readonly NumericUpDown _varW = MakeNumber(0, 20000, 0);
+        private readonly NumericUpDown _varH = MakeNumber(0, 20000, 0);
+        private readonly Button _varPickPos = new Button { Text = "Pick position...", AutoSize = true };
+        private readonly Button _varPickRange = new Button { Text = "Pick range...", AutoSize = true };
+
+        // Editor: condition / case
+        private readonly TextBox _caseExpr = new TextBox { Width = 200 };
+        private readonly Label _caseHint = new Label { AutoSize = true, MaximumSize = new Size(230, 0), Text = "True or false, for example {abc} > 3 && {abc} < 10" };
+        private readonly Label _condHint = new Label { AutoSize = true, MaximumSize = new Size(230, 0), Text = "A Condition starts with one case and an else. Select it and add Type = Case for more; add actions inside a case or the else." };
+
+        // Editor: where positions and text come from
+        private readonly ComboBox _posSource = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 120, Items = { "Input", "Variable" } };
+        private readonly TextBox _posExpr = new TextBox { Width = 200 };
+        private readonly Label _posHint = new Label { AutoSize = true, MaximumSize = new Size(230, 0), Text = "Example: {img.Position} + {10,20}. Use the same Process and Anchor as the Image." };
+        private readonly Button _pickPositionButton = new Button { Text = "Pick position...", AutoSize = true };
+        private readonly ComboBox _kbSource = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 120, Items = { "Input", "Variable" } };
+        private readonly TextBox _kbTextExpr = new TextBox { Width = 200 };
+        private readonly Label _kbHint = new Label { AutoSize = true, MaximumSize = new Size(230, 0), Text = "Example: \"Total: \" + {sum}" };
+        private readonly ToolStripButton _saveAs = new ToolStripButton("Save As") { DisplayStyle = ToolStripItemDisplayStyle.Text };
 
         private readonly GroupBox _mouseBox = new GroupBox { Text = "Mouse", Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8) };
         private readonly GroupBox _keyboardBox = new GroupBox { Text = "Keyboard", Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8) };
@@ -129,6 +168,10 @@ namespace Automation.App
             ClientSize = new Size(1240, 580);
             MinimumSize = new Size(1000, 520);
             _loopUntil.Value = DateTime.Now.AddHours(1);
+            _varDateTime.Value = DateTime.Now;
+            _controlKind.Items.Remove(ControlKind.Else); // the else line is created with its Condition, never added by hand
+            _posSource.SelectedIndex = 0;
+            _kbSource.SelectedIndex = 0;
             _category.SelectedItem = ActionCategory.Mouse;
             BuildLayout();
             WireEvents();
@@ -152,7 +195,8 @@ namespace Automation.App
             tools.Items.Add(MakeToolButton("New", (s, e) => NewScript()));
             tools.Items.Add(MakeToolButton("Open", (s, e) => OpenScript()));
             tools.Items.Add(MakeToolButton("Save", (s, e) => SaveScript(false)));
-            tools.Items.Add(MakeToolButton("Save As", (s, e) => SaveScript(true)));
+            _saveAs.Click += (s, e) => SaveScript(true);
+            tools.Items.Add(_saveAs);
             tools.Items.Add(new ToolStripSeparator());
             tools.Items.Add(_startStop);
             var statusBar = new StatusStrip { SizingGrip = false };
@@ -177,7 +221,7 @@ namespace Automation.App
             // Mouse
             _pickProcessButton.Click += (s, e) => PickProcess(_processName);
             var pickProcess = _pickProcessButton;
-            var pickPosition = MakeButton("Pick position...", (s, e) => PickPosition());
+            _pickPositionButton.Click += (s, e) => PickPosition();
             var mouseTable = NewTable();
             AddRow(mouseTable, "Action", _mouseAction);
             AddRow(mouseTable, "Type", _button);
@@ -188,16 +232,22 @@ namespace Automation.App
             AddRow(mouseTable, "Title (regex)", _processTitle);
             AddRow(mouseTable, "", pickProcess);
             AddRow(mouseTable, "Anchor", _anchor);
+            AddRow(mouseTable, "Position from", _posSource);
             AddRow(mouseTable, "X (px)", _x);
             AddRow(mouseTable, "Y (px)", _y);
-            AddRow(mouseTable, "", pickPosition);
+            AddRow(mouseTable, "", _pickPositionButton);
+            AddRow(mouseTable, "Expression", _posExpr);
+            AddRow(mouseTable, "", _posHint);
             _mouseBox.Controls.Add(mouseTable);
 
             // Keyboard
             var kbTable = NewTable();
             AddRow(kbTable, "Action", _kbAction);
             AddRow(kbTable, "Key (press it)", _kbKey);
+            AddRow(kbTable, "Text from", _kbSource);
             AddRow(kbTable, "Text", _kbText);
+            AddRow(kbTable, "Expression", _kbTextExpr);
+            AddRow(kbTable, "", _kbHint);
             AddRow(kbTable, "Time", _kbTime);
             AddRow(kbTable, "Delay", _kbDelay);
             _keyboardBox.Controls.Add(kbTable);
@@ -221,10 +271,12 @@ namespace Automation.App
             AddRow(controlTable, "", _waitPick);
             AddRow(controlTable, "Wait up to", _waitTime);
             AddRow(controlTable, "Retry", _waitRetry);
+            AddRow(controlTable, "ID (variable)", _imgId);
             AddRow(controlTable, "Process", _imgProcessName);
             AddRow(controlTable, "Title (regex)", _imgProcessTitle);
             AddRow(controlTable, "", _imgPickProcess);
-            AddRow(controlTable, "Anchor", _imgAnchor);
+            AddRow(controlTable, "Range anchor", _imgAnchor);
+            AddRow(controlTable, "Picture anchor", _imgResultAnchor);
             AddRow(controlTable, "Range X", _imgX);
             AddRow(controlTable, "Range Y", _imgY);
             AddRow(controlTable, "Width (0 = all)", _imgW);
@@ -236,6 +288,28 @@ namespace Automation.App
             AddRow(controlTable, "", _imgLoad);
             AddRow(controlTable, "Accuracy (%)", _imgAccuracy);
             AddRow(controlTable, "", _imgFind);
+            AddRow(controlTable, "ID", _varId);
+            AddRow(controlTable, "Value type", _varType);
+            AddRow(controlTable, "", _varUseExpr);
+            AddRow(controlTable, "Expression", _varExpr);
+            AddRow(controlTable, "", _varHint);
+            AddRow(controlTable, "Value", _varText);
+            AddRow(controlTable, "Value", _varBool);
+            AddRow(controlTable, "Date", _varDate);
+            AddRow(controlTable, "Date and time", _varDateTime);
+            AddRow(controlTable, "Process", _varProcName);
+            AddRow(controlTable, "Title (regex)", _varProcTitle);
+            AddRow(controlTable, "", _varPickProc);
+            AddRow(controlTable, "Anchor", _varAnchor);
+            AddRow(controlTable, "X (px)", _varX);
+            AddRow(controlTable, "Y (px)", _varY);
+            AddRow(controlTable, "Width", _varW);
+            AddRow(controlTable, "Height", _varH);
+            AddRow(controlTable, "", _varPickPos);
+            AddRow(controlTable, "", _varPickRange);
+            AddRow(controlTable, "Condition", _caseExpr);
+            AddRow(controlTable, "", _caseHint);
+            AddRow(controlTable, "", _condHint);
             _controlBox.Controls.Add(controlTable);
 
             // Docked top-to-bottom: the control added last is docked first.
@@ -285,6 +359,15 @@ namespace Automation.App
             _imgCapture.Click += (s, e) => CaptureImage();
             _imgLoad.Click += (s, e) => LoadImageFile();
             _imgFind.Click += (s, e) => FindNow();
+            _varType.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
+            _varUseExpr.CheckedChanged += (s, e) => UpdateEditorVisibility();
+            _varProcName.TextChanged += (s, e) => UpdateEditorVisibility();
+            _varProcTitle.TextChanged += (s, e) => UpdateEditorVisibility();
+            _varPickProc.Click += (s, e) => PickProcess(_varProcName);
+            _varPickPos.Click += (s, e) => PickVariablePosition();
+            _varPickRange.Click += (s, e) => PickVariableRange();
+            _posSource.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
+            _kbSource.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
             _kbKey.Enter += (s, e) => SetToggleHotKey(false);
             _kbKey.Leave += (s, e) => SetToggleHotKey(true);
         }
@@ -305,13 +388,23 @@ namespace Automation.App
             SetRowVisible(_notches, scroll);
             // Without a process the position is absolute on the desktop, so an anchor means nothing.
             _anchor.Enabled = _processName.Text.Trim().Length > 0 || _processTitle.Text.Trim().Length > 0;
+            bool posFromVariable = _posSource.SelectedIndex == 1;
+            SetRowVisible(_x, !posFromVariable);
+            SetRowVisible(_y, !posFromVariable);
+            SetRowVisible(_pickPositionButton, !posFromVariable);
+            SetRowVisible(_posExpr, posFromVariable);
+            SetRowVisible(_posHint, posFromVariable);
 
             // Keyboard
             var kb = (KeyboardAction)_kbAction.SelectedItem;
             bool isText = kb == KeyboardAction.Text;
+            bool textFromVariable = _kbSource.SelectedIndex == 1;
             _kbKey.Combo = kb == KeyboardAction.ComboKey;
             SetRowVisible(_kbKey, !isText);
-            SetRowVisible(_kbText, isText);
+            SetRowVisible(_kbSource, isText);
+            SetRowVisible(_kbText, isText && !textFromVariable);
+            SetRowVisible(_kbTextExpr, isText && textFromVariable);
+            SetRowVisible(_kbHint, isText && textFromVariable);
             SetRowVisible(_kbTime, kb == KeyboardAction.KeyPress || kb == KeyboardAction.ComboKey || isText);
 
             // Control
@@ -319,6 +412,9 @@ namespace Automation.App
             bool loop = controlKind == ControlKind.Loop;
             bool wait = controlKind == ControlKind.Wait;
             bool image = controlKind == ControlKind.Image;
+            bool variable = controlKind == ControlKind.Variable;
+            bool caseKind = controlKind == ControlKind.Case;
+            bool condition = controlKind == ControlKind.Condition;
             var loopType = (LoopType)_loopType.SelectedItem;
             SetRowVisible(_loopType, loop);
             SetRowVisible(_loopCount, loop && loopType == LoopType.Count);
@@ -329,15 +425,37 @@ namespace Automation.App
             SetRowVisible(_waitTime, wait);
             SetRowVisible(_waitRetry, wait);
             SetRowVisible(_waitPick, wait);
-            foreach (var c in new Control[] { _imgProcessName, _imgProcessTitle, _imgPickProcess, _imgAnchor, _imgX, _imgY, _imgW, _imgH,
+            foreach (var c in new Control[] { _imgId, _imgResultAnchor, _imgProcessName, _imgProcessTitle, _imgPickProcess, _imgAnchor, _imgX, _imgY, _imgW, _imgH,
                                               _imgPickRange, _imgPreview, _imgInfo, _imgCapture, _imgLoad, _imgAccuracy, _imgFind })
                 SetRowVisible(c, image);
             _imgAnchor.Enabled = _imgProcessName.Text.Trim().Length > 0 || _imgProcessTitle.Text.Trim().Length > 0;
 
-            // Inside an Image the process is inherited and the position is measured from the found picture.
-            bool inImage = ImageContext() != null;
-            _processName.Enabled = _processTitle.Enabled = _pickProcessButton.Enabled = !inImage;
-            if (inImage) _anchor.Enabled = true;
+            // Variable
+            var varType = (VariableType)_varType.SelectedItem;
+            bool expr = _varUseExpr.Checked;
+            bool literal = variable && !expr;
+            bool geometry = literal && (varType == VariableType.Position || varType == VariableType.Range);
+            SetRowVisible(_varId, variable);
+            SetRowVisible(_varType, variable);
+            SetRowVisible(_varUseExpr, variable);
+            SetRowVisible(_varExpr, variable && expr);
+            SetRowVisible(_varHint, variable && expr);
+            SetRowVisible(_varText, literal && (varType == VariableType.String || varType == VariableType.Number));
+            SetRowVisible(_varBool, literal && varType == VariableType.Boolean);
+            SetRowVisible(_varDate, literal && varType == VariableType.Date);
+            SetRowVisible(_varDateTime, literal && varType == VariableType.DateTime);
+            foreach (var c in new Control[] { _varProcName, _varProcTitle, _varPickProc, _varAnchor, _varX, _varY })
+                SetRowVisible(c, geometry);
+            SetRowVisible(_varW, literal && varType == VariableType.Range);
+            SetRowVisible(_varH, literal && varType == VariableType.Range);
+            SetRowVisible(_varPickPos, literal && varType == VariableType.Position);
+            SetRowVisible(_varPickRange, literal && varType == VariableType.Range);
+            _varAnchor.Enabled = _varProcName.Text.Trim().Length > 0 || _varProcTitle.Text.Trim().Length > 0;
+
+            // Condition and case
+            SetRowVisible(_caseExpr, caseKind);
+            SetRowVisible(_caseHint, caseKind);
+            SetRowVisible(_condHint, condition);
         }
 
         /// <summary>Scroll actions always use the middle button; the other actions allow all three.</summary>
@@ -366,25 +484,30 @@ namespace Automation.App
             switch ((ActionCategory)_category.SelectedItem)
             {
                 case ActionCategory.Mouse:
+                    bool fromVariable = _posSource.SelectedIndex == 1;
                     return ActionNode.NewMouse(new MouseSettings
                     {
                         Action = (MouseAction)_mouseAction.SelectedItem,
                         Button = (MouseButton)_button.SelectedItem,
                         TimeMs = _time.Milliseconds,
                         DelayMs = _delay.Milliseconds,
-                        Process = ImageContext() != null ? new WindowTarget() : Target(_processName, _processTitle),
+                        Process = Target(_processName, _processTitle),
                         Anchor = (WindowAnchor)_anchor.SelectedItem,
                         X = (int)_x.Value,
                         Y = (int)_y.Value,
-                        ScrollNotches = (int)_notches.Value
+                        ScrollNotches = (int)_notches.Value,
+                        UseVariable = fromVariable,
+                        PositionExpression = fromVariable ? _posExpr.Text.Trim() : null
                     });
 
                 case ActionCategory.Keyboard:
                     var action = (KeyboardAction)_kbAction.SelectedItem;
+                    bool expression = action == KeyboardAction.Text && _kbSource.SelectedIndex == 1;
                     return ActionNode.NewKeyboard(new KeyboardSettings
                     {
                         Action = action,
-                        Value = action == KeyboardAction.Text ? _kbText.Text : _kbKey.Value,
+                        Value = action != KeyboardAction.Text ? _kbKey.Value : expression ? _kbTextExpr.Text.Trim() : _kbText.Text,
+                        ValueIsExpression = expression,
                         TimeMs = _kbTime.Milliseconds,
                         DelayMs = _kbDelay.Milliseconds
                     });
@@ -397,16 +520,23 @@ namespace Automation.App
                     });
 
                 default:
-                    if ((ControlKind)_controlKind.SelectedItem == ControlKind.Image)
-                        return ActionNode.NewImage(BuildImageSettings());
-                    if ((ControlKind)_controlKind.SelectedItem == ControlKind.Wait)
+                    switch ((ControlKind)_controlKind.SelectedItem)
                     {
-                        return ActionNode.NewWait(new WaitSettings
-                        {
-                            Process = Target(_waitProcessName, _waitProcessTitle),
-                            TimeMs = _waitTime.Milliseconds,
-                            Retry = (int)_waitRetry.Value
-                        });
+                        case ControlKind.Image:
+                            return ActionNode.NewImage(BuildImageSettings());
+                        case ControlKind.Variable:
+                            return ActionNode.NewVariable(BuildVariableSettings());
+                        case ControlKind.Condition:
+                            return ActionNode.NewCondition();
+                        case ControlKind.Case:
+                            return ActionNode.NewCase(new CaseSettings { Expression = _caseExpr.Text.Trim() });
+                        case ControlKind.Wait:
+                            return ActionNode.NewWait(new WaitSettings
+                            {
+                                Process = Target(_waitProcessName, _waitProcessTitle),
+                                TimeMs = _waitTime.Milliseconds,
+                                Retry = (int)_waitRetry.Value
+                            });
                     }
                     var loop = new LoopSettings
                     {
@@ -419,12 +549,55 @@ namespace Automation.App
             }
         }
 
+        private VariableSettings BuildVariableSettings()
+        {
+            var type = (VariableType)_varType.SelectedItem;
+            var v = new VariableSettings
+            {
+                Id = _varId.Text.Trim(),
+                Type = type,
+                UseExpression = _varUseExpr.Checked,
+                Expression = _varExpr.Text.Trim(),
+                Process = Target(_varProcName, _varProcTitle),
+                Anchor = (WindowAnchor)_varAnchor.SelectedItem,
+                X = (int)_varX.Value,
+                Y = (int)_varY.Value,
+                Width = (int)_varW.Value,
+                Height = (int)_varH.Value
+            };
+            switch (type)
+            {
+                case VariableType.String:
+                    v.Text = _varText.Text;
+                    break;
+                case VariableType.Number:
+                    // Accept "1.5" and, on a machine that uses a decimal comma, "1,5"; always stored with a dot.
+                    string typed = _varText.Text.Trim();
+                    v.Text = double.TryParse(typed, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double n)
+                        || double.TryParse(typed, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.CurrentCulture, out n)
+                        ? n.ToString("R", System.Globalization.CultureInfo.InvariantCulture) : typed;
+                    break;
+                case VariableType.Boolean:
+                    v.Text = _varBool.Checked ? "true" : "false";
+                    break;
+                case VariableType.Date:
+                    v.Text = _varDate.Value.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+                    break;
+                case VariableType.DateTime:
+                    v.Text = _varDateTime.Value.ToString("yyyy-MM-ddTHH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
+                    break;
+            }
+            return v;
+        }
+
         private ImageSettings BuildImageSettings()
         {
             var settings = new ImageSettings
             {
+                Id = _imgId.Text.Trim().Length == 0 ? null : _imgId.Text.Trim(),
                 Process = Target(_imgProcessName, _imgProcessTitle),
                 Anchor = (WindowAnchor)_imgAnchor.SelectedItem,
+                ResultAnchor = (WindowAnchor)_imgResultAnchor.SelectedItem,
                 RangeX = (int)_imgX.Value,
                 RangeY = (int)_imgY.Value,
                 RangeWidth = (int)_imgW.Value,
@@ -445,6 +618,11 @@ namespace Automation.App
             var row = SingleSelectedRow();
             if (row == null) return; // nothing or several rows selected: leave the editor as it is
             var node = row.Node;
+            if (node.IsKind(ControlKind.Else))
+            {
+                SetStatus("else has no settings: select it and use Add to put actions inside it.");
+                return;
+            }
             _name.Text = node.Name ?? "";
             _category.SelectedItem = node.Category;
             switch (node.Category)
@@ -462,13 +640,19 @@ namespace Automation.App
                     _x.Value = Clamp(_x, m.X);
                     _y.Value = Clamp(_y, m.Y);
                     _notches.Value = Clamp(_notches, m.ScrollNotches);
+                    _posSource.SelectedIndex = m.UseVariable ? 1 : 0;
+                    _posExpr.Text = m.PositionExpression ?? "";
                     break;
 
                 case ActionCategory.Keyboard:
                     var k = node.Keyboard;
                     _kbAction.SelectedItem = k.Action;
                     UpdateEditorVisibility();
-                    if (k.Action == KeyboardAction.Text) _kbText.Text = k.Value;
+                    if (k.Action == KeyboardAction.Text)
+                    {
+                        _kbSource.SelectedIndex = k.ValueIsExpression ? 1 : 0;
+                        if (k.ValueIsExpression) _kbTextExpr.Text = k.Value; else _kbText.Text = k.Value;
+                    }
                     else _kbKey.Value = k.Value;
                     _kbTime.Milliseconds = k.TimeMs;
                     _kbDelay.Milliseconds = k.DelayMs;
@@ -481,49 +665,99 @@ namespace Automation.App
 
                 default:
                     _controlKind.SelectedItem = node.Control;
-                    if (node.Control == ControlKind.Image)
+                    switch (node.Control)
                     {
-                        var im = node.Image;
-                        _imgProcessName.Text = im.Process.ProcessName ?? "";
-                        _imgProcessTitle.Text = im.Process.TitlePattern ?? "";
-                        _imgAnchor.SelectedItem = im.Anchor;
-                        _imgX.Value = Clamp(_imgX, im.RangeX);
-                        _imgY.Value = Clamp(_imgY, im.RangeY);
-                        _imgW.Value = Clamp(_imgW, im.RangeWidth);
-                        _imgH.Value = Clamp(_imgH, im.RangeHeight);
-                        _imgAccuracy.Value = Clamp(_imgAccuracy, im.Accuracy);
-                        RawImage raw = null;
-                        if (im.HasImage)
-                        {
-                            try { raw = im.GetImage(); }
-                            catch (InvalidDataException) { SetStatus("The picture stored in this action is damaged; capture it again."); }
-                        }
-                        SetImage(raw);
+                        case ControlKind.Image:
+                            LoadImageSettings(node.Image);
+                            break;
+                        case ControlKind.Variable:
+                            LoadVariableSettings(node.Variable);
+                            break;
+                        case ControlKind.Case:
+                            _caseExpr.Text = node.Case.Expression;
+                            break;
+                        case ControlKind.Wait:
+                            var w = node.Wait;
+                            _waitProcessName.Text = w.Process.ProcessName ?? "";
+                            _waitProcessTitle.Text = w.Process.TitlePattern ?? "";
+                            _waitTime.Milliseconds = w.TimeMs;
+                            _waitRetry.Value = Clamp(_waitRetry, w.Retry);
+                            break;
+                        case ControlKind.Loop:
+                            _loopType.SelectedItem = node.Loop.Mode;
+                            _loopCount.Value = (decimal)Math.Min(node.Loop.Count, (long)_loopCount.Maximum);
+                            _loopDuration.Milliseconds = node.Loop.DurationMs;
+                            var until = node.Loop.GetUntil();
+                            if (until.HasValue && until.Value >= _loopUntil.MinDate && until.Value <= _loopUntil.MaxDate) _loopUntil.Value = until.Value;
+                            break;
                     }
-                    else if (node.Control == ControlKind.Wait)
-                    {
-                        var w = node.Wait;
-                        _waitProcessName.Text = w.Process.ProcessName ?? "";
-                        _waitProcessTitle.Text = w.Process.TitlePattern ?? "";
-                        _waitTime.Milliseconds = w.TimeMs;
-                        _waitRetry.Value = Clamp(_waitRetry, w.Retry);
-                    }
-                    else
-                    {
-                        _loopType.SelectedItem = node.Loop.Mode;
-                        _loopCount.Value = (decimal)Math.Min(node.Loop.Count, (long)_loopCount.Maximum);
-                        _loopDuration.Milliseconds = node.Loop.DurationMs;
-                        var until = node.Loop.GetUntil();
-                        if (until.HasValue && until.Value >= _loopUntil.MinDate && until.Value <= _loopUntil.MaxDate) _loopUntil.Value = until.Value;
-                    }
+                    break;
+            }
+        }
+
+        private void LoadImageSettings(ImageSettings im)
+        {
+            _imgId.Text = im.Id ?? "";
+            _imgProcessName.Text = im.Process.ProcessName ?? "";
+            _imgProcessTitle.Text = im.Process.TitlePattern ?? "";
+            _imgAnchor.SelectedItem = im.Anchor;
+            _imgResultAnchor.SelectedItem = im.ResultAnchor;
+            _imgX.Value = Clamp(_imgX, im.RangeX);
+            _imgY.Value = Clamp(_imgY, im.RangeY);
+            _imgW.Value = Clamp(_imgW, im.RangeWidth);
+            _imgH.Value = Clamp(_imgH, im.RangeHeight);
+            _imgAccuracy.Value = Clamp(_imgAccuracy, im.Accuracy);
+            RawImage raw = null;
+            if (im.HasImage)
+            {
+                try { raw = im.GetImage(); }
+                catch (InvalidDataException) { SetStatus("The picture stored in this action is damaged; capture it again."); }
+            }
+            SetImage(raw);
+        }
+
+        private void LoadVariableSettings(VariableSettings v)
+        {
+            _varId.Text = v.Id;
+            _varType.SelectedItem = v.Type;
+            _varUseExpr.Checked = v.UseExpression;
+            _varExpr.Text = v.Expression;
+            _varProcName.Text = v.Process.ProcessName ?? "";
+            _varProcTitle.Text = v.Process.TitlePattern ?? "";
+            _varAnchor.SelectedItem = v.Anchor;
+            _varX.Value = Clamp(_varX, v.X);
+            _varY.Value = Clamp(_varY, v.Y);
+            _varW.Value = Clamp(_varW, v.Width);
+            _varH.Value = Clamp(_varH, v.Height);
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            switch (v.Type)
+            {
+                case VariableType.String:
+                case VariableType.Number:
+                    _varText.Text = v.Text;
+                    break;
+                case VariableType.Boolean:
+                    _varBool.Checked = string.Equals(v.Text, "true", StringComparison.OrdinalIgnoreCase);
+                    break;
+                case VariableType.Date:
+                    if (DateTime.TryParseExact(v.Text, "yyyy-MM-dd", inv, System.Globalization.DateTimeStyles.None, out DateTime d)) _varDate.Value = d;
+                    break;
+                case VariableType.DateTime:
+                    if (DateTime.TryParseExact(v.Text, "yyyy-MM-ddTHH:mm:ss", inv, System.Globalization.DateTimeStyles.None, out DateTime dt)) _varDateTime.Value = dt;
                     break;
             }
         }
 
         // ---------------------------------------------------------------- tree editing
 
+        private static bool IsBranch(ActionNode node)
+        {
+            return node.IsKind(ControlKind.Case) || node.IsKind(ControlKind.Else);
+        }
+
         /// <summary>
-        /// Add: inside the selected container (Loop, Wait), otherwise right after the selected action, otherwise at the end.
+        /// Add: inside the selected container (Loop, Wait, Image, a Condition's case or else), otherwise right after the
+        /// selected action, otherwise at the end. A Case goes into the selected Condition, just before its else.
         /// </summary>
         private void AddAction()
         {
@@ -531,11 +765,26 @@ namespace Automation.App
             string problem = Validate(node);
             if (problem != null) { SetStatus(problem); return; }
             var selected = SelectedRows();
-            if (selected.Count == 1 && selected[0].Node.IsContainer)
+
+            if (node.IsKind(ControlKind.Case))
+            {
+                ActionNode condition = selected.Count == 1
+                    ? (selected[0].Node.IsKind(ControlKind.Condition) ? selected[0].Node : IsBranch(selected[0].Node) ? selected[0].Parent : null)
+                    : null;
+                if (condition == null) { SetStatus("Select a Condition (or one of its cases) to add a Case to."); return; }
+                condition.Children.Insert(condition.Children.Count - 1, node); // the else stays last
+            }
+            else if (selected.Count == 1 && selected[0].Node.IsKind(ControlKind.Condition))
+            {
+                SetStatus("A Condition holds cases: add Type = Case, or select a case or the else to add an action inside it.");
+                return;
+            }
+            else if (selected.Count == 1 && selected[0].Node.IsContainer)
                 selected[0].Node.Children.Add(node);
             else if (selected.Count > 0)
             {
                 var last = selected[selected.Count - 1];
+                if (IsBranch(last.Node)) { SetStatus("Select a single case or else to add an action inside it."); return; }
                 last.Siblings.Insert(last.Siblings.IndexOf(last.Node) + 1, node);
             }
             else
@@ -547,21 +796,60 @@ namespace Automation.App
         /// <summary>Returns a message if the action could never run (for example a key that is not set), otherwise null.</summary>
         private static string Validate(ActionNode node)
         {
-            if (node.Category == ActionCategory.Control && node.Control == ControlKind.Image && !node.Image.HasImage)
-                return "Capture or load a picture first.";
-            if (node.Category == ActionCategory.Keyboard)
+            try
             {
-                var k = node.Keyboard;
-                try
+                switch (node.Category)
                 {
-                    if (k.Action == KeyboardAction.ComboKey) KeyCodes.ParseCombo(k.Value);
-                    else if (k.Action != KeyboardAction.Text) KeyCodes.ParseKey(k.Value);
-                    else if (k.Value.Length == 0) return "Type the text to send first.";
+                    case ActionCategory.Mouse:
+                        if (node.Mouse.UseVariable)
+                        {
+                            if (string.IsNullOrWhiteSpace(node.Mouse.PositionExpression)) return "Enter the position expression, for example {img.Position}.";
+                            Expression.CheckPositionSyntax(node.Mouse.PositionExpression);
+                        }
+                        break;
+
+                    case ActionCategory.Keyboard:
+                        var k = node.Keyboard;
+                        if (k.Action == KeyboardAction.ComboKey) KeyCodes.ParseCombo(k.Value);
+                        else if (k.Action != KeyboardAction.Text) KeyCodes.ParseKey(k.Value);
+                        else if (k.ValueIsExpression) Expression.CheckSyntax(k.Value);
+                        else if (k.Value.Length == 0) return "Type the text to send first.";
+                        break;
+
+                    case ActionCategory.Control:
+                        if (node.IsKind(ControlKind.Image))
+                        {
+                            if (!node.Image.HasImage) return "Capture or load a picture first.";
+                            if (!string.IsNullOrWhiteSpace(node.Image.Id) && !Expression.IsValidId(node.Image.Id))
+                                return "\"" + node.Image.Id + "\" is not a valid ID: use letters, digits and _, not starting with a digit (and not true, false, now, today).";
+                        }
+                        else if (node.IsKind(ControlKind.Variable))
+                        {
+                            var v = node.Variable;
+                            if (!Expression.IsValidId(v.Id))
+                                return "Enter an ID with letters, digits and _, not starting with a digit (and not true, false, now, today).";
+                            if (v.UseExpression)
+                            {
+                                if (string.IsNullOrWhiteSpace(v.Expression)) return "Enter the expression, for example {abc} + 1.";
+                                Expression.CheckSyntax(v.Expression);
+                            }
+                            else v.GetLiteral();
+                        }
+                        else if (node.IsKind(ControlKind.Case))
+                        {
+                            if (string.IsNullOrWhiteSpace(node.Case.Expression)) return "Enter the condition, for example {abc} > 3.";
+                            Expression.CheckSyntax(node.Case.Expression);
+                        }
+                        break;
                 }
-                catch (ArgumentException ex)
-                {
-                    return ex.Message + " Click the Key box and press the key(s).";
-                }
+            }
+            catch (ExpressionException ex)
+            {
+                return ex.Message;
+            }
+            catch (ArgumentException ex)
+            {
+                return ex.Message + " Click the Key box and press the key(s).";
             }
             return null;
         }
@@ -570,9 +858,17 @@ namespace Automation.App
         {
             var row = SingleSelectedRow();
             if (row == null) { SetStatus("Select exactly one action to update."); return; }
+            if (row.Node.IsKind(ControlKind.Else)) { SetStatus("else has no settings to update."); return; }
             var edited = ReadEditor();
             string problem = Validate(edited);
             if (problem != null) { SetStatus(problem); return; }
+            // A Condition and its Cases keep their structure: they cannot turn into something else or be created by Update.
+            if (row.Node.IsKind(ControlKind.Condition) != edited.IsKind(ControlKind.Condition)
+                || row.Node.IsKind(ControlKind.Case) != edited.IsKind(ControlKind.Case))
+            {
+                SetStatus("A Condition or a Case cannot be changed into another type (and nothing can be changed into one); add a new action instead.");
+                return;
+            }
             if (!edited.IsContainer && row.Node.Children.Count > 0)
             {
                 SetStatus("This action contains other actions; move or delete them before changing it to a different type.");
@@ -583,22 +879,41 @@ namespace Automation.App
             RefreshList(new[] { edited });
         }
 
+        private ActionNode ParentOf(ActionNode node)
+        {
+            return _rows.FirstOrDefault(r => !r.IsEnd && ReferenceEquals(r.Node, node))?.Parent;
+        }
+
         private void DeleteActions()
         {
             var selected = SelectedRows();
             if (selected.Count == 0) return;
+            var nodes = new HashSet<ActionNode>(selected.Select(r => r.Node));
+
+            bool AncestorSelected(Row r)
+            {
+                for (var p = r.Parent; p != null; p = ParentOf(p))
+                    if (nodes.Contains(p)) return true;
+                return false;
+            }
+
+            foreach (var row in selected)
+            {
+                if (AncestorSelected(row)) continue; // goes away with its Condition
+                if (row.Node.IsKind(ControlKind.Else)) { SetStatus("The else line cannot be deleted."); return; }
+                if (row.Node.IsKind(ControlKind.Case) && !row.Siblings.Any(c => c.IsKind(ControlKind.Case) && !nodes.Contains(c)))
+                {
+                    SetStatus("A Condition needs at least one case; delete the whole Condition instead.");
+                    return;
+                }
+            }
+
             int firstIndex = _list.SelectedIndices.Cast<int>().Min();
             foreach (var row in selected) row.Siblings.Remove(row.Node); // children go with their container
-            int next = Math.Min(firstIndex, CountVisible() - 1);
             RefreshList(null);
-            if (next >= 0 && next < _list.Items.Count) _list.Items[next].Selected = true;
+            int next = Math.Min(firstIndex, _list.Items.Count - 1);
+            if (next >= 0) _list.Items[next].Selected = true;
             SetStatus("Deleted " + selected.Count + " action(s).");
-        }
-
-        private int CountVisible()
-        {
-            int Count(List<ActionNode> nodes) => nodes.Sum(n => 1 + Count(n.Children));
-            return Count(_script.Actions);
         }
 
         /// <summary>Moves the selected actions one place up (-1) or down (1) within their list; they must share one parent.</summary>
@@ -607,6 +922,7 @@ namespace Automation.App
             var selected = SelectedRows();
             if (selected.Count == 0) return;
             if (!SameList(selected)) { SetStatus("Select actions that are in the same list to move them."); return; }
+            if (selected.Any(r => r.Node.IsKind(ControlKind.Else))) { SetStatus("The else line always stays last."); return; }
 
             var list = selected[0].Siblings;
             var picked = new HashSet<ActionNode>(selected.Select(r => r.Node));
@@ -615,8 +931,8 @@ namespace Automation.App
             foreach (int i in order)
             {
                 int target = i + delta;
-                // Blocked at the edge or by a neighbour that is selected too: stays in place.
-                if (target < 0 || target >= list.Count || picked.Contains(list[target])) continue;
+                // Blocked at the edge, by a neighbour that is selected too, or by an else (which stays last).
+                if (target < 0 || target >= list.Count || picked.Contains(list[target]) || list[target].IsKind(ControlKind.Else)) continue;
                 var node = list[i];
                 list[i] = list[target];
                 list[target] = node;
@@ -624,12 +940,13 @@ namespace Automation.App
             RefreshList(picked);
         }
 
-        /// <summary>In: moves the selected actions to the end of the Loop or Wait right before them.</summary>
+        /// <summary>In: moves the selected actions to the end of the Loop, Wait or Image right before them.</summary>
         private void MoveIn()
         {
             var selected = SelectedRows();
             if (selected.Count == 0) return;
             if (!SameList(selected)) { SetStatus("Select actions that are in the same list to move them."); return; }
+            if (selected.Any(r => IsBranch(r.Node))) { SetStatus("Cases and else stay inside their Condition."); return; }
 
             var list = selected[0].Siblings;
             var picked = new HashSet<ActionNode>(selected.Select(r => r.Node));
@@ -641,9 +958,14 @@ namespace Automation.App
                 container = list[i];
                 break;
             }
+            if (container != null && container.IsKind(ControlKind.Condition))
+            {
+                SetStatus("In: a Condition holds cases; add an action inside a case or the else instead.");
+                return;
+            }
             if (container == null || !container.IsContainer)
             {
-                SetStatus("In: the action right before the selection must be a Loop or a Wait.");
+                SetStatus("In: the action right before the selection must be a Loop, Wait or Image.");
                 return;
             }
             var moving = list.Where(picked.Contains).ToList();
@@ -652,20 +974,23 @@ namespace Automation.App
             RefreshList(picked);
         }
 
-        /// <summary>Out: moves the selected actions out of their container, right after it.</summary>
+        /// <summary>Out: moves the selected actions out of their container, right after it (after the Condition when they are in a case or else).</summary>
         private void MoveOut()
         {
             var selected = SelectedRows();
             if (selected.Count == 0) return;
             if (!SameList(selected)) { SetStatus("Select actions that are in the same list to move them."); return; }
+            if (selected.Any(r => IsBranch(r.Node))) { SetStatus("Cases and else stay inside their Condition."); return; }
             var parent = selected[0].Parent;
             if (parent == null) { SetStatus("Out: the selected actions are already at the top level."); return; }
 
-            var grandList = FindList(parent);
+            // From inside a case or else the destination is after the whole Condition.
+            var anchor = IsBranch(parent) ? ParentOf(parent) : parent;
+            var grandList = FindList(anchor);
             var picked = new HashSet<ActionNode>(selected.Select(r => r.Node));
             var moving = selected[0].Siblings.Where(picked.Contains).ToList();
             foreach (var node in moving) selected[0].Siblings.Remove(node);
-            grandList.InsertRange(grandList.IndexOf(parent) + 1, moving);
+            grandList.InsertRange(grandList.IndexOf(anchor) + 1, moving);
             RefreshList(picked);
         }
 
@@ -677,25 +1002,28 @@ namespace Automation.App
         /// <summary>The list that contains the given node.</summary>
         private List<ActionNode> FindList(ActionNode node)
         {
-            return _rows.First(r => ReferenceEquals(r.Node, node)).Siblings;
+            return _rows.First(r => !r.IsEnd && ReferenceEquals(r.Node, node)).Siblings;
         }
 
+        /// <summary>The selected row when exactly one real row is selected (the virtual End line does not count).</summary>
         private Row SingleSelectedRow()
         {
-            return _list.SelectedIndices.Count == 1 ? _rows[_list.SelectedIndices[0]] : null;
+            if (_list.SelectedIndices.Count != 1) return null;
+            var row = _rows[_list.SelectedIndices[0]];
+            return row.IsEnd ? null : row;
         }
 
-        /// <summary>Selected rows in list order.</summary>
+        /// <summary>Selected rows in list order, without the virtual End lines.</summary>
         private List<Row> SelectedRows()
         {
-            return _list.SelectedIndices.Cast<int>().OrderBy(i => i).Select(i => _rows[i]).ToList();
+            return _list.SelectedIndices.Cast<int>().OrderBy(i => i).Select(i => _rows[i]).Where(r => !r.IsEnd).ToList();
         }
 
         private void RefreshList(IEnumerable<ActionNode> select)
         {
             var wanted = select == null ? new HashSet<ActionNode>() : new HashSet<ActionNode>(select);
             _rows.Clear();
-            Flatten(_script.Actions, null, 0, false);
+            Flatten(_script.Actions, null, 0);
 
             _list.BeginUpdate();
             _list.Items.Clear();
@@ -704,7 +1032,7 @@ namespace Automation.App
             {
                 var item = Describe(_rows[i]);
                 _list.Items.Add(item);
-                if (wanted.Contains(_rows[i].Node))
+                if (!_rows[i].IsEnd && wanted.Contains(_rows[i].Node))
                 {
                     item.Selected = true;
                     last = i;
@@ -719,13 +1047,14 @@ namespace Automation.App
             RefreshList(null);
         }
 
-        private void Flatten(List<ActionNode> nodes, ActionNode parent, int depth, bool inImage)
+        private void Flatten(List<ActionNode> nodes, ActionNode parent, int depth)
         {
             foreach (var node in nodes)
             {
-                _rows.Add(new Row { Node = node, Parent = parent, Siblings = nodes, Depth = depth, InImage = inImage });
-                bool isImage = node.Category == ActionCategory.Control && node.Control == ControlKind.Image;
-                Flatten(node.Children, node, depth + 1, inImage || isImage);
+                _rows.Add(new Row { Node = node, Parent = parent, Siblings = nodes, Depth = depth });
+                Flatten(node.Children, node, depth + 1);
+                if (node.IsKind(ControlKind.Condition))
+                    _rows.Add(new Row { Node = node, Parent = parent, Siblings = nodes, Depth = depth, IsEnd = true });
             }
         }
 
@@ -758,16 +1087,17 @@ namespace Automation.App
         {
             var n = row.Node;
             string indent = new string(' ', row.Depth * 4);
-            string action = "", process = "", details = "", time = "", delay = "";
+            string name = null, action = "", process = "", details = "", time = "", delay = "";
             switch (n.Category)
             {
                 case ActionCategory.Mouse:
                     var m = n.Mouse;
                     action = m.Action.ToString();
-                    process = row.InImage ? "(picture)" : DescribeTarget(m.Process);
+                    process = DescribeTarget(m.Process);
                     bool hasButton = m.Action == MouseAction.Click || m.Action == MouseAction.MouseDown || m.Action == MouseAction.MouseUp;
-                    details = (hasButton ? m.Button + " " : "") + "(" + m.X + ", " + m.Y + ")";
-                    if (row.InImage || !m.Process.IsEmpty) details += " " + m.Anchor;
+                    details = (hasButton ? m.Button + " " : "")
+                        + (m.UseVariable ? Shorten(m.PositionExpression) : "(" + m.X + ", " + m.Y + ")");
+                    if (!m.Process.IsEmpty) details += " " + m.Anchor;
                     if (m.Action == MouseAction.ScrollUp || m.Action == MouseAction.ScrollDown) details += " x" + m.ScrollNotches;
                     time = TimeBox.Format(m.TimeMs);
                     delay = TimeBox.Format(m.DelayMs);
@@ -776,7 +1106,7 @@ namespace Automation.App
                 case ActionCategory.Keyboard:
                     var k = n.Keyboard;
                     action = k.Action.ToString();
-                    details = Shorten(k.Value);
+                    details = (k.ValueIsExpression ? "= " : "") + Shorten(k.Value);
                     if (k.Action == KeyboardAction.KeyPress || k.Action == KeyboardAction.ComboKey || k.Action == KeyboardAction.Text)
                         time = TimeBox.Format(k.TimeMs);
                     delay = TimeBox.Format(k.DelayMs);
@@ -788,42 +1118,75 @@ namespace Automation.App
                     break;
 
                 default:
-                    if (n.Control == ControlKind.Image)
+                    switch (n.Control)
                     {
-                        var im = n.Image;
-                        action = "Image";
-                        process = DescribeTarget(im.Process);
-                        string range = im.RangeWidth > 0 && im.RangeHeight > 0
-                            ? "range " + im.RangeWidth + "x" + im.RangeHeight + " at (" + im.RangeX + ", " + im.RangeY + ")" + (im.Process.IsEmpty ? "" : " " + im.Anchor)
-                            : "whole area";
-                        details = im.ImageWidth + "x" + im.ImageHeight + " picture, " + im.Accuracy + "%, " + range;
-                    }
-                    else if (n.Control == ControlKind.Wait)
-                    {
-                        action = "Wait";
-                        process = DescribeTarget(n.Wait.Process);
-                        details = "up to " + TimeBox.Format(n.Wait.TimeMs) + (n.Wait.Retry > 0 ? ", retry " + n.Wait.Retry : "");
-                    }
-                    else
-                    {
-                        action = "Loop";
-                        switch (n.Loop.Mode)
-                        {
-                            case LoopType.Duration: details = "for " + TimeBox.Format(n.Loop.DurationMs); break;
-                            case LoopType.Until: details = "until " + (n.Loop.GetUntil()?.ToString(UntilFormat) ?? "?"); break;
-                            default: details = n.Loop.Count == 0 ? "forever" : n.Loop.Count + " time(s)"; break;
-                        }
+                        case ControlKind.Image:
+                            var im = n.Image;
+                            action = "Image";
+                            process = DescribeTarget(im.Process);
+                            string range = im.RangeWidth > 0 && im.RangeHeight > 0
+                                ? "range " + im.RangeWidth + "x" + im.RangeHeight + " at (" + im.RangeX + ", " + im.RangeY + ")" + (im.Process.IsEmpty ? "" : " " + im.Anchor)
+                                : "whole area";
+                            details = (string.IsNullOrWhiteSpace(im.Id) ? "" : "{" + im.Id + "} ") + im.ImageWidth + "x" + im.ImageHeight + " picture, " + im.Accuracy + "%, " + range;
+                            break;
+                        case ControlKind.Wait:
+                            action = "Wait";
+                            process = DescribeTarget(n.Wait.Process);
+                            details = "up to " + TimeBox.Format(n.Wait.TimeMs) + (n.Wait.Retry > 0 ? ", retry " + n.Wait.Retry : "");
+                            break;
+                        case ControlKind.Variable:
+                            var v = n.Variable;
+                            action = "Variable";
+                            bool geometry = v.Type == VariableType.Position || v.Type == VariableType.Range;
+                            if (geometry && !v.UseExpression) process = DescribeTarget(v.Process);
+                            details = "{" + v.Id + "} (" + v.Type + ") = " + (v.UseExpression ? Shorten(v.Expression) : DescribeLiteral(v));
+                            break;
+                        case ControlKind.Condition:
+                            action = "Condition";
+                            name = (string.IsNullOrWhiteSpace(n.Name) ? "Condition" : n.Name) + (row.IsEnd ? " - End" : " - Begin");
+                            if (row.IsEnd) action = "";
+                            break;
+                        case ControlKind.Case:
+                            action = "Case";
+                            details = n.Case.Expression;
+                            name = string.IsNullOrWhiteSpace(n.Name) ? n.Case.Expression : n.Name;
+                            break;
+                        case ControlKind.Else:
+                            action = "Else";
+                            name = "else";
+                            break;
+                        default:
+                            action = "Loop";
+                            switch (n.Loop.Mode)
+                            {
+                                case LoopType.Duration: details = "for " + TimeBox.Format(n.Loop.DurationMs); break;
+                                case LoopType.Until: details = "until " + (n.Loop.GetUntil()?.ToString(UntilFormat) ?? "?"); break;
+                                default: details = n.Loop.Count == 0 ? "forever" : n.Loop.Count + " time(s)"; break;
+                            }
+                            break;
                     }
                     break;
             }
             // Name column: the user's alias, or the action type when no alias is set; indented by tree depth.
-            var item = new ListViewItem(indent + (string.IsNullOrWhiteSpace(n.Name) ? action : n.Name));
+            if (name == null) name = string.IsNullOrWhiteSpace(n.Name) ? action : n.Name;
+            var item = new ListViewItem(indent + name);
             item.SubItems.Add(action);
             item.SubItems.Add(process);
             item.SubItems.Add(details);
             item.SubItems.Add(time);
             item.SubItems.Add(delay);
             return item;
+        }
+
+        private static string DescribeLiteral(VariableSettings v)
+        {
+            switch (v.Type)
+            {
+                case VariableType.Position: return v.X + ", " + v.Y;
+                case VariableType.Range: return v.X + ", " + v.Y + ", " + v.Width + " x " + v.Height;
+                case VariableType.String: return "\"" + Shorten(v.Text) + "\"";
+                default: return v.Text;
+            }
         }
 
         // ---------------------------------------------------------------- picking
@@ -851,50 +1214,50 @@ namespace Automation.App
 
         private void PickPosition()
         {
-            var imageNode = ImageContext();
-            if (imageNode != null) { PickPositionInImage(imageNode.Image); return; }
+            if (!PickPoint(Target(_processName, _processTitle), (WindowAnchor)_anchor.SelectedItem, out int x, out int y)) return;
+            _x.Value = Clamp(_x, x);
+            _y.Value = Clamp(_y, y);
+        }
 
-            var process = Target(_processName, _processTitle);
+        private void PickVariablePosition()
+        {
+            if (!PickPoint(Target(_varProcName, _varProcTitle), (WindowAnchor)_varAnchor.SelectedItem, out int x, out int y)) return;
+            _varX.Value = Clamp(_varX, x);
+            _varY.Value = Clamp(_varY, y);
+        }
+
+        /// <summary>
+        /// Lets the user click a point. Without a process it is a desktop position; with one, the program is brought to the
+        /// front first and the point is stored as an offset from the anchor of its client area.
+        /// </summary>
+        private bool PickPoint(WindowTarget process, WindowAnchor anchor, out int x, out int y)
+        {
+            x = y = 0;
+            if (!process.IsEmpty && !ActivateProcess(process)) return false;
+            if (!RunOverlay(out Point p, out WindowInfo? clicked)) return false;
+
+            x = p.X;
+            y = p.Y;
             if (!process.IsEmpty)
             {
-                IntPtr hwnd;
-                try { hwnd = WindowLocator.Find(process); }
-                catch (ArgumentException ex) { SetStatus(ex.Message); return; }
-                if (hwnd == IntPtr.Zero)
-                {
-                    SetStatus("The program is not running; start it first, or clear Process to pick a desktop position.");
-                    return;
-                }
-                // Activate the program while this window is still in front: Windows only allows that reliably from the foreground app.
-                WindowLocator.BringToFront(hwnd);
-                Thread.Sleep(200);
-            }
-
-            if (!RunOverlay(out Point p, out WindowInfo? clicked)) return;
-
-            int x = p.X, y = p.Y;
-            if (!process.IsEmpty)
-            {
-                // Store the point as an offset from the anchor of the client area of the window that was actually
-                // clicked, and refuse if that window is not the chosen program.
+                // Refuse a point that is not inside the chosen program's client area.
                 bool matches;
                 try { matches = clicked.HasValue && WindowLocator.Matches(clicked.Value.Handle, process); }
-                catch (ArgumentException ex) { SetStatus(ex.Message); return; }
+                catch (ArgumentException ex) { SetStatus(ex.Message); return false; }
                 if (!matches)
                 {
                     SetStatus("That point is not inside a window matching Process / Title.");
-                    return;
+                    return false;
                 }
                 var area = WindowLocator.GetClientArea(clicked.Value.Handle);
                 if (x < area.Left || y < area.Top || x >= area.Left + area.Width || y >= area.Top + area.Height)
                 {
                     SetStatus("That point is outside the program's client area (title bar or border).");
-                    return;
+                    return false;
                 }
-                WindowLocator.FromScreen(area, (WindowAnchor)_anchor.SelectedItem, x, y, out x, out y);
+                WindowLocator.FromScreen(area, anchor, x, y, out x, out y);
             }
-            _x.Value = Clamp(_x, x);
-            _y.Value = Clamp(_y, y);
+            return true;
         }
 
         /// <summary>Lets the user click any window to fill in a process name box.</summary>
@@ -920,34 +1283,6 @@ namespace Automation.App
 
         // ---------------------------------------------------------------- image
 
-        /// <summary>The Image action that the action being edited belongs to (or is about to be added to), if any.</summary>
-        private ActionNode ImageContext()
-        {
-            var row = SingleSelectedRow();
-            if (row == null) return null;
-            var node = row.Node.IsContainer ? row.Node : row.Parent;
-            while (node != null)
-            {
-                if (node.Category == ActionCategory.Control && node.Control == ControlKind.Image) return node;
-                var parentRow = _rows.FirstOrDefault(r => ReferenceEquals(r.Node, node));
-                node = parentRow?.Parent;
-            }
-            return null;
-        }
-
-        /// <summary>Shows the overlay and returns the clicked point, without touching this window's state.</summary>
-        private static bool ShowPointOverlay(out Point point)
-        {
-            Point? picked = null;
-            using (var picker = new PointPickerForm())
-            {
-                if (picker.ShowDialog() == DialogResult.OK) picked = picker.SelectedPoint;
-            }
-            Thread.Sleep(150); // let the overlay disappear
-            point = picked ?? Point.Empty;
-            return picked.HasValue;
-        }
-
         private void Minimize()
         {
             WindowState = FormWindowState.Minimized;
@@ -959,43 +1294,6 @@ namespace Automation.App
         {
             WindowState = FormWindowState.Normal;
             Activate();
-        }
-
-        /// <summary>
-        /// Pick a position inside an Image action: the picture must be on screen right now; the point is stored as an
-        /// offset from the chosen anchor of the picture's current rectangle.
-        /// </summary>
-        private void PickPositionInImage(ImageSettings image)
-        {
-            if (!image.HasImage) { SetStatus("The Image action has no picture yet."); return; }
-            var process = image.Process;
-            if (!process.IsEmpty && !ActivateProcess(process)) return;
-
-            Minimize();
-            LocateResult found;
-            try
-            {
-                found = ImageLocator.Locate(image, process);
-            }
-            catch (Exception ex) when (ex is InvalidOperationException || ex is ArgumentException)
-            {
-                Restore();
-                SetStatus(ex.Message);
-                return;
-            }
-            if (!found.Found)
-            {
-                Restore();
-                SetStatus("The picture is not visible on screen right now" + (found.Score >= 0 ? " (best match " + (int)Math.Round(found.Score * 100) + "%)" : "") + "; show it, then pick again.");
-                return;
-            }
-
-            bool picked = ShowPointOverlay(out Point p);
-            Restore();
-            if (!picked) return;
-            WindowLocator.FromScreen(found.Rect, (WindowAnchor)_anchor.SelectedItem, p.X, p.Y, out int x, out int y);
-            _x.Value = Clamp(_x, x);
-            _y.Value = Clamp(_y, y);
         }
 
         /// <summary>Brings the program's window to the front while this window is still in front; false (with a status message) if it is missing.</summary>
@@ -1059,22 +1357,41 @@ namespace Automation.App
 
         private void PickRange()
         {
-            var process = Target(_imgProcessName, _imgProcessTitle);
-            if (!PickRegion(process, false, out Rectangle region, out _)) return;
+            if (!PickRangeFor(Target(_imgProcessName, _imgProcessTitle), (WindowAnchor)_imgAnchor.SelectedItem, out int x, out int y, out int w, out int h)) return;
+            _imgX.Value = Clamp(_imgX, x);
+            _imgY.Value = Clamp(_imgY, y);
+            _imgW.Value = Clamp(_imgW, w);
+            _imgH.Value = Clamp(_imgH, h);
+        }
 
-            int x = region.X, y = region.Y;
+        private void PickVariableRange()
+        {
+            if (!PickRangeFor(Target(_varProcName, _varProcTitle), (WindowAnchor)_varAnchor.SelectedItem, out int x, out int y, out int w, out int h)) return;
+            _varX.Value = Clamp(_varX, x);
+            _varY.Value = Clamp(_varY, y);
+            _varW.Value = Clamp(_varW, w);
+            _varH.Value = Clamp(_varH, h);
+        }
+
+        /// <summary>Lets the user drag a rectangle; with a process the top-left is stored as an offset from the anchor of its client area.</summary>
+        private bool PickRangeFor(WindowTarget process, WindowAnchor anchor, out int x, out int y, out int w, out int h)
+        {
+            x = y = w = h = 0;
+            if (!PickRegion(process, false, out Rectangle region, out _)) return false;
+
+            x = region.X;
+            y = region.Y;
+            w = region.Width;
+            h = region.Height;
             if (!process.IsEmpty)
             {
                 IntPtr hwnd;
                 try { hwnd = WindowLocator.Find(process); }
-                catch (ArgumentException ex) { SetStatus(ex.Message); return; }
-                if (hwnd == IntPtr.Zero) { SetStatus("The program is no longer available."); return; }
-                WindowLocator.FromScreen(WindowLocator.GetClientArea(hwnd), (WindowAnchor)_imgAnchor.SelectedItem, region.X, region.Y, out x, out y);
+                catch (ArgumentException ex) { SetStatus(ex.Message); return false; }
+                if (hwnd == IntPtr.Zero) { SetStatus("The program is no longer available."); return false; }
+                WindowLocator.FromScreen(WindowLocator.GetClientArea(hwnd), anchor, region.X, region.Y, out x, out y);
             }
-            _imgX.Value = Clamp(_imgX, x);
-            _imgY.Value = Clamp(_imgY, y);
-            _imgW.Value = Clamp(_imgW, region.Width);
-            _imgH.Value = Clamp(_imgH, region.Height);
+            return true;
         }
 
         private void CaptureImage()
@@ -1244,6 +1561,7 @@ namespace Automation.App
         private void UpdateTitle()
         {
             Text = "Automation - " + (_currentPath == null ? "(unsaved)" : Path.GetFileName(_currentPath));
+            _saveAs.Visible = _currentPath != null; // Save As only makes sense once there is a file to copy from
         }
 
         // ---------------------------------------------------------------- running

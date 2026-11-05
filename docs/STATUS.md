@@ -3,48 +3,49 @@
 Cập nhật lần cuối: 2026-11-05
 
 ## Hiện tại
-- Nhánh `feature_name_columns` (cắt từ `preview` sau PR #3, chưa push) gồm hai phần: (1) chỉnh phần cũ theo yêu cầu: field **Name**, bỏ Target của Keyboard, đổi cột danh sách, menu Open/Save/Save As; (2) action mới **Control/Image** (nhận diện ảnh). Build sạch, Core và UI đã test bằng harness C#; **chờ người dùng test thao tác tay trên giao diện** (đặc biệt kéo chọn vùng, chụp ảnh, pick vị trí trong Image).
-- `preview` đã có: M1-M3, cây action, Keyboard, Open, Wait (PR #3).
+- Nhánh `feature_variables` (cắt từ `feature_name_columns`, chưa push; cả hai nhánh chưa vào `preview`) thêm: **Variable, Condition (Case/Else), ID cho Image, Mouse/Text dùng biểu thức biến**, bỏ cơ chế Image làm gốc tọa độ cho action con, Save As chỉ hiện khi có file. Build sạch; Core và UI đã test bằng harness C# (dưới culture vi-VN). **Chờ người dùng test thao tác tay.**
+- `preview` có: M1-M3, cây action, Keyboard, Open, Wait (PR #3). Chuỗi chưa vào `preview`: `feature_name_columns` (Name, cột, Save As, Image) -> `feature_variables`.
 
 ## Đã làm
 - [x] M1, M2, M3, cây action, Mouse/Loop, Keyboard, Command/Open, Control/Wait (đã vào `preview`).
-- [x] **Name:** mọi action có alias tùy chọn (`ActionNode.Name`). Cột Name đứng đầu danh sách, thụt lề theo cấp; để trống thì hiện loại action. Ô Name được xóa sau mỗi lần Add.
-- [x] **Keyboard không còn Target/Process** (không phụ thuộc tọa độ): phím gửi tới cửa sổ đang có focus. Muốn gửi tới chương trình cụ thể thì đặt một Click hoặc Wait ngay trước. File cũ có trường Target sẽ bị bỏ qua khi nạp.
-- [x] **Danh sách:** các cột Name | Action | Process | Details | Time | Delay. Process tách riêng (trống nếu action không có), Details chỉ còn thông tin cơ bản và được kéo dài theo bề rộng còn lại.
-- [x] **Menu:** New, Open, Save (ghi thẳng vào file hiện tại, chưa có file thì hỏi đường dẫn), Save As.
-- [x] **Control/Image:** Process + Anchor + Range (X, Y, rộng, cao; 0 = cả vùng client hoặc cả màn hình khi không có Process) + ảnh mẫu + Accuracy (%, mặc định 90). Nếu tìm thấy thì chạy các action con; không thấy thì bỏ qua con, báo "Image not found (best match N%)" và script chạy tiếp. Action Mouse con kế thừa Process của Image (ô Process bị khóa), Anchor/X/Y tính theo hình chữ nhật nơi ảnh được tìm thấy (ví dụ ảnh ở (100,200) trong cửa sổ, TopLeft (10,20) thì click tại (110,220) theo cửa sổ). Nút: Capture picture (kéo chọn vùng màn hình), Load file, Pick range, Find now (cho biết vị trí và % khớp), Pick position trong Image (ảnh phải đang hiện trên màn hình).
-  - Các lần kéo/click trên overlay (Pick position trong Image với Anchor TopLeft/Center, Capture picture, Pick range có Process, Find now) đã được thử bằng chuột giả lập trong harness và đều đúng; tìm toàn desktop 1920x1080 thực mất ~50 ms. Khi ảnh xuất hiện nhiều lần thì lấy kết quả khớp tốt nhất.
-  - Thuật toán: ZNCC (so khớp mẫu chuẩn hóa trừ trung bình) trên ảnh xám, tìm thô trên ảnh thu nhỏ 2-4 lần rồi tinh chỉnh ở độ phân giải đầy đủ; thêm kiểm tra màu trung bình để loại nút cùng hình khác màu. Ảnh mẫu gần như một màu bị từ chối khi chụp.
-  - Ảnh lưu trong chính file script (pixel nén Deflate + base64), Core không phụ thuộc System.Drawing (chụp màn hình bằng GDI).
-  - Test harness: nút trống không khớp nút có chữ (decoy); bản sáng hơn + nhiễu vẫn khớp (~60 ms cho ảnh 1920x1080); cùng hình khác màu không khớp; ảnh mẫu nhỏ; ảnh phẳng bị từ chối; dữ liệu ảnh hỏng báo lỗi; JSON round-trip; cửa sổ thật: ví dụ (100,200)+(10,20) trúng (110,220), Center, BottomRight, vùng tìm có/không chứa ảnh, ảnh biến mất, cửa sổ không tồn tại, tìm trên desktop không Process. Giao diện: Add không ảnh bị từ chối, ảnh phẳng bị từ chối, thêm con vào trong Image, Process bị khóa, pick vị trí khi ảnh không hiện cho thông báo rõ, lưu/mở lại.
+- [x] Name, bỏ Target Keyboard, cột Name|Action|Process|Details|Time|Delay, menu Open/Save/Save As; Control/Image (nhánh `feature_name_columns`).
+- [x] **Biểu thức** (`Automation.Core.Expressions`): biến viết `{abc}`; trong `{ }` được viết tên trần và thuộc tính (`{img.Position.X + 1}`); `{1,1}` là Position, `{x,y,w,h}` là Range. Toán tử `+ - * / %`, `= == != < <= > >=`, `&& || !` (ngắn mạch), ngoặc tròn; chuỗi trong `"..."` hoặc `'...'`; `true false now today`. Số/ngày luôn theo invariant culture (máy vi-VN dùng dấu phẩy thập phân nên không dựa vào culture hiện tại). `+` với chuỗi là nối chuỗi; Date/DateTime `+ số` = cộng ngày, trừ nhau ra số ngày; Position cộng/trừ nhau, nhân/chia số. Thuộc tính: Position (X, Y), Size (Width, Height), Range (X, Y, Width, Height, Position, Size), Image (Found, Position, Size). Biến chưa có giá trị -> dừng script và nêu tên biến; lỗi cú pháp báo vị trí. Chỉ thấy tên trần ngoài `{ }` thì báo "write {name}".
+- [x] **Variable** (Control): ID (chữ, số, `_`; không bắt đầu bằng số; không được là true/false/now/today; không phân biệt hoa thường; dùng chung một không gian tên với ID của Image), kiểu Position / Range / String / Number / Boolean / Date / DateTime, giá trị nhập (có picker cho Position và Range, kèm Process + Anchor để quy đổi) hoặc biểu thức. Khai báo lại cùng ID là gán lại và **kiểu của lần khai báo sau thắng** (giá trị được ép sang kiểu đó, không ép được thì dừng với lỗi). Số nhập dạng `1,5` hay `1.5` đều được và lưu bằng dấu chấm.
+- [x] **Image có ID:** biến ID lưu **Found** và, khi thấy ảnh, **Position** và **Size**. Có thêm **Picture anchor** (điểm nào của ảnh làm Position, mặc định TopLeft). Position đo từ cùng **Range anchor** của Process mà vùng tìm dùng (không có Process thì là tọa độ màn hình tuyệt đối), nên Mouse dùng cùng Process và Anchor là trúng ngay: ví dụ ảnh ở (100,200), TopLeft, `{img.Position} + {10,20}` -> (110,220); với Anchor BottomRight, cửa sổ 700x500, Position = (-600,-300) và Mouse BottomRight `{img.Position}` trúng ảnh. Không thấy ảnh: `Found` = false (đọc Position/Size thì báo lỗi), action con bị bỏ qua, script tiếp tục. X, Y, Width, Height của range đều 0 = tìm toàn vùng client / desktop (như cũ).
+- [x] **Mouse** có "Position from": Input (X/Y + picker) hoặc Variable (biểu thức, ví dụ `{img.Position} + {10,20}` hoặc `{img.Position.X + 1}, {img.Position.Y + 1}`). Mouse trong Image **không còn kế thừa** Process hay tọa độ của ảnh (file cũ có con của Image sẽ tính theo cửa sổ/màn hình).
+- [x] **Keyboard Text** có "Text from": Input hoặc Variable (biểu thức, kết quả đổi sang chuỗi: số nguyên bỏ phần thập phân, ngày `yyyy-MM-dd`, Position `x,y`).
+- [x] **Condition (switch-case):** tạo ra là có sẵn 1 Case (`true`) và `else`; danh sách hiện `Tên - Begin`, các case (tên alias hoặc biểu thức), `else`, `Tên - End`. Chỉ chạy case đầu tiên đúng, không case nào đúng thì chạy else. Thêm case: Type = Case khi đang chọn Condition (hoặc một case), case mới chèn trước else. Quy tắc: không Add action trực tiếp vào Condition (chỉ vào case/else); không xóa else; không xóa case cuối cùng (xóa cả Condition); case chỉ Up/Down giữa các case và không vượt qua else; case/else không In/Out; Out từ trong case/else đặt action ngay sau Condition; Condition/Case không đổi sang kiểu khác qua Update. Dòng End chỉ là dòng hiển thị, không chọn/xóa được. File sai cấu trúc được sửa khi nạp (ít nhất 1 case, đúng 1 else ở cuối).
+- [x] **Save As** chỉ hiện khi đang mở từ file hoặc đã lưu.
+- [x] **Sửa lỗi lệch 1 pixel:** `MouseController` làm tròn xuống khi quy đổi tọa độ ra 0..65535 nên đôi khi trỏ chuột lệch 1 px (thấy ở tọa độ nhỏ). Đã đổi sang làm tròn lên theo công thức Windows dùng; test quét 400 điểm ngẫu nhiên + 4 góc màn hình đều trúng đúng pixel.
+- [x] **Test:** ExprTests (bộ ví dụ của người dùng: `{abc} + 1`, `{abc} > 3`/`> 2`/else với abc=5 chỉ chạy case đầu, `{abc.Position.X + 1}, ...`, `{abc.Position} + {1,1}`; ưu tiên toán tử, ngắn mạch, chia 0, chuỗi có escape, ngày, biến chưa có, vị trí lỗi cú pháp, vi-VN), VarTests (runner: switch 5/3/2, vòng lặp 5 lần có Condition bên trong đếm đúng, mọi kiểu literal, Position/Range, Mouse dùng biến, Text từ biểu thức, ID/kiểu sai, JSON round trip và sửa Condition hỏng, Image: (110,220), Center, BottomRight (-600,-300), Found/not found, desktop), UiTests (soạn Variable/Condition qua giao diện, mọi quy tắc cây ở trên, picker bằng chuột giả lập).
 
 ## Việc tiếp theo
 - [ ] Người dùng test giao diện (checklist dưới), báo lỗi nếu có.
-- [ ] PR vào `preview` khi người dùng yêu cầu.
+- [ ] PR vào `preview` khi người dùng yêu cầu (một PR từ `feature_variables` gồm cả chuỗi).
 - [ ] Record; License (M5).
 
-### Checklist test giao diện (Name, cột, menu, Image)
-1. Cột danh sách: Name, Action, Process, Details, Time, Delay; Details rộng; Name để trống thì hiện loại action; đặt Name thì hiện alias, thụt lề theo cây.
-2. Keyboard không còn ô Target.
-3. Save lưu thẳng vào file đang mở (không hỏi); Save As hỏi chỗ mới; file mới chưa lưu thì Save hỏi đường dẫn.
-4. Image: Category Control, Type Image. "Capture picture..." kéo chọn một nút/biểu tượng trên màn hình: ảnh hiện trong ô Picture; chọn vùng gần như một màu thì bị từ chối. Add.
-5. "Find now" (khi ảnh đang hiện trên màn hình): báo vị trí và % khớp; che ảnh đi rồi bấm lại: báo Not found và best match.
-6. Đặt Process cho Image, đặt Anchor, "Pick range..." kéo vùng trong cửa sổ đó; Width/Height/X/Y được điền (X/Y là offset theo Anchor). Thử Width/Height = 0 để tìm cả cửa sổ.
-7. Chọn Image rồi thêm action Mouse (Add khi đang chọn Image): nằm trong Image, ô Process bị khóa. "Pick position..." lúc ảnh đang hiện: X/Y là offset so với góc/tâm ảnh theo Anchor. Chạy script: chuột đi tới đúng điểm đó kể cả khi ảnh đã dời chỗ trên màn hình/cửa sổ.
-8. Chạy khi ảnh không có trên màn hình: action con bị bỏ qua, thanh trạng thái báo "Image not found (best match ...)", script tiếp tục.
-9. Save rồi Open lại: ảnh, vùng, Accuracy, Name và con giữ nguyên.
-10. Chuyển một action Mouse vào hoặc ra khỏi Image bằng In/Out làm đổi nghĩa X/Y (tính theo ảnh hay theo cửa sổ/màn hình): cần Pick lại. Trong danh sách, action nằm trong Image hiện "(picture)" ở cột Process và luôn có Anchor ở Details.
-11. Capture picture: sau khi thả chuột, con trỏ được dời ra ngoài vùng trước khi chụp nên nút không bị chụp ở trạng thái hover.
+### Checklist test giao diện (Variable, Condition, biểu thức)
+1. Control > Type: Loop, Wait, Image, Variable, Condition, Case (không có Else).
+2. Variable: nhập ID `abc`, kiểu Number, giá trị 5, Add. Thử ID sai (`1a`, có dấu cách, `true`): bị từ chối. Tick "Use an expression", nhập `{abc} +`: báo lỗi kèm vị trí; `{abc} + 1`: thêm được. Thử các kiểu Position/Range (có Pick position / Pick range, chọn Process + Anchor), Boolean, Date, DateTime.
+3. Condition: Add (Category Control, Type Condition): xuất hiện 4 dòng (Begin, case, else, End). Chọn Condition, Type = Case, nhập `{abc} > 3`, Add: case mới nằm trước else. Chọn một case rồi Add action Mouse: nằm trong case (thụt lề). Thử xóa else / xóa case cuối / Up-Down case qua else / In-Out case: bị từ chối với thông báo. Out một action từ trong case: nằm ngay sau dòng End.
+4. Chạy: Variable abc = 5, Condition với `{abc} > 3` và `{abc} > 2`: chỉ case đầu chạy (thêm action nhìn thấy được, ví dụ Text). Đổi abc = 2 thì chạy else.
+5. Loop 5 lần chứa Variable `{n} + 1` rồi Condition: số lần mỗi nhánh đúng.
+6. Image: đặt ID `img` (và Picture anchor). Thêm Mouse, Position from = Variable, Expression `{img.Position} + {10,20}`, cùng Process và Anchor với Image: chuột đến đúng điểm; dời cửa sổ rồi chạy lại vẫn trúng. Thử `{img.Position.X + 1}, {img.Position.Y + 1}`.
+7. Condition dùng `{img.Found}`: ảnh có/không có trên màn hình cho nhánh đúng.
+8. Keyboard Text, Text from = Variable: `"Total: " + {sum}` gõ đúng.
+9. Save As chỉ hiện sau khi Open hoặc Save lần đầu.
+10. Save, Open lại: biến, condition, ID/anchor của Image giữ nguyên.
 
 ### Ghi chú cho milestone sau
-- Trường mới có giá trị mặc định khác 0 phải đặt trong `[OnDeserializing] SetDefaults` của lớp tương ứng và không dùng `EmitDefaultValue=false` cho chúng. Các sub-object (Mouse/Keyboard/Command/Loop/Wait/Image) là tham chiếu nên dùng `EmitDefaultValue=false` an toàn.
-- `ImageLocator.Locate` là điểm duy nhất biến cài đặt Image thành phép tìm trên màn hình (runner, Find now, Pick position trong Image đều dùng).
+- Trường mới có giá trị mặc định khác 0 phải đặt trong `[OnDeserializing] SetDefaults` của lớp tương ứng và không dùng `EmitDefaultValue=false` cho chúng. Các sub-object (Mouse/Keyboard/Command/Loop/Wait/Image/Variable/Case) là tham chiếu nên dùng `EmitDefaultValue=false` an toàn.
+- `ImageLocator.Locate` là điểm duy nhất biến cài đặt Image thành phép tìm trên màn hình (runner, Find now, Pick position đều dùng).
+- Biến là toàn cục trong một lần chạy, xóa sạch ở đầu mỗi lần Start.
 - Khi Process khớp nhiều cửa sổ, runner lấy cửa sổ khớp đầu tiên theo z-order (ưu tiên không minimize); cần điền Title (regex) để chỉ rõ.
 - Đổi Anchor sau khi pick sẽ giữ nguyên số X/Y nhưng đổi nghĩa; phải pick lại.
 - Multi-select giữ bằng ListView thụt lề (TreeView của WinForms không chọn nhiều được). Chưa có thu gọn/mở rộng nhánh.
 - Delay ngắn (<20 ms) và mỗi vòng lặp không delay dùng chờ có nhường CPU (không dùng timer) vì Windows 11 bỏ qua `timeBeginPeriod` khi app thu nhỏ.
 - Phím Win không bắt được trong ô Key. Gõ Text dùng Unicode packet; chưa thử khi Unikey/EVKey đang bật.
-- Chụp màn hình bằng BitBlt có thể ra màu đen với nội dung DirectX/toàn màn hình độc quyền (game). Accuracy là ngưỡng giống nhau, không xử lý ảnh mẫu bị che một phần.
+- Chụp màn hình bằng BitBlt có thể ra màu đen với nội dung DirectX/toàn màn hình độc quyền. Accuracy là ngưỡng giống nhau, không xử lý ảnh mẫu bị che một phần.
 - Game hoặc chương trình chạy admin: `SendInput` bị UIPI chặn nếu app không chạy admin (chưa có tùy chọn chạy admin).
 
 ## Ghi chú môi trường
