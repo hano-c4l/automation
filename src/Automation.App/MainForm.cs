@@ -37,6 +37,7 @@ namespace Automation.App
             public ActionNode Parent;          // null for top-level actions
             public List<ActionNode> Siblings;  // the list that contains Node
             public int Depth;
+            public bool InImage;               // positions of this action are measured from a found picture
         }
 
         private readonly List<Row> _rows = new List<Row>();
@@ -371,7 +372,7 @@ namespace Automation.App
                         Button = (MouseButton)_button.SelectedItem,
                         TimeMs = _time.Milliseconds,
                         DelayMs = _delay.Milliseconds,
-                        Process = Target(_processName, _processTitle),
+                        Process = ImageContext() != null ? new WindowTarget() : Target(_processName, _processTitle),
                         Anchor = (WindowAnchor)_anchor.SelectedItem,
                         X = (int)_x.Value,
                         Y = (int)_y.Value,
@@ -694,7 +695,7 @@ namespace Automation.App
         {
             var wanted = select == null ? new HashSet<ActionNode>() : new HashSet<ActionNode>(select);
             _rows.Clear();
-            Flatten(_script.Actions, null, 0);
+            Flatten(_script.Actions, null, 0, false);
 
             _list.BeginUpdate();
             _list.Items.Clear();
@@ -718,12 +719,13 @@ namespace Automation.App
             RefreshList(null);
         }
 
-        private void Flatten(List<ActionNode> nodes, ActionNode parent, int depth)
+        private void Flatten(List<ActionNode> nodes, ActionNode parent, int depth, bool inImage)
         {
             foreach (var node in nodes)
             {
-                _rows.Add(new Row { Node = node, Parent = parent, Siblings = nodes, Depth = depth });
-                Flatten(node.Children, node, depth + 1);
+                _rows.Add(new Row { Node = node, Parent = parent, Siblings = nodes, Depth = depth, InImage = inImage });
+                bool isImage = node.Category == ActionCategory.Control && node.Control == ControlKind.Image;
+                Flatten(node.Children, node, depth + 1, inImage || isImage);
             }
         }
 
@@ -762,10 +764,10 @@ namespace Automation.App
                 case ActionCategory.Mouse:
                     var m = n.Mouse;
                     action = m.Action.ToString();
-                    process = DescribeTarget(m.Process);
+                    process = row.InImage ? "(picture)" : DescribeTarget(m.Process);
                     bool hasButton = m.Action == MouseAction.Click || m.Action == MouseAction.MouseDown || m.Action == MouseAction.MouseUp;
                     details = (hasButton ? m.Button + " " : "") + "(" + m.X + ", " + m.Y + ")";
-                    if (!m.Process.IsEmpty) details += " " + m.Anchor;
+                    if (row.InImage || !m.Process.IsEmpty) details += " " + m.Anchor;
                     if (m.Action == MouseAction.ScrollUp || m.Action == MouseAction.ScrollDown) details += " x" + m.ScrollNotches;
                     time = TimeBox.Format(m.TimeMs);
                     delay = TimeBox.Format(m.DelayMs);
@@ -1029,11 +1031,30 @@ namespace Automation.App
             Thread.Sleep(200); // let the overlay disappear before capturing the screen
             if (ok && capture)
             {
+                // The drag ends with the cursor on the picked area, where buttons show their hover look; move it away first.
+                var cursor = Cursor.Position;
+                Cursor.Position = PointOutside(region);
+                Thread.Sleep(200);
                 try { image = ScreenCapture.Capture(region.X, region.Y, region.Width, region.Height); }
                 catch (InvalidOperationException ex) { SetStatus(ex.Message); ok = false; }
+                finally { Cursor.Position = cursor; }
             }
             Restore();
             return ok;
+        }
+
+        /// <summary>A point on the desktop that is not inside the rectangle (just past a corner, kept on screen).</summary>
+        private static Point PointOutside(Rectangle region)
+        {
+            var screen = SystemInformation.VirtualScreen;
+            var candidates = new[]
+            {
+                new Point(region.Right + 6, region.Bottom + 6), new Point(region.Left - 6, region.Top - 6),
+                new Point(region.Right + 6, region.Top - 6), new Point(region.Left - 6, region.Bottom + 6)
+            };
+            foreach (var c in candidates)
+                if (screen.Contains(c) && !region.Contains(c)) return c;
+            return new Point(screen.Left, screen.Top);
         }
 
         private void PickRange()
