@@ -62,6 +62,20 @@ namespace Automation.Core.Input
             Up(button);
         }
 
+        /// <summary>Turns the wheel at the current cursor position; positive notches scroll up (away from the user).</summary>
+        public void Scroll(int notches)
+        {
+            const int WheelDelta = 120;
+            var input = new NativeMethods.INPUT
+            {
+                type = NativeMethods.INPUT_MOUSE,
+                mi = new NativeMethods.MOUSEINPUT { mouseData = unchecked((uint)(notches * WheelDelta)), dwFlags = NativeMethods.MOUSEEVENTF_WHEEL }
+            };
+            uint sent = NativeMethods.SendInput(1, new[] { input }, Marshal.SizeOf(typeof(NativeMethods.INPUT)));
+            if (sent != 1)
+                throw new InvalidOperationException("SendInput failed, Win32 error " + Marshal.GetLastWin32Error());
+        }
+
         private static void SetPosition(int x, int y)
         {
             int vx = NativeMethods.GetSystemMetrics(NativeMethods.SM_XVIRTUALSCREEN);

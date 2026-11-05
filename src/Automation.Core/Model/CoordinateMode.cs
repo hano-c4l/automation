@@ -1,15 +1,6 @@
 namespace Automation.Core.Model
 {
-    /// <summary>How a step's X/Y are interpreted. The default (0) must stay Screen so older files keep working.</summary>
-    public enum CoordinateMode
-    {
-        /// <summary>Absolute screen pixels.</summary>
-        Screen,
-        /// <summary>Offset from an anchor point of the target window's client area.</summary>
-        Window
-    }
-
-    /// <summary>The point of the target window's client area that a Window-mode offset is measured from.</summary>
+    /// <summary>The point of the target window's client area that an offset is measured from.</summary>
     public enum WindowAnchor
     {
         TopLeft,
@@ -17,5 +8,36 @@ namespace Automation.Core.Model
         BottomLeft,
         BottomRight,
         Center
+    }
+
+    public enum ActionCategory
+    {
+        Control,
+        Mouse
+    }
+
+    public enum MouseAction
+    {
+        Click,
+        MouseUp,
+        MouseDown,
+        Move,
+        ScrollUp,
+        ScrollDown
+    }
+
+    public enum ControlKind
+    {
+        Loop
+    }
+
+    public enum LoopType
+    {
+        /// <summary>Repeat a fixed number of times.</summary>
+        Count,
+        /// <summary>Repeat until the given time has elapsed since the loop started.</summary>
+        Duration,
+        /// <summary>Repeat until a local date and time is reached.</summary>
+        Until
     }
 }

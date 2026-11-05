@@ -36,6 +36,8 @@ namespace Automation.Core.Model
                 throw new InvalidDataException("The file does not contain a script.");
             if (script.Version > AutomationScript.CurrentVersion)
                 throw new InvalidDataException("The script was saved by a newer version of the program (version " + script.Version + ").");
+            if (script.Version < AutomationScript.CurrentVersion)
+                throw new InvalidDataException("The script uses the old step format (version " + script.Version + ") which is no longer supported.");
             script.Normalize();
             return script;
         }

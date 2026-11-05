@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.Diagnostics;
 using System.Threading;
 using Automation.Core.Input;
 using Automation.Core.Model;
@@ -11,52 +11,31 @@ namespace Automation.Core.Runner
     /// <summary>Runs a script synchronously on the calling thread until it finishes or the token is cancelled.</summary>
     public sealed class ScriptRunner
     {
+        private const int SettleAfterActivateMs = 120;
+
         private readonly MouseController _mouse;
         private readonly HashSet<MouseButton> _held = new HashSet<MouseButton>();
-        private WindowTarget _target = new WindowTarget();
-        private IntPtr _targetWindow;
+        private readonly Dictionary<string, IntPtr> _windowCache = new Dictionary<string, IntPtr>();
 
         public ScriptRunner(MouseController mouse)
         {
             _mouse = mouse ?? throw new ArgumentNullException(nameof(mouse));
         }
 
-        /// <summary>Raised with the zero-based index of the step that is about to run (from the runner thread).</summary>
-        public event Action<int> StepStarted;
+        /// <summary>Raised (from the runner thread) with the node that is about to run.</summary>
+        public event Action<ActionNode> NodeStarted;
 
-        /// <summary>Raised with the one-based number of the run that is about to start (from the runner thread).</summary>
-        public event Action<int> RunStarted;
+        /// <summary>Raised (from the runner thread) for notable events such as a skipped loop.</summary>
+        public event Action<string> Message;
 
         /// <exception cref="OperationCanceledException">The token was cancelled.</exception>
         public void Run(AutomationScript script, CancellationToken token)
         {
             if (script == null) throw new ArgumentNullException(nameof(script));
-            if (script.Steps.Count == 0) return;
-
-            _target = script.Target ?? new WindowTarget();
-            _targetWindow = IntPtr.Zero;
-
+            _windowCache.Clear();
             try
             {
-                if (script.Steps.Any(s => s.Mode == CoordinateMode.Window))
-                {
-                    // Fail before doing anything if the window is missing, instead of clicking at wrong places.
-                    EnsureTargetWindow();
-                    if (_target.BringToFront) WindowLocator.BringToFront(_targetWindow);
-                }
-                Wait(script.StartDelayMs, token);
-                for (int run = 1; script.RepeatCount == 0 || run <= script.RepeatCount; run++)
-                {
-                    RunStarted?.Invoke(run);
-                    for (int i = 0; i < script.Steps.Count; i++)
-                    {
-                        token.ThrowIfCancellationRequested();
-                        StepStarted?.Invoke(i);
-                        ExecuteStep(script.Steps[i], token);
-                    }
-                    bool last = script.RepeatCount != 0 && run == script.RepeatCount;
-                    if (!last) Wait(script.RepeatDelayMs, token);
-                }
+                ExecuteList(script.Actions, new RunContext(), token);
             }
             finally
             {
@@ -64,65 +43,151 @@ namespace Automation.Core.Runner
             }
         }
 
-        private void ExecuteStep(Step step, CancellationToken token)
+        /// <summary>
+        /// What child actions inherit from the node that contains them. Today only the window; later an Image node
+        /// will push the place where the image was found so its children can be relative to it.
+        /// </summary>
+        private sealed class RunContext
         {
-            int repeat = Math.Max(1, step.Repeat);
-            for (int n = 0; n < repeat; n++)
+            public WindowTarget Window = null;
+        }
+
+        private void ExecuteList(List<ActionNode> nodes, RunContext context, CancellationToken token)
+        {
+            foreach (var node in nodes)
             {
                 token.ThrowIfCancellationRequested();
-                ResolvePosition(step, out int x, out int y);
-                _mouse.MoveTo(x, y, step.MoveDurationMs, token);
-                switch (step.Action)
-                {
-                    case StepAction.Click:
-                        _mouse.Click(step.Button);
-                        break;
-                    case StepAction.MouseDown:
-                        _mouse.Down(step.Button);
-                        _held.Add(step.Button);
-                        break;
-                    case StepAction.MouseUp:
-                        _mouse.Up(step.Button);
-                        _held.Remove(step.Button);
-                        break;
-                }
-                Wait(step.DelayAfterMs, token);
+                NodeStarted?.Invoke(node);
+                Execute(node, context, token);
             }
         }
 
-        /// <summary>Screen steps use X/Y as is; Window steps are resolved against the window's current position on every run.</summary>
-        private void ResolvePosition(Step step, out int x, out int y)
+        private void Execute(ActionNode node, RunContext context, CancellationToken token)
         {
-            if (step.Mode != CoordinateMode.Window)
+            switch (node.Category)
             {
-                x = step.X;
-                y = step.Y;
-                return;
+                case ActionCategory.Mouse:
+                    ExecuteMouse(node, context, token);
+                    break;
+                case ActionCategory.Control:
+                    ExecuteLoop(node, context, token);
+                    break;
             }
-
-            EnsureTargetWindow();
-            if (WindowLocator.IsMinimized(_targetWindow))
-            {
-                if (!_target.BringToFront)
-                    throw new InvalidOperationException("The target window is minimized.");
-                WindowLocator.BringToFront(_targetWindow);
-            }
-            var area = WindowLocator.GetClientArea(_targetWindow);
-            WindowLocator.ToScreen(area, step.Anchor, step.X, step.Y, out x, out y);
         }
 
-        /// <summary>Keeps the cached window handle if it is still valid, otherwise searches again.</summary>
-        private void EnsureTargetWindow()
+        // ---------------------------------------------------------------- loop
+
+        /// <summary>
+        /// Duration and Until are checked between iterations, so the last iteration can overshoot the end by
+        /// up to the length of one pass over the body.
+        /// </summary>
+        private void ExecuteLoop(ActionNode loop, RunContext context, CancellationToken token)
         {
-            if (WindowLocator.Exists(_targetWindow)) return;
-            _targetWindow = WindowLocator.Find(_target);
-            if (_targetWindow == IntPtr.Zero)
-                throw new InvalidOperationException(_target.IsEmpty
-                    ? "A step uses window coordinates but no target window is set."
-                    : "Target window not found.");
+            if (loop.Children.Count == 0) return;
+
+            switch (loop.LoopMode)
+            {
+                case LoopType.Count:
+                    for (long i = 0; loop.LoopCount == 0 || i < loop.LoopCount; i++)
+                        Iterate(loop, context, token);
+                    break;
+
+                case LoopType.Duration:
+                    var watch = Stopwatch.StartNew();
+                    while (watch.ElapsedMilliseconds < loop.LoopDurationMs)
+                        Iterate(loop, context, token);
+                    break;
+
+                case LoopType.Until:
+                    DateTime? until = loop.GetLoopUntil();
+                    if (until == null || until.Value <= DateTime.Now)
+                    {
+                        Message?.Invoke("Loop skipped: the end time is missing or already in the past.");
+                        break;
+                    }
+                    while (DateTime.Now < until.Value)
+                        Iterate(loop, context, token);
+                    break;
+            }
         }
 
-        /// <summary>Releases any button left pressed by a MouseDown step when the run stops early.</summary>
+        private void Iterate(ActionNode loop, RunContext context, CancellationToken token)
+        {
+            ExecuteList(loop.Children, context, token);
+            Wait(1, token); // guarantees a loop whose body has no delay never spins without yielding or checking for a stop
+        }
+
+        // ---------------------------------------------------------------- mouse
+
+        private void ExecuteMouse(ActionNode node, RunContext context, CancellationToken token)
+        {
+            int x = node.X, y = node.Y;
+            WindowTarget target = !node.Process.IsEmpty ? node.Process : context.Window;
+            if (target != null && !target.IsEmpty)
+            {
+                IntPtr hwnd = FindWindow(target);
+                Activate(hwnd, token);
+                var area = WindowLocator.GetClientArea(hwnd);
+                WindowLocator.ToScreen(area, node.Anchor, node.X, node.Y, out x, out y);
+            }
+
+            _mouse.MoveTo(x, y, ToInt(node.TimeMs), token);
+            switch (node.Action)
+            {
+                case MouseAction.Click:
+                    _mouse.Click(node.Button);
+                    break;
+                case MouseAction.MouseDown:
+                    _mouse.Down(node.Button);
+                    _held.Add(node.Button);
+                    break;
+                case MouseAction.MouseUp:
+                    _mouse.Up(node.Button);
+                    _held.Remove(node.Button);
+                    break;
+                case MouseAction.ScrollUp:
+                    _mouse.Scroll(Math.Max(1, node.ScrollNotches));
+                    break;
+                case MouseAction.ScrollDown:
+                    _mouse.Scroll(-Math.Max(1, node.ScrollNotches));
+                    break;
+            }
+            Wait(node.DelayMs, token);
+        }
+
+        /// <summary>Returns the cached window for the target while it is still valid, otherwise searches again.</summary>
+        private IntPtr FindWindow(WindowTarget target)
+        {
+            string key = (target.ProcessName ?? "") + "|" + (target.TitlePattern ?? "");
+            if (_windowCache.TryGetValue(key, out IntPtr cached) && WindowLocator.Matches(cached, target))
+                return cached;
+
+            IntPtr hwnd = WindowLocator.Find(target);
+            if (hwnd == IntPtr.Zero)
+                throw new InvalidOperationException("Window not found: " + Describe(target));
+            _windowCache[key] = hwnd;
+            return hwnd;
+        }
+
+        /// <summary>
+        /// Restores and activates the window unless it is already in front, so clicks land on it and not on
+        /// whatever is covering it. Activation is best effort (Windows may refuse it).
+        /// </summary>
+        private static void Activate(IntPtr hwnd, CancellationToken token)
+        {
+            if (WindowLocator.IsForeground(hwnd) && !WindowLocator.IsMinimized(hwnd)) return;
+            WindowLocator.BringToFront(hwnd);
+            Wait(SettleAfterActivateMs, token);
+            if (WindowLocator.IsMinimized(hwnd))
+                throw new InvalidOperationException("The target window is minimized and could not be restored.");
+        }
+
+        private static string Describe(WindowTarget target)
+        {
+            return "process \"" + target.ProcessName + "\", title \"" + target.TitlePattern + "\"";
+        }
+
+        /// <summary>Releases any button left pressed by a MouseDown action when the run stops early.</summary>
         private void ReleaseHeldButtons()
         {
             foreach (var button in _held)
@@ -133,9 +198,20 @@ namespace Automation.Core.Runner
             _held.Clear();
         }
 
-        private static void Wait(int ms, CancellationToken token)
+        private static int ToInt(long value)
         {
-            if (ms > 0) token.WaitHandle.WaitOne(ms);
+            return (int)Math.Max(0, Math.Min(int.MaxValue, value));
+        }
+
+        private static void Wait(long ms, CancellationToken token)
+        {
+            // WaitOne takes an int; split very long waits into chunks.
+            while (ms > 0 && !token.IsCancellationRequested)
+            {
+                int chunk = (int)Math.Min(ms, int.MaxValue - 1);
+                token.WaitHandle.WaitOne(chunk);
+                ms -= chunk;
+            }
             token.ThrowIfCancellationRequested();
         }
     }

@@ -100,6 +100,11 @@ namespace Automation.Core.Windows
             return hwnd != IntPtr.Zero && NativeMethods.IsWindow(hwnd);
         }
 
+        public static bool IsForeground(IntPtr hwnd)
+        {
+            return hwnd != IntPtr.Zero && NativeMethods.GetForegroundWindow() == hwnd;
+        }
+
         public static bool IsMinimized(IntPtr hwnd)
         {
             return NativeMethods.IsIconic(hwnd);

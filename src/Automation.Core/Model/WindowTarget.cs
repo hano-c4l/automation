@@ -2,7 +2,7 @@ using System.Runtime.Serialization;
 
 namespace Automation.Core.Model
 {
-    /// <summary>Describes which window Window-mode steps are relative to.</summary>
+    /// <summary>Identifies a program window by process name and window title.</summary>
     [DataContract]
     public sealed class WindowTarget
     {
@@ -11,9 +11,6 @@ namespace Automation.Core.Model
 
         /// <summary>Regular expression matched against the window title. Empty matches any title.</summary>
         [DataMember(Order = 2)] public string TitlePattern { get; set; }
-
-        /// <summary>Restore and activate the window before the script starts.</summary>
-        [DataMember(Order = 3)] public bool BringToFront { get; set; }
 
         public bool IsEmpty
         {
