@@ -18,6 +18,9 @@ namespace Automation.Core.Imaging
 
         /// <summary>The area that was searched, in screen pixels.</summary>
         public ClientArea Searched;
+
+        /// <summary>The client area of the Process window when one was used (null for a desktop search).</summary>
+        public ClientArea? Window;
     }
 
     /// <summary>
@@ -43,11 +46,11 @@ namespace Automation.Core.Imaging
                 throw new InvalidOperationException("Image: " + ex.Message + " Capture or load the picture again.");
             }
 
-            ClientArea range = ResolveRange(settings, process);
+            ClientArea range = ResolveRange(settings, process, out ClientArea? window);
             ScreenCapture.GetVirtualScreen(out int vl, out int vt, out int vw, out int vh);
             range = Intersect(range, new ClientArea { Left = vl, Top = vt, Width = vw, Height = vh });
 
-            var result = new LocateResult { Searched = range };
+            var result = new LocateResult { Searched = range, Window = window };
             if (range.Width <= 0 || range.Height <= 0 || needle.Width > range.Width || needle.Height > range.Height)
                 return result; // nothing to search, or the picture does not fit in the range
 
@@ -70,8 +73,9 @@ namespace Automation.Core.Imaging
             return result;
         }
 
-        private static ClientArea ResolveRange(ImageSettings s, WindowTarget process)
+        private static ClientArea ResolveRange(ImageSettings s, WindowTarget process, out ClientArea? window)
         {
+            window = null;
             bool whole = s.RangeWidth <= 0 || s.RangeHeight <= 0;
             if (process == null || process.IsEmpty)
             {
@@ -94,6 +98,7 @@ namespace Automation.Core.Imaging
                     throw new InvalidOperationException("The target window is minimized and could not be restored.");
             }
             ClientArea area = WindowLocator.GetClientArea(hwnd);
+            window = area;
             if (whole) return area;
 
             WindowLocator.ToScreen(area, s.Anchor, s.RangeX, s.RangeY, out int x, out int y);

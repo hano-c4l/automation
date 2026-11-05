@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Runtime.Serialization;
+using Automation.Core.Expressions;
 using Automation.Core.Imaging;
 using Automation.Core.Input;
 
@@ -30,6 +31,11 @@ namespace Automation.Core.Model
 
         /// <summary>Wheel notches for ScrollUp / ScrollDown.</summary>
         [DataMember(Order = 9)] public int ScrollNotches { get; set; } = 1;
+
+        /// <summary>True: the position comes from PositionExpression (for example "{img.Position} + {10,20}") instead of X/Y.</summary>
+        [DataMember(Order = 10, EmitDefaultValue = false)] public bool UseVariable { get; set; }
+
+        [DataMember(Order = 11, EmitDefaultValue = false)] public string PositionExpression { get; set; }
 
         // Enums are stored by name, not number, so reordering them never changes the meaning of saved files.
         [DataMember(Name = "Action", Order = 1)]
@@ -96,6 +102,9 @@ namespace Automation.Core.Model
 
         /// <summary>Wait after the action finished.</summary>
         [DataMember(Order = 4)] public long DelayMs { get; set; } = 500;
+
+        /// <summary>Text action only: Value is an expression (for example "{name} + \" \" + {n}") instead of the literal text.</summary>
+        [DataMember(Order = 5, EmitDefaultValue = false)] public bool ValueIsExpression { get; set; }
 
         [DataMember(Name = "Action", Order = 1)]
         private string ActionName
@@ -270,6 +279,23 @@ namespace Automation.Core.Model
         /// <summary>Minimum similarity in percent (1-100) for the picture to count as found.</summary>
         [DataMember(Order = 7)] public int Accuracy { get; set; } = 90;
 
+        /// <summary>Optional variable ID. The result (found or not, Position, Size) is stored there for later actions.</summary>
+        [DataMember(Order = 11, EmitDefaultValue = false)] public string Id { get; set; }
+
+        /// <summary>
+        /// Which point of the found picture the result Position refers to. The Position is measured from the same
+        /// Anchor point of the Process window that the range uses (absolute screen pixels without a Process), so a
+        /// Mouse action with the same Process and Anchor can use it directly.
+        /// </summary>
+        public WindowAnchor ResultAnchor { get; set; }
+
+        [DataMember(Name = "ResultAnchor", Order = 12)]
+        private string ResultAnchorName
+        {
+            get { return ResultAnchor.ToString(); }
+            set { ResultAnchor = ActionNode.Parse(value, WindowAnchor.TopLeft); }
+        }
+
         [DataMember(Order = 8)] public int ImageWidth { get; set; }
         [DataMember(Order = 9)] public int ImageHeight { get; set; }
 
@@ -325,9 +351,115 @@ namespace Automation.Core.Model
         }
     }
 
+    /// <summary>Settings of a Variable action: creates a variable, or changes one with the same ID.</summary>
+    [DataContract]
+    public sealed class VariableSettings
+    {
+        /// <summary>The ID other actions use: {Id}. Letters, digits and underscore; case-insensitive.</summary>
+        [DataMember(Order = 1)] public string Id { get; set; } = "";
+
+        public VariableType Type { get; set; } = VariableType.Number;
+
+        /// <summary>True: the value is the result of Expression (such as "{abc} + 1"); false: it is the literal below.</summary>
+        [DataMember(Order = 3)] public bool UseExpression { get; set; }
+
+        [DataMember(Order = 4)] public string Expression { get; set; } = "";
+
+        /// <summary>Literal value of String, Number, Boolean ("true"/"false"), Date (yyyy-MM-dd) and DateTime (yyyy-MM-ddTHH:mm:ss), invariant culture.</summary>
+        [DataMember(Order = 5)] public string Text { get; set; } = "";
+
+        /// <summary>Position and Range only: the window and anchor the picker measured X/Y from (the stored numbers are just X, Y, Width, Height).</summary>
+        [DataMember(Order = 6)] public WindowTarget Process { get; set; } = new WindowTarget();
+
+        public WindowAnchor Anchor { get; set; }
+        [DataMember(Order = 8)] public int X { get; set; }
+        [DataMember(Order = 9)] public int Y { get; set; }
+        [DataMember(Order = 10)] public int Width { get; set; }
+        [DataMember(Order = 11)] public int Height { get; set; }
+
+        [DataMember(Name = "Type", Order = 2)]
+        private string TypeName
+        {
+            get { return Type.ToString(); }
+            set { Type = ActionNode.Parse(value, VariableType.Number); }
+        }
+
+        [DataMember(Name = "Anchor", Order = 7)]
+        private string AnchorName
+        {
+            get { return Anchor.ToString(); }
+            set { Anchor = ActionNode.Parse(value, WindowAnchor.TopLeft); }
+        }
+
+        [OnDeserializing]
+        private void SetDefaults(StreamingContext context)
+        {
+            Id = "";
+            Type = VariableType.Number;
+            Expression = "";
+            Text = "";
+            Process = new WindowTarget();
+        }
+
+        /// <summary>The literal value converted to its type.</summary>
+        /// <exception cref="ExpressionException">The stored text does not fit the type.</exception>
+        public object GetLiteral()
+        {
+            switch (Type)
+            {
+                case VariableType.Position: return new PointValue(X, Y);
+                case VariableType.Range: return new RangeValue(X, Y, Width, Height);
+                case VariableType.String: return Text ?? "";
+                default: return Coercion.To(Type, Text ?? "");
+            }
+        }
+
+        public VariableSettings Clone()
+        {
+            var copy = (VariableSettings)MemberwiseClone();
+            copy.Process = (Process ?? new WindowTarget()).Clone();
+            return copy;
+        }
+
+        internal void Normalize()
+        {
+            if (Id == null) Id = "";
+            if (Expression == null) Expression = "";
+            if (Text == null) Text = "";
+            if (Process == null) Process = new WindowTarget();
+            if (Width < 0) Width = 0;
+            if (Height < 0) Height = 0;
+        }
+    }
+
+    /// <summary>Settings of a Case (one branch of a Condition).</summary>
+    [DataContract]
+    public sealed class CaseSettings
+    {
+        /// <summary>An expression giving true or false, such as "{abc} > 3".</summary>
+        [DataMember(Order = 1)] public string Expression { get; set; } = "";
+
+        [OnDeserializing]
+        private void SetDefaults(StreamingContext context)
+        {
+            Expression = "";
+        }
+
+        public CaseSettings Clone()
+        {
+            return (CaseSettings)MemberwiseClone();
+        }
+
+        internal void Normalize()
+        {
+            if (Expression == null) Expression = "";
+        }
+    }
+
     /// <summary>
     /// One node of the action tree. The settings of the node's category live in a sub-object (Mouse, Keyboard,
-    /// Command, Loop or Wait); the others are absent from the JSON. Only Control actions (Loop, Wait) have children.
+    /// Command, Loop, Wait, Image, Variable or Case); the others are absent from the JSON. Control actions except
+    /// Variable have children. A Condition's children are its Cases followed by exactly one Else.
     /// </summary>
     [DataContract]
     public sealed class ActionNode
@@ -344,12 +476,19 @@ namespace Automation.Core.Model
         [DataMember(Order = 6, EmitDefaultValue = false)] public LoopSettings Loop { get; set; }
         [DataMember(Order = 7, EmitDefaultValue = false)] public WaitSettings Wait { get; set; }
         [DataMember(Order = 9, EmitDefaultValue = false)] public ImageSettings Image { get; set; }
+        [DataMember(Order = 10, EmitDefaultValue = false)] public VariableSettings Variable { get; set; }
+        [DataMember(Order = 11, EmitDefaultValue = false)] public CaseSettings Case { get; set; }
 
         public List<ActionNode> Children { get; set; } = new List<ActionNode>();
 
         public bool IsContainer
         {
-            get { return Category == ActionCategory.Control; }
+            get { return Category == ActionCategory.Control && Control != ControlKind.Variable; }
+        }
+
+        public bool IsKind(ControlKind kind)
+        {
+            return Category == ActionCategory.Control && Control == kind;
         }
 
         public static ActionNode NewMouse(MouseSettings settings)
@@ -370,6 +509,30 @@ namespace Automation.Core.Model
         public static ActionNode NewLoop(LoopSettings settings)
         {
             return new ActionNode { Category = ActionCategory.Control, Control = ControlKind.Loop, Loop = settings ?? new LoopSettings() };
+        }
+
+        public static ActionNode NewVariable(VariableSettings settings)
+        {
+            return new ActionNode { Category = ActionCategory.Control, Control = ControlKind.Variable, Variable = settings ?? new VariableSettings() };
+        }
+
+        public static ActionNode NewCase(CaseSettings settings)
+        {
+            return new ActionNode { Category = ActionCategory.Control, Control = ControlKind.Case, Case = settings ?? new CaseSettings() };
+        }
+
+        public static ActionNode NewElse()
+        {
+            return new ActionNode { Category = ActionCategory.Control, Control = ControlKind.Else };
+        }
+
+        /// <summary>A Condition always has at least one Case and ends with its Else.</summary>
+        public static ActionNode NewCondition()
+        {
+            var node = new ActionNode { Category = ActionCategory.Control, Control = ControlKind.Condition };
+            node.Children.Add(NewCase(new CaseSettings { Expression = "true" }));
+            node.Children.Add(NewElse());
+            return node;
         }
 
         public static ActionNode NewImage(ImageSettings settings)
@@ -425,8 +588,25 @@ namespace Automation.Core.Model
             copy.Loop = Loop?.Clone();
             copy.Wait = Wait?.Clone();
             copy.Image = Image?.Clone();
+            copy.Variable = Variable?.Clone();
+            copy.Case = Case?.Clone();
             copy.Children = Children.Select(c => c.Clone()).ToList();
             return copy;
+        }
+
+        /// <summary>Keeps a Condition valid: only Cases and one Else, at least one Case, Else last.</summary>
+        private void RepairCondition()
+        {
+            var cases = new List<ActionNode>();
+            ActionNode otherwise = null;
+            foreach (var child in Children)
+            {
+                if (child.IsKind(ControlKind.Case)) cases.Add(child);
+                else if (child.IsKind(ControlKind.Else) && otherwise == null) otherwise = child;
+            }
+            if (cases.Count == 0) cases.Add(NewCase(new CaseSettings { Expression = "true" }));
+            if (otherwise == null) otherwise = NewElse();
+            Children = new List<ActionNode>(cases) { otherwise };
         }
 
         /// <summary>Repairs values that a hand-edited file may have left invalid, and keeps only the sub-object that applies.</summary>
@@ -441,10 +621,14 @@ namespace Automation.Core.Model
             var loop = Category == ActionCategory.Control && Control == ControlKind.Loop ? (Loop ?? new LoopSettings()) : null;
             var wait = Category == ActionCategory.Control && Control == ControlKind.Wait ? (Wait ?? new WaitSettings()) : null;
             var image = Category == ActionCategory.Control && Control == ControlKind.Image ? (Image ?? new ImageSettings()) : null;
-            Mouse = mouse; Keyboard = keyboard; Command = command; Loop = loop; Wait = wait; Image = image;
+            var variable = Category == ActionCategory.Control && Control == ControlKind.Variable ? (Variable ?? new VariableSettings()) : null;
+            var caseSettings = Category == ActionCategory.Control && Control == ControlKind.Case ? (Case ?? new CaseSettings()) : null;
+            Mouse = mouse; Keyboard = keyboard; Command = command; Loop = loop; Wait = wait; Image = image; Variable = variable; Case = caseSettings;
             mouse?.Normalize(); keyboard?.Normalize(); command?.Normalize(); loop?.Normalize(); wait?.Normalize(); image?.Normalize();
+            variable?.Normalize(); caseSettings?.Normalize();
 
             if (!IsContainer) Children.Clear();
+            if (IsKind(ControlKind.Condition)) RepairCondition();
             foreach (var child in Children) child.Normalize();
         }
     }
