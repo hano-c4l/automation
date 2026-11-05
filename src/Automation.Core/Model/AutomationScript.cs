@@ -22,6 +22,16 @@ namespace Automation.Core.Model
 
         [DataMember(Order = 5)] public List<Step> Steps { get; set; } = new List<Step>();
 
+        // The serializer skips constructors and initializers, so defaults for missing JSON fields are set here.
+        // Add every new field that has a non-zero default to this method.
+        [OnDeserializing]
+        private void SetDefaults(StreamingContext context)
+        {
+            Version = CurrentVersion;
+            RepeatCount = 1;
+            Steps = new List<Step>();
+        }
+
         public AutomationScript Clone()
         {
             return new AutomationScript

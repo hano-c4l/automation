@@ -35,6 +35,13 @@ namespace Automation.Core.Model
             set { Button = Enum.TryParse(value, true, out MouseButton parsed) ? parsed : MouseButton.Left; }
         }
 
+        // The serializer skips constructors and initializers, so defaults for missing JSON fields are set here.
+        [OnDeserializing]
+        private void SetDefaults(StreamingContext context)
+        {
+            Repeat = 1;
+        }
+
         public Step Clone()
         {
             return (Step)MemberwiseClone();

@@ -25,7 +25,10 @@ namespace Automation.Core.Model
         {
             var serializer = new DataContractJsonSerializer(typeof(AutomationScript));
             AutomationScript script;
-            using (var stream = File.OpenRead(path))
+            // Strip a UTF-8 byte order mark first: many editors add one and the JSON reader rejects it.
+            byte[] bytes = File.ReadAllBytes(path);
+            int offset = bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF ? 3 : 0;
+            using (var stream = new MemoryStream(bytes, offset, bytes.Length - offset))
             {
                 script = serializer.ReadObject(stream) as AutomationScript;
             }

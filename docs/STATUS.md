@@ -28,6 +28,12 @@ Cập nhật lần cuối: 2026-11-05
 4. Save rồi New rồi Open lại, các bước và setting giống như cũ.
 5. Loops = 0 chạy mãi đến khi dừng; MouseDown rồi dừng giữa chừng thì nút chuột được nhả.
 
+6. Thử ở scale hiển thị thật (125%/150%): layout dùng kích thước pixel cố định, báo nếu label/ô bị cắt.
+
+### Ghi chú cho milestone sau
+- Trường mới có giá trị mặc định khác 0 (anchor, ngưỡng giống ảnh, thời gian giữ chuột...) phải được đặt trong `[OnDeserializing] SetDefaults` của `Step`/`AutomationScript`, vì serializer không chạy constructor/initializer; thiếu thì file cũ sẽ đọc ra 0.
+- M4: `RegisterHotKey` có thể bắt cả phím do `SendInput` tạo ra, nên bước Key gửi F6/Esc có thể tự dừng kịch bản. Cần bỏ qua hotkey khi runner đang gửi phím, hoặc dùng tổ hợp có modifier làm phím dừng.
+
 ## Ghi chú môi trường
 - Khi Claude chạy exe từ công cụ của nó, Windows có lúc báo "An Application Control policy has blocked this file" (trước đó), nhưng người dùng chạy trực tiếp thì bình thường, và về sau PowerShell của Claude nạp được DLL. Nguyên nhân chưa xác định; cần thử trên máy sạch trước khi phát hành.
 - Lỗi cú pháp heredoc nhiều dòng trong Bash tool: tạo file bằng công cụ Write thay vì `cat <<EOF`.
