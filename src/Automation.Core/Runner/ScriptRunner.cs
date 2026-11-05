@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Threading;
 using Automation.Core.Input;
 using Automation.Core.Model;
+using Automation.Core.Native;
 using Automation.Core.Windows;
 
 namespace Automation.Core.Runner
@@ -33,6 +34,8 @@ namespace Automation.Core.Runner
         {
             if (script == null) throw new ArgumentNullException(nameof(script));
             _windowCache.Clear();
+            // 1 ms timer resolution so short delays and the per-iteration yield are not rounded up to ~15 ms.
+            NativeMethods.timeBeginPeriod(1);
             try
             {
                 ExecuteList(script.Actions, new RunContext(), token);
@@ -40,6 +43,7 @@ namespace Automation.Core.Runner
             finally
             {
                 ReleaseHeldButtons();
+                NativeMethods.timeEndPeriod(1);
             }
         }
 
@@ -85,21 +89,22 @@ namespace Automation.Core.Runner
         {
             if (loop.Children.Count == 0) return;
 
-            switch (loop.LoopMode)
+            var settings = loop.Loop;
+            switch (settings.Mode)
             {
                 case LoopType.Count:
-                    for (long i = 0; loop.LoopCount == 0 || i < loop.LoopCount; i++)
+                    for (long i = 0; settings.Count == 0 || i < settings.Count; i++)
                         Iterate(loop, context, token);
                     break;
 
                 case LoopType.Duration:
                     var watch = Stopwatch.StartNew();
-                    while (watch.ElapsedMilliseconds < loop.LoopDurationMs)
+                    while (watch.ElapsedMilliseconds < settings.DurationMs)
                         Iterate(loop, context, token);
                     break;
 
                 case LoopType.Until:
-                    DateTime? until = loop.GetLoopUntil();
+                    DateTime? until = settings.GetUntil();
                     if (until == null || until.Value <= DateTime.Now)
                     {
                         Message?.Invoke("Loop skipped: the end time is missing or already in the past.");
@@ -114,45 +119,50 @@ namespace Automation.Core.Runner
         private void Iterate(ActionNode loop, RunContext context, CancellationToken token)
         {
             ExecuteList(loop.Children, context, token);
-            Wait(1, token); // guarantees a loop whose body has no delay never spins without yielding or checking for a stop
+            Wait(0, token); // a loop whose body has no delay still yields and checks for a stop on every pass
         }
 
         // ---------------------------------------------------------------- mouse
 
         private void ExecuteMouse(ActionNode node, RunContext context, CancellationToken token)
         {
-            int x = node.X, y = node.Y;
-            WindowTarget target = !node.Process.IsEmpty ? node.Process : context.Window;
+            var m = node.Mouse;
+            int x = m.X, y = m.Y;
+            WindowTarget target = !m.Process.IsEmpty ? m.Process : context.Window;
             if (target != null && !target.IsEmpty)
             {
                 IntPtr hwnd = FindWindow(target);
                 Activate(hwnd, token);
                 var area = WindowLocator.GetClientArea(hwnd);
-                WindowLocator.ToScreen(area, node.Anchor, node.X, node.Y, out x, out y);
+                WindowLocator.ToScreen(area, m.Anchor, m.X, m.Y, out x, out y);
+                // Never act on whatever program happens to cover the point (activation is best effort).
+                var under = WindowLocator.WindowAt(x, y);
+                if (!under.HasValue || !WindowLocator.SameProcess(under.Value.Handle, hwnd))
+                    throw new InvalidOperationException("The target window is covered by another window at (" + x + ", " + y + ").");
             }
 
-            _mouse.MoveTo(x, y, ToInt(node.TimeMs), token);
-            switch (node.Action)
+            _mouse.MoveTo(x, y, ToInt(m.TimeMs), token);
+            switch (m.Action)
             {
                 case MouseAction.Click:
-                    _mouse.Click(node.Button);
+                    _mouse.Click(m.Button);
                     break;
                 case MouseAction.MouseDown:
-                    _mouse.Down(node.Button);
-                    _held.Add(node.Button);
+                    _mouse.Down(m.Button);
+                    _held.Add(m.Button);
                     break;
                 case MouseAction.MouseUp:
-                    _mouse.Up(node.Button);
-                    _held.Remove(node.Button);
+                    _mouse.Up(m.Button);
+                    _held.Remove(m.Button);
                     break;
                 case MouseAction.ScrollUp:
-                    _mouse.Scroll(Math.Max(1, node.ScrollNotches));
+                    _mouse.Scroll(Math.Max(1, m.ScrollNotches));
                     break;
                 case MouseAction.ScrollDown:
-                    _mouse.Scroll(-Math.Max(1, node.ScrollNotches));
+                    _mouse.Scroll(-Math.Max(1, m.ScrollNotches));
                     break;
             }
-            Wait(node.DelayMs, token);
+            Wait(m.DelayMs, token);
         }
 
         /// <summary>Returns the cached window for the target while it is still valid, otherwise searches again.</summary>
@@ -175,7 +185,7 @@ namespace Automation.Core.Runner
         /// </summary>
         private static void Activate(IntPtr hwnd, CancellationToken token)
         {
-            if (WindowLocator.IsForeground(hwnd) && !WindowLocator.IsMinimized(hwnd)) return;
+            if (WindowLocator.IsActive(hwnd) && !WindowLocator.IsMinimized(hwnd)) return;
             WindowLocator.BringToFront(hwnd);
             Wait(SettleAfterActivateMs, token);
             if (WindowLocator.IsMinimized(hwnd))
@@ -205,6 +215,18 @@ namespace Automation.Core.Runner
 
         private static void Wait(long ms, CancellationToken token)
         {
+            if (ms < 20)
+            {
+                // Timer granularity can be ~15 ms (Windows ignores timeBeginPeriod for a minimized app), so short
+                // waits are spun with a yield instead of slept; this keeps fast loops fast and still stoppable.
+                var watch = Stopwatch.StartNew();
+                do
+                {
+                    token.ThrowIfCancellationRequested();
+                    Thread.Sleep(0);
+                } while (watch.ElapsedMilliseconds < ms);
+                return;
+            }
             // WaitOne takes an int; split very long waits into chunks.
             while (ms > 0 && !token.IsCancellationRequested)
             {

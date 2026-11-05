@@ -50,7 +50,7 @@ namespace Automation.App
 
         // Toolbar
         private readonly ToolStripButton _startStop = new ToolStripButton("Start (F6)") { DisplayStyle = ToolStripItemDisplayStyle.Text };
-        private readonly ToolStripLabel _status = new ToolStripLabel("Ready") { Alignment = ToolStripItemAlignment.Right };
+        private readonly ToolStripStatusLabel _status = new ToolStripStatusLabel("Ready") { Spring = true, TextAlign = ContentAlignment.MiddleLeft };
 
         // Editor: common
         private readonly ComboBox _category = MakeCombo(typeof(ActionCategory));
@@ -109,7 +109,8 @@ namespace Automation.App
             tools.Items.Add(MakeToolButton("Save...", (s, e) => SaveScript()));
             tools.Items.Add(new ToolStripSeparator());
             tools.Items.Add(_startStop);
-            tools.Items.Add(_status);
+            var statusBar = new StatusStrip { SizingGrip = false };
+            statusBar.Items.Add(_status);
 
             // Action buttons: Add / Update / Delete, then In / Out / Up / Down.
             var buttons = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 4, RowCount = 2 };
@@ -166,6 +167,7 @@ namespace Automation.App
             // Fill control first, edge-docked panels afterwards.
             Controls.Add(_list);
             Controls.Add(right);
+            Controls.Add(statusBar);
             Controls.Add(tools);
         }
 
@@ -226,28 +228,29 @@ namespace Automation.App
 
         private ActionNode ReadEditor()
         {
-            var node = new ActionNode { Category = (ActionCategory)_category.SelectedItem };
-            if (node.Category == ActionCategory.Mouse)
+            if ((ActionCategory)_category.SelectedItem == ActionCategory.Mouse)
             {
-                node.Action = (MouseAction)_mouseAction.SelectedItem;
-                node.Button = (MouseButton)_button.SelectedItem;
-                node.TimeMs = _time.Milliseconds;
-                node.DelayMs = _delay.Milliseconds;
-                node.Process = ReadProcess();
-                node.Anchor = (WindowAnchor)_anchor.SelectedItem;
-                node.X = (int)_x.Value;
-                node.Y = (int)_y.Value;
-                node.ScrollNotches = (int)_notches.Value;
+                return ActionNode.NewMouse(new MouseSettings
+                {
+                    Action = (MouseAction)_mouseAction.SelectedItem,
+                    Button = (MouseButton)_button.SelectedItem,
+                    TimeMs = _time.Milliseconds,
+                    DelayMs = _delay.Milliseconds,
+                    Process = ReadProcess(),
+                    Anchor = (WindowAnchor)_anchor.SelectedItem,
+                    X = (int)_x.Value,
+                    Y = (int)_y.Value,
+                    ScrollNotches = (int)_notches.Value
+                });
             }
-            else
+            var loop = new LoopSettings
             {
-                node.Control = (ControlKind)_controlKind.SelectedItem;
-                node.LoopMode = (LoopType)_loopType.SelectedItem;
-                node.LoopCount = (long)_loopCount.Value;
-                node.LoopDurationMs = _loopDuration.Milliseconds;
-                node.SetLoopUntil(_loopUntil.Value);
-            }
-            return node;
+                Mode = (LoopType)_loopType.SelectedItem,
+                Count = (long)_loopCount.Value,
+                DurationMs = _loopDuration.Milliseconds
+            };
+            loop.SetUntil(_loopUntil.Value);
+            return ActionNode.NewLoop(loop);
         }
 
         private WindowTarget ReadProcess()
@@ -263,25 +266,26 @@ namespace Automation.App
             _category.SelectedItem = node.Category;
             if (node.Category == ActionCategory.Mouse)
             {
-                _mouseAction.SelectedItem = node.Action;
+                var m = node.Mouse;
+                _mouseAction.SelectedItem = m.Action;
                 UpdateEditorVisibility(); // so the button list matches the action before selecting the button
-                _button.SelectedItem = node.Button;
-                _time.Milliseconds = node.TimeMs;
-                _delay.Milliseconds = node.DelayMs;
-                _processName.Text = node.Process.ProcessName ?? "";
-                _processTitle.Text = node.Process.TitlePattern ?? "";
-                _anchor.SelectedItem = node.Anchor;
-                _x.Value = Clamp(_x, node.X);
-                _y.Value = Clamp(_y, node.Y);
-                _notches.Value = Clamp(_notches, node.ScrollNotches);
+                _button.SelectedItem = m.Button;
+                _time.Milliseconds = m.TimeMs;
+                _delay.Milliseconds = m.DelayMs;
+                _processName.Text = m.Process.ProcessName ?? "";
+                _processTitle.Text = m.Process.TitlePattern ?? "";
+                _anchor.SelectedItem = m.Anchor;
+                _x.Value = Clamp(_x, m.X);
+                _y.Value = Clamp(_y, m.Y);
+                _notches.Value = Clamp(_notches, m.ScrollNotches);
             }
             else
             {
                 _controlKind.SelectedItem = node.Control;
-                _loopType.SelectedItem = node.LoopMode;
-                _loopCount.Value = (decimal)Math.Min(node.LoopCount, (long)_loopCount.Maximum);
-                _loopDuration.Milliseconds = node.LoopDurationMs;
-                var until = node.GetLoopUntil();
+                _loopType.SelectedItem = node.Loop.Mode;
+                _loopCount.Value = (decimal)Math.Min(node.Loop.Count, (long)_loopCount.Maximum);
+                _loopDuration.Milliseconds = node.Loop.DurationMs;
+                var until = node.Loop.GetUntil();
                 if (until.HasValue && until.Value >= _loopUntil.MinDate && until.Value <= _loopUntil.MaxDate) _loopUntil.Value = until.Value;
             }
         }
@@ -474,24 +478,25 @@ namespace Automation.App
             string name, details, time = "", delay = "";
             if (n.Category == ActionCategory.Mouse)
             {
-                name = n.Action.ToString();
-                string where = n.Process.IsEmpty
+                var m = n.Mouse;
+                name = m.Action.ToString();
+                string where = m.Process.IsEmpty
                     ? "Screen"
-                    : (string.IsNullOrWhiteSpace(n.Process.ProcessName) ? "Title" : n.Process.ProcessName.Trim()) + "/" + n.Anchor;
-                bool hasButton = n.Action == MouseAction.Click || n.Action == MouseAction.MouseDown || n.Action == MouseAction.MouseUp;
-                details = (hasButton ? n.Button + " " : "") + where + " (" + n.X + ", " + n.Y + ")";
-                if (n.Action == MouseAction.ScrollUp || n.Action == MouseAction.ScrollDown) details += " x" + n.ScrollNotches;
-                time = TimeBox.Format(n.TimeMs);
-                delay = TimeBox.Format(n.DelayMs);
+                    : (string.IsNullOrWhiteSpace(m.Process.ProcessName) ? "Title" : m.Process.ProcessName.Trim()) + "/" + m.Anchor;
+                bool hasButton = m.Action == MouseAction.Click || m.Action == MouseAction.MouseDown || m.Action == MouseAction.MouseUp;
+                details = (hasButton ? m.Button + " " : "") + where + " (" + m.X + ", " + m.Y + ")";
+                if (m.Action == MouseAction.ScrollUp || m.Action == MouseAction.ScrollDown) details += " x" + m.ScrollNotches;
+                time = TimeBox.Format(m.TimeMs);
+                delay = TimeBox.Format(m.DelayMs);
             }
             else
             {
                 name = "Loop";
-                switch (n.LoopMode)
+                switch (n.Loop.Mode)
                 {
-                    case LoopType.Duration: details = "for " + TimeBox.Format(n.LoopDurationMs); break;
-                    case LoopType.Until: details = "until " + (n.GetLoopUntil()?.ToString(UntilFormat) ?? "?"); break;
-                    default: details = n.LoopCount == 0 ? "forever" : n.LoopCount + " time(s)"; break;
+                    case LoopType.Duration: details = "for " + TimeBox.Format(n.Loop.DurationMs); break;
+                    case LoopType.Until: details = "until " + (n.Loop.GetUntil()?.ToString(UntilFormat) ?? "?"); break;
+                    default: details = n.Loop.Count == 0 ? "forever" : n.Loop.Count + " time(s)"; break;
                 }
             }
             var item = new ListViewItem(indent + name);
@@ -664,13 +669,16 @@ namespace Automation.App
                 var line = Describe(new Row { Node = node, Depth = 0 });
                 PostStatus("Running: " + line.Text + "  " + line.SubItems[1].Text);
             };
-            runner.Message += PostStatus;
+            var notes = new List<string>();
+            runner.Message += text => { lock (notes) notes.Add(text); PostStatus(text); };
 
             SetRunning(true);
             try
             {
                 await Task.Run(() => runner.Run(snapshot, token));
-                SetStatus("Finished");
+                string extra;
+                lock (notes) extra = notes.Count == 0 ? "" : "  " + string.Join(" ", notes);
+                SetStatus("Finished." + extra);
             }
             catch (OperationCanceledException)
             {
@@ -800,9 +808,10 @@ namespace Automation.App
         private void AddRow(TableLayoutPanel table, string label, Control control)
         {
             var caption = new Label { Text = label, AutoSize = true, Anchor = AnchorStyles.Left, Padding = new Padding(0, 6, 8, 0) };
-            table.RowCount++;
-            table.Controls.Add(caption);
-            table.Controls.Add(control);
+            // Explicit cells: with auto placement a hidden control is skipped and the later controls shift into the wrong columns.
+            int row = table.RowCount++;
+            table.Controls.Add(caption, 0, row);
+            table.Controls.Add(control, 1, row);
             _rowLabels[control] = caption;
         }
 

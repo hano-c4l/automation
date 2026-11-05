@@ -105,6 +105,21 @@ namespace Automation.Core.Windows
             return hwnd != IntPtr.Zero && NativeMethods.GetForegroundWindow() == hwnd;
         }
 
+        /// <summary>True if the window, or another window of the same process (such as its dialog), is in front.</summary>
+        public static bool IsActive(IntPtr hwnd)
+        {
+            IntPtr foreground = NativeMethods.GetForegroundWindow();
+            return foreground != IntPtr.Zero && (foreground == hwnd || SameProcess(foreground, hwnd));
+        }
+
+        public static bool SameProcess(IntPtr a, IntPtr b)
+        {
+            if (a == IntPtr.Zero || b == IntPtr.Zero) return false;
+            NativeMethods.GetWindowThreadProcessId(a, out uint pidA);
+            NativeMethods.GetWindowThreadProcessId(b, out uint pidB);
+            return pidA != 0 && pidA == pidB;
+        }
+
         public static bool IsMinimized(IntPtr hwnd)
         {
             return NativeMethods.IsIconic(hwnd);

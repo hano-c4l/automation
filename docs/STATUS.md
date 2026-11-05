@@ -12,9 +12,9 @@ Cập nhật lần cuối: 2026-11-05
 - [x] M1 (engine chuột), M2 (UI, JSON, runner, phím nóng F6/Esc): đã merge vào `preview`, người dùng đã test.
 - [x] M3 (tọa độ theo cửa sổ): code + test Core xong, nay được gộp vào thiết kế mới.
 - [x] **Cây action (version 2 của JSON):**
-  - Core: `ActionNode` (một lớp, Category/Action/Button/Time/Delay/Process/Anchor/X/Y/ScrollNotches, Loop với Count/Duration/Until, `Children`), `AutomationScript` (chỉ có `Actions`), `ScriptSerializer` (từ chối file version 1), `ScriptRunner` đệ quy với `RunContext`, `MouseController.Scroll`, `WindowLocator.IsForeground`.
+  - Core: `ActionNode` (Category + `Mouse` hoặc `Loop` là sub-object, chỉ cái nào áp dụng mới có trong JSON; `Children` chỉ ghi cho Loop có con), `AutomationScript` (chỉ có `Actions`), `ScriptSerializer` (từ chối file version 1), `ScriptRunner` đệ quy với `RunContext`, `MouseController.Scroll`, `WindowLocator.IsForeground`.
   - App: thanh công cụ New/Open/Save/Start-Stop; danh sách thụt lề chọn nhiều; panel phải có Add/Update/Delete/In/Out/Up/Down, Category, form Mouse và form Loop, `TimeBox` (số + đơn vị ms/s/min/h), Pick program, Pick position.
-  - Đã kiểm tra bằng script PowerShell nạp DLL: JSON round-trip lồng nhau giữ giá trị 0 (Time=0, Delay=0), file version 1 bị từ chối, Loop theo số lần/khoảng thời gian (thân không delay vẫn không treo)/tới thời điểm (quá khứ thì bỏ qua kèm thông báo), hủy giữa chừng, click theo cửa sổ với Anchor BottomRight trong Loop (khớp từng pixel, dời cửa sổ vẫn trúng), báo lỗi khi không thấy cửa sổ.
+  - Đã kiểm tra bằng script PowerShell nạp DLL: JSON round-trip lồng nhau giữ giá trị 0 (Time=0, Delay=0), file version 1 bị từ chối, Loop theo số lần/khoảng thời gian (thân không delay vẫn không treo)/tới thời điểm (quá khứ thì bỏ qua kèm thông báo), hủy giữa chừng, click theo cửa sổ với Anchor BottomRight trong Loop (khớp từng pixel, dời cửa sổ vẫn trúng), báo lỗi khi không thấy cửa sổ; cửa sổ Notepad thật bị che hoặc minimize thì runner khôi phục và đưa lên trước rồi click đúng chỗ; nếu điểm click bị cửa sổ chương trình khác che thì dừng với thông báo thay vì click nhầm. Giao diện đã chụp ảnh kiểm tra bố cục (không bị cắt, hàng ẩn/hiện đúng cột).
 
 ## Việc tiếp theo
 - [ ] Người dùng test giao diện (checklist dưới), báo lỗi nếu có.
@@ -40,6 +40,8 @@ Cập nhật lần cuối: 2026-11-05
 - Khi Process khớp nhiều cửa sổ, runner lấy cửa sổ khớp đầu tiên theo z-order (ưu tiên không minimize); cần điền Title (regex) để chỉ rõ.
 - Đổi Anchor sau khi pick sẽ giữ nguyên số X/Y nhưng đổi nghĩa; phải pick lại.
 - Multi-select giữ lại bằng ListView thụt lề (TreeView của WinForms không chọn nhiều được). Chưa có thu gọn/mở rộng nhánh.
+
+- Delay ngắn (<20 ms) và mỗi vòng lặp không delay dùng chờ có nhường CPU (không dùng timer) vì Windows 11 bỏ qua `timeBeginPeriod` khi app thu nhỏ; loop zero-delay chạy hết tốc độ một lõi CPU.
 
 ## Ghi chú môi trường
 - Khi Claude chạy exe từ công cụ của nó, Windows có lúc báo "An Application Control policy has blocked this file", nhưng người dùng chạy trực tiếp thì bình thường. Nguyên nhân chưa xác định; cần thử trên máy sạch trước khi phát hành.
