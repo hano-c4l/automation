@@ -22,6 +22,9 @@ namespace Automation.Core.Model
 
         [DataMember(Order = 5)] public List<Step> Steps { get; set; } = new List<Step>();
 
+        /// <summary>The window that Window-mode steps are relative to.</summary>
+        [DataMember(Order = 6)] public WindowTarget Target { get; set; } = new WindowTarget();
+
         // The serializer skips constructors and initializers, so defaults for missing JSON fields are set here.
         // Add every new field that has a non-zero default to this method.
         [OnDeserializing]
@@ -30,6 +33,7 @@ namespace Automation.Core.Model
             Version = CurrentVersion;
             RepeatCount = 1;
             Steps = new List<Step>();
+            Target = new WindowTarget();
         }
 
         public AutomationScript Clone()
@@ -40,7 +44,8 @@ namespace Automation.Core.Model
                 StartDelayMs = StartDelayMs,
                 RepeatCount = RepeatCount,
                 RepeatDelayMs = RepeatDelayMs,
-                Steps = Steps.Select(s => s.Clone()).ToList()
+                Steps = Steps.Select(s => s.Clone()).ToList(),
+                Target = Target.Clone()
             };
         }
 
@@ -48,6 +53,7 @@ namespace Automation.Core.Model
         internal void Normalize()
         {
             if (Steps == null) Steps = new List<Step>();
+            if (Target == null) Target = new WindowTarget();
             Steps.RemoveAll(s => s == null);
             foreach (var step in Steps)
             {

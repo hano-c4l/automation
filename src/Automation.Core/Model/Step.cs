@@ -20,6 +20,24 @@ namespace Automation.Core.Model
         [DataMember(Order = 6)] public int DelayAfterMs { get; set; }
         [DataMember(Order = 7)] public int Repeat { get; set; } = 1;
 
+        /// <summary>Screen: X/Y are absolute. Window: X/Y are offsets from Anchor of the script's target window.</summary>
+        public CoordinateMode Mode { get; set; }
+        public WindowAnchor Anchor { get; set; }
+
+        [DataMember(Name = "Mode", Order = 8)]
+        private string ModeName
+        {
+            get { return Mode.ToString(); }
+            set { Mode = Enum.TryParse(value, true, out CoordinateMode parsed) ? parsed : CoordinateMode.Screen; }
+        }
+
+        [DataMember(Name = "Anchor", Order = 9)]
+        private string AnchorName
+        {
+            get { return Anchor.ToString(); }
+            set { Anchor = Enum.TryParse(value, true, out WindowAnchor parsed) ? parsed : WindowAnchor.TopLeft; }
+        }
+
         // Enums are stored by name, not by number, so reordering the enums never changes the meaning of saved files.
         [DataMember(Name = "Action", Order = 1)]
         private string ActionName

@@ -3,36 +3,39 @@
 Cập nhật lần cuối: 2026-11-05
 
 ## Hiện tại
-- Đang ở **milestone 2** (giao diện + lưu/mở + phím nóng): code xong, build sạch, chờ người dùng test giao diện.
-- Nhánh: `preview` (docs + cấu hình Claude, PR #1), `feature_m1_scaffold` (M1, chưa push), `feature_m2_ui` (M2, cắt từ M1, chưa push). M1 và M2 chưa PR vào `preview`; khi người dùng nói "PR into preview" thì push và PR (M2 chứa luôn M1).
+- Đang ở **milestone 3** (tọa độ theo cửa sổ): code xong, build sạch, đã kiểm tra Core bằng cửa sổ test thật; chờ người dùng test giao diện.
+- M1 + M2 đã merge vào `preview` (PR #2). Nhánh đang làm: `feature_m3_window_coords` (cắt từ `preview`, chưa push). Khi người dùng nói "PR into preview" thì push và PR.
 
 ## Đã làm
 - [x] Thống nhất yêu cầu và công nghệ (C# / .NET Framework 4.8 / WinForms, chỉ Windows). Quyết định chi tiết trong `docs/PROJECT.md`.
-- [x] Nhánh `preview` đã tạo; PR #1 (docs + cấu hình Claude) đã merge vào `preview`.
+- [x] Nhánh `preview` đã tạo; PR #1 (docs + cấu hình Claude) và PR #2 (M1 + M2) đã merge vào `preview`.
 - [x] Cài .NET SDK 10.0.403 (winget) để build project net48.
-- [x] **M1:** solution, `Automation.Core` (netstandard2.0) với `MouseController` (Move có easing theo thời gian, Down, Up, Click), `Automation.App` (net48 WinForms, manifest DPI PerMonitorV2). Người dùng đã test: move, delay, click trái/phải đều đúng.
-- [x] **M2 (code):**
-  - Core: `Step`, `AutomationScript`, `ScriptSerializer` (JSON thụt lề bằng `DataContractJsonSerializer`, enum ghi dạng chữ, có `Version`), `ScriptRunner` (lặp vòng, lặp từng bước, delay, hủy bằng token, tự nhả nút chuột đang giữ khi dừng).
-  - App: danh sách bước (Add/Update/Remove/Up/Down), overlay chọn điểm toàn màn hình (`PointPickerForm`), Open/Save/New, phím nóng toàn cục **F6** Start/Stop và **Esc** dừng khẩn cấp (Esc chỉ đăng ký khi đang chạy), cửa sổ tự thu nhỏ khi chạy.
-  - Đã kiểm tra bằng code thật (qua PowerShell): lưu/mở JSON đúng giá trị (cả tọa độ âm), runner đúng thời gian và hủy được giữa chừng. **Chưa test được giao diện** (Claude không điều khiển được UI).
+- [x] **M1:** solution, `Automation.Core` (netstandard2.0) với `MouseController` (Move có easing theo thời gian, Down, Up, Click), `Automation.App` (net48 WinForms, manifest DPI PerMonitorV2). Người dùng đã test OK.
+- [x] **M2:** `Step`, `AutomationScript`, `ScriptSerializer` (JSON thụt lề, enum ghi dạng chữ, có `Version`, chịu được BOM, trường thiếu về mặc định), `ScriptRunner`, danh sách bước chọn nhiều, overlay chọn điểm, Open/Save/New, phím nóng F6 Start/Stop và Esc dừng khẩn cấp. Người dùng đã test, đã sửa lỗi layout.
+- [x] **M3 (code):**
+  - Core: `CoordinateMode` (Screen/Window), `WindowAnchor` (TopLeft, TopRight, BottomLeft, BottomRight, Center), `WindowTarget` (tên process, regex tiêu đề, BringToFront; lưu ở `AutomationScript.Target`), `WindowLocator` (tìm cửa sổ, vùng client, đổi qua lại màn hình/offset, đưa cửa sổ lên trước), `ScriptRunner` quy đổi lại vị trí cửa sổ ở mỗi lần chạy bước.
+  - App: cột Position, chọn Position/Anchor cho từng bước, nhóm "Target window" (Process name, Title regex, Bring to front, "Pick window..." click vào cửa sổ để lấy tên process, "Check" kiểm tra tìm thấy cửa sổ). "Pick on screen..." tự đổi tọa độ thành offset khi bước ở chế độ Window.
+  - Đã kiểm tra bằng cửa sổ test thật: tọa độ khớp từng pixel cho TopLeft/BottomRight/Center; dời cửa sổ rồi chạy lại vẫn trúng; báo lỗi rõ khi không thấy cửa sổ hoặc chưa đặt target; file JSON cũ đọc ra Screen/TopLeft. **Chưa test được giao diện** và `BringToFront` (best effort, phụ thuộc quy tắc foreground của Windows).
 
 ## Việc tiếp theo
-- [ ] Người dùng test giao diện M2 (xem checklist bên dưới), báo lỗi nếu có.
-- [ ] PR M2 vào `preview` khi người dùng yêu cầu.
-- [ ] M3: tọa độ theo cửa sổ; M4: gửi phím/text, nhận diện ảnh; M5: license (xem `docs/PROJECT.md`).
+- [ ] Người dùng test giao diện M3 (checklist bên dưới), báo lỗi nếu có.
+- [ ] PR M3 vào `preview` khi người dùng yêu cầu.
+- [ ] M4: gửi phím/text, nhận diện ảnh và điều kiện; M5: license (xem `docs/PROJECT.md`).
 
-### Checklist test M2
-1. Add vài bước, chọn bước rồi Update/Remove/Up/Down có đúng không.
-2. "Pick on screen..." phủ được mọi màn hình, click lấy đúng tọa độ, Esc hủy.
-3. Start bằng nút và bằng F6; Esc hoặc F6 dừng được cả lúc chuột đang move chậm.
-4. Save rồi New rồi Open lại, các bước và setting giống như cũ.
-5. Loops = 0 chạy mãi đến khi dừng; MouseDown rồi dừng giữa chừng thì nút chuột được nhả.
-
-6. Thử ở scale hiển thị thật (125%/150%): layout dùng kích thước pixel cố định, báo nếu label/ô bị cắt.
+### Checklist test M3
+1. Mở một chương trình (ví dụ Notepad), bấm "Pick window..." rồi click vào nó: ô Process name được điền; "Check" báo tìm thấy và kích thước vùng client.
+2. Thêm bước, đặt Position = Window, Anchor = TopLeft, bấm "Pick on screen..." chọn một điểm trong cửa sổ đó: X/Y là offset nhỏ (không phải tọa độ màn hình lớn).
+3. Chạy, rồi kéo cửa sổ sang chỗ khác và chạy lại: chuột vẫn trúng đúng điểm trong cửa sổ.
+4. Đóng chương trình đích rồi Start: báo "Target window not found", không click lung tung.
+5. Thử Anchor khác (BottomRight, Center) với cửa sổ đổi kích thước.
+6. Minimize chương trình đích: có Bring to front thì tự khôi phục, không có thì báo lỗi "minimized".
+7. Lưu file rồi mở lại: Target và Position/Anchor giữ nguyên.
+8. Thử ở scale hiển thị thật (125%/150%): báo nếu label/ô bị cắt (panel phải có thanh cuộn).
 
 ### Ghi chú cho milestone sau
-- Trường mới có giá trị mặc định khác 0 (anchor, ngưỡng giống ảnh, thời gian giữ chuột...) phải được đặt trong `[OnDeserializing] SetDefaults` của `Step`/`AutomationScript`, vì serializer không chạy constructor/initializer; thiếu thì file cũ sẽ đọc ra 0.
+- Trường mới có giá trị mặc định khác 0 phải được đặt trong `[OnDeserializing] SetDefaults` của `Step`/`AutomationScript`, vì serializer không chạy constructor/initializer; thiếu thì file cũ sẽ đọc ra 0. (Các trường M3 đều có mặc định 0 nên an toàn.)
 - M4: `RegisterHotKey` có thể bắt cả phím do `SendInput` tạo ra, nên bước Key gửi F6/Esc có thể tự dừng kịch bản. Cần bỏ qua hotkey khi runner đang gửi phím, hoặc dùng tổ hợp có modifier làm phím dừng.
+- Tọa độ Window-mode giả định cửa sổ giữ nguyên kích thước hoặc dùng anchor phù hợp; không tự co giãn theo kích thước.
 
 ## Ghi chú môi trường
 - Khi Claude chạy exe từ công cụ của nó, Windows có lúc báo "An Application Control policy has blocked this file" (trước đó), nhưng người dùng chạy trực tiếp thì bình thường, và về sau PowerShell của Claude nạp được DLL. Nguyên nhân chưa xác định; cần thử trên máy sạch trước khi phát hành.

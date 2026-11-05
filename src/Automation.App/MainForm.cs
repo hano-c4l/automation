@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Linq;
@@ -9,6 +10,7 @@ using System.Windows.Forms;
 using Automation.Core.Input;
 using Automation.Core.Model;
 using Automation.Core.Runner;
+using Automation.Core.Windows;
 
 namespace Automation.App
 {
@@ -42,6 +44,13 @@ namespace Automation.App
         private readonly NumericUpDown _moveMs = MakeNumber(0, 600000, 500);
         private readonly NumericUpDown _delayMs = MakeNumber(0, 600000, 500);
         private readonly NumericUpDown _repeat = MakeNumber(1, 1000000, 1);
+        private readonly ComboBox _mode = MakeCombo(typeof(CoordinateMode));
+        private readonly ComboBox _anchor = MakeCombo(typeof(WindowAnchor));
+
+        // Target window (script level)
+        private readonly TextBox _targetProcess = new TextBox { Width = 160 };
+        private readonly TextBox _targetTitle = new TextBox { Width = 160 };
+        private readonly CheckBox _bringToFront = new CheckBox { Text = "Bring to front before running", AutoSize = true };
 
         // Script settings
         private readonly NumericUpDown _startDelay = MakeNumber(0, 600000, 2000);
@@ -71,6 +80,7 @@ namespace Automation.App
             _list.Columns.Add("#", 36);
             _list.Columns.Add("Action", 90);
             _list.Columns.Add("Button", 70);
+            _list.Columns.Add("Position", 90);
             _list.Columns.Add("X", 60);
             _list.Columns.Add("Y", 60);
             _list.Columns.Add("Move (ms)", 80);
@@ -84,6 +94,8 @@ namespace Automation.App
             var editorTable = NewTable();
             AddRow(editorTable, "Action", _action);
             AddRow(editorTable, "Button", _button);
+            AddRow(editorTable, "Position", _mode);
+            AddRow(editorTable, "Anchor (window)", _anchor);
             AddRow(editorTable, "X (px)", _x);
             AddRow(editorTable, "Y (px)", _y);
             AddRow(editorTable, "", pickButton);
@@ -110,7 +122,22 @@ namespace Automation.App
             AddRow(settingsTable, "Delay between loops (ms)", _loopDelay);
             settings.Controls.Add(settingsTable);
 
+            var targetBox = new GroupBox { Text = "Target window (for Window positions)", Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8) };
+            var targetTable = NewTable();
+            AddRow(targetTable, "Process name", _targetProcess);
+            AddRow(targetTable, "Title (regex)", _targetTitle);
+            AddRow(targetTable, "", _bringToFront);
+            var targetButtons = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 2, RowCount = 1 };
+            targetButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50f));
+            targetButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50f));
+            targetButtons.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            AddGridButton(targetButtons, "Pick window...", 0, 0, (s, e) => PickTargetWindow());
+            AddGridButton(targetButtons, "Check", 1, 0, (s, e) => CheckTargetWindow());
+            targetBox.Controls.Add(targetButtons);
+            targetBox.Controls.Add(targetTable);
+
             // Docked top-to-bottom: the control added last is docked first.
+            _editArea.Controls.Add(targetBox);
             _editArea.Controls.Add(settings);
             _editArea.Controls.Add(editor);
 
@@ -143,6 +170,8 @@ namespace Automation.App
                 }
             };
             _startStop.Click += (s, e) => ToggleRun();
+            _mode.SelectedIndexChanged += (s, e) => _anchor.Enabled = (CoordinateMode)_mode.SelectedItem == CoordinateMode.Window;
+            _anchor.Enabled = false;
             _action.SelectedIndexChanged += (s, e) => _button.Enabled = (StepAction)_action.SelectedItem != StepAction.Move;
         }
 
@@ -158,7 +187,9 @@ namespace Automation.App
                 Y = (int)_y.Value,
                 MoveDurationMs = (int)_moveMs.Value,
                 DelayAfterMs = (int)_delayMs.Value,
-                Repeat = (int)_repeat.Value
+                Repeat = (int)_repeat.Value,
+                Mode = (CoordinateMode)_mode.SelectedItem,
+                Anchor = (WindowAnchor)_anchor.SelectedItem
             };
         }
 
@@ -174,6 +205,8 @@ namespace Automation.App
             _moveMs.Value = Clamp(_moveMs, step.MoveDurationMs);
             _delayMs.Value = Clamp(_delayMs, step.DelayAfterMs);
             _repeat.Value = Clamp(_repeat, step.Repeat);
+            _mode.SelectedItem = step.Mode;
+            _anchor.SelectedItem = step.Anchor;
         }
 
         private void AddStep()
@@ -244,10 +277,78 @@ namespace Automation.App
             }
             WindowState = previous;
             Activate();
-            if (picked.HasValue)
+            if (!picked.HasValue) return;
+
+            int x = picked.Value.X, y = picked.Value.Y;
+            if ((CoordinateMode)_mode.SelectedItem == CoordinateMode.Window)
             {
-                _x.Value = Clamp(_x, picked.Value.X);
-                _y.Value = Clamp(_y, picked.Value.Y);
+                // Store the point as an offset from the chosen anchor of the target window's client area.
+                IntPtr hwnd;
+                try { hwnd = WindowLocator.Find(ReadTarget()); }
+                catch (ArgumentException ex) { SetStatus(ex.Message); return; }
+                if (hwnd == IntPtr.Zero)
+                {
+                    SetStatus("Target window not found: set the target window first (Pick window...).");
+                    return;
+                }
+                var area = WindowLocator.GetClientArea(hwnd);
+                WindowLocator.FromScreen(area, (WindowAnchor)_anchor.SelectedItem, x, y, out x, out y);
+            }
+            _x.Value = Clamp(_x, x);
+            _y.Value = Clamp(_y, y);
+        }
+
+        private WindowTarget ReadTarget()
+        {
+            return new WindowTarget
+            {
+                ProcessName = _targetProcess.Text.Trim(),
+                TitlePattern = _targetTitle.Text.Trim(),
+                BringToFront = _bringToFront.Checked
+            };
+        }
+
+        /// <summary>Lets the user click any window to fill in the target process name.</summary>
+        private void PickTargetWindow()
+        {
+            var previous = WindowState;
+            WindowState = FormWindowState.Minimized;
+            Application.DoEvents();
+            Thread.Sleep(250);
+            Point? picked = null;
+            using (var picker = new PointPickerForm())
+            {
+                if (picker.ShowDialog() == DialogResult.OK) picked = picker.SelectedPoint;
+            }
+            Thread.Sleep(150); // let the overlay disappear so WindowFromPoint sees the window underneath
+            WindowInfo? info = picked.HasValue ? WindowLocator.WindowAt(picked.Value.X, picked.Value.Y) : null;
+            WindowState = previous;
+            Activate();
+            if (!info.HasValue) return;
+
+            if (string.Equals(info.Value.ProcessName, Process.GetCurrentProcess().ProcessName, StringComparison.OrdinalIgnoreCase))
+            {
+                SetStatus("That is this program's own window; pick another window.");
+                return;
+            }
+            _targetProcess.Text = info.Value.ProcessName;
+            SetStatus("Target process: " + info.Value.ProcessName + "  title: \"" + info.Value.Title + "\" (use the title box to tell windows of the same program apart)");
+        }
+
+        private void CheckTargetWindow()
+        {
+            try
+            {
+                var target = ReadTarget();
+                if (target.IsEmpty) { SetStatus("Enter a process name or a title pattern first."); return; }
+                IntPtr hwnd = WindowLocator.Find(target);
+                if (hwnd == IntPtr.Zero) { SetStatus("Target window not found."); return; }
+                var area = WindowLocator.GetClientArea(hwnd);
+                SetStatus("Found \"" + WindowLocator.GetTitle(hwnd) + "\", client area " + area.Width + "x" + area.Height + " at (" + area.Left + ", " + area.Top + ")");
+            }
+            catch (ArgumentException ex)
+            {
+                SetStatus(ex.Message);
             }
         }
 
@@ -273,6 +374,7 @@ namespace Automation.App
                 var item = new ListViewItem((i + 1).ToString());
                 item.SubItems.Add(s.Action.ToString());
                 item.SubItems.Add(s.Action == StepAction.Move ? "-" : s.Button.ToString());
+                item.SubItems.Add(s.Mode == CoordinateMode.Window ? "Win/" + s.Anchor : "Screen");
                 item.SubItems.Add(s.X.ToString());
                 item.SubItems.Add(s.Y.ToString());
                 item.SubItems.Add(s.MoveDurationMs.ToString());
@@ -299,10 +401,15 @@ namespace Automation.App
             _script.StartDelayMs = (int)_startDelay.Value;
             _script.RepeatCount = (int)_loops.Value;
             _script.RepeatDelayMs = (int)_loopDelay.Value;
+            _script.Target = ReadTarget();
         }
 
         private void LoadSettingsFromScript()
         {
+            var target = _script.Target ?? new WindowTarget();
+            _targetProcess.Text = target.ProcessName ?? "";
+            _targetTitle.Text = target.TitlePattern ?? "";
+            _bringToFront.Checked = target.BringToFront;
             _startDelay.Value = Clamp(_startDelay, _script.StartDelayMs);
             _loops.Value = Clamp(_loops, _script.RepeatCount);
             _loopDelay.Value = Clamp(_loopDelay, _script.RepeatDelayMs);

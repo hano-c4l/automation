@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using Automation.Core.Input;
 using Automation.Core.Model;
+using Automation.Core.Windows;
 
 namespace Automation.Core.Runner
 {
@@ -11,6 +13,8 @@ namespace Automation.Core.Runner
     {
         private readonly MouseController _mouse;
         private readonly HashSet<MouseButton> _held = new HashSet<MouseButton>();
+        private WindowTarget _target = new WindowTarget();
+        private IntPtr _targetWindow;
 
         public ScriptRunner(MouseController mouse)
         {
@@ -29,8 +33,17 @@ namespace Automation.Core.Runner
             if (script == null) throw new ArgumentNullException(nameof(script));
             if (script.Steps.Count == 0) return;
 
+            _target = script.Target ?? new WindowTarget();
+            _targetWindow = IntPtr.Zero;
+
             try
             {
+                if (script.Steps.Any(s => s.Mode == CoordinateMode.Window))
+                {
+                    // Fail before doing anything if the window is missing, instead of clicking at wrong places.
+                    EnsureTargetWindow();
+                    if (_target.BringToFront) WindowLocator.BringToFront(_targetWindow);
+                }
                 Wait(script.StartDelayMs, token);
                 for (int run = 1; script.RepeatCount == 0 || run <= script.RepeatCount; run++)
                 {
@@ -57,7 +70,8 @@ namespace Automation.Core.Runner
             for (int n = 0; n < repeat; n++)
             {
                 token.ThrowIfCancellationRequested();
-                _mouse.MoveTo(step.X, step.Y, step.MoveDurationMs, token);
+                ResolvePosition(step, out int x, out int y);
+                _mouse.MoveTo(x, y, step.MoveDurationMs, token);
                 switch (step.Action)
                 {
                     case StepAction.Click:
@@ -74,6 +88,38 @@ namespace Automation.Core.Runner
                 }
                 Wait(step.DelayAfterMs, token);
             }
+        }
+
+        /// <summary>Screen steps use X/Y as is; Window steps are resolved against the window's current position on every run.</summary>
+        private void ResolvePosition(Step step, out int x, out int y)
+        {
+            if (step.Mode != CoordinateMode.Window)
+            {
+                x = step.X;
+                y = step.Y;
+                return;
+            }
+
+            EnsureTargetWindow();
+            if (WindowLocator.IsMinimized(_targetWindow))
+            {
+                if (!_target.BringToFront)
+                    throw new InvalidOperationException("The target window is minimized.");
+                WindowLocator.BringToFront(_targetWindow);
+            }
+            var area = WindowLocator.GetClientArea(_targetWindow);
+            WindowLocator.ToScreen(area, step.Anchor, step.X, step.Y, out x, out y);
+        }
+
+        /// <summary>Keeps the cached window handle if it is still valid, otherwise searches again.</summary>
+        private void EnsureTargetWindow()
+        {
+            if (WindowLocator.Exists(_targetWindow)) return;
+            _targetWindow = WindowLocator.Find(_target);
+            if (_targetWindow == IntPtr.Zero)
+                throw new InvalidOperationException(_target.IsEmpty
+                    ? "A step uses window coordinates but no target window is set."
+                    : "Target window not found.");
         }
 
         /// <summary>Releases any button left pressed by a MouseDown step when the run stops early.</summary>
