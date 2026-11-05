@@ -89,12 +89,14 @@ namespace Automation.App
             AddRow(editorTable, "Delay after (ms)", _delayMs);
             AddRow(editorTable, "Repeat step", _repeat);
 
-            var stepButtons = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true };
-            stepButtons.Controls.Add(MakeButton("Add", (s, e) => AddStep()));
-            stepButtons.Controls.Add(MakeButton("Update", (s, e) => UpdateStep()));
-            stepButtons.Controls.Add(MakeButton("Remove", (s, e) => RemoveStep()));
-            stepButtons.Controls.Add(MakeButton("Up", (s, e) => MoveStep(-1)));
-            stepButtons.Controls.Add(MakeButton("Down", (s, e) => MoveStep(1)));
+            // Two rows of three equal columns so every button stays visible at any display scale.
+            var stepButtons = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 3, RowCount = 2 };
+            for (int c = 0; c < 3; c++) stepButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33f));
+            AddGridButton(stepButtons, "Add", 0, 0, (s, e) => AddStep());
+            AddGridButton(stepButtons, "Update", 1, 0, (s, e) => UpdateStep());
+            AddGridButton(stepButtons, "Remove", 2, 0, (s, e) => RemoveStep());
+            AddGridButton(stepButtons, "Up", 0, 1, (s, e) => MoveStep(-1));
+            AddGridButton(stepButtons, "Down", 1, 1, (s, e) => MoveStep(1));
             editor.Controls.Add(stepButtons);
             editor.Controls.Add(editorTable);
 
@@ -109,7 +111,7 @@ namespace Automation.App
             _editArea.Controls.Add(settings);
             _editArea.Controls.Add(editor);
 
-            var right = new Panel { Dock = DockStyle.Right, Width = 330, Padding = new Padding(8) };
+            var right = new Panel { Dock = DockStyle.Right, Width = 360, Padding = new Padding(8) };
             right.Controls.Add(_editArea);
 
             var bottom = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, Padding = new Padding(8) };
@@ -455,6 +457,13 @@ namespace Automation.App
             var button = new Button { Text = text, AutoSize = true };
             button.Click += onClick;
             return button;
+        }
+
+        private static void AddGridButton(TableLayoutPanel grid, string text, int column, int row, EventHandler onClick)
+        {
+            var button = new Button { Text = text, Dock = DockStyle.Fill, AutoSize = true };
+            button.Click += onClick;
+            grid.Controls.Add(button, column, row);
         }
 
         private static TableLayoutPanel NewTable()
