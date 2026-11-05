@@ -71,6 +71,30 @@ namespace Automation.Core.Windows
             return firstRestored != IntPtr.Zero ? firstRestored : firstMatch;
         }
 
+        /// <summary>True if the given window satisfies the target's process name and title pattern.</summary>
+        /// <exception cref="ArgumentException">The title pattern is not a valid regular expression.</exception>
+        public static bool Matches(IntPtr hwnd, WindowTarget target)
+        {
+            if (target == null || target.IsEmpty || !Exists(hwnd)) return false;
+
+            if (!string.IsNullOrWhiteSpace(target.TitlePattern))
+            {
+                Regex title;
+                try { title = new Regex(target.TitlePattern, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant); }
+                catch (ArgumentException ex) { throw new ArgumentException("Invalid title pattern: " + ex.Message); }
+                if (!title.IsMatch(GetTitle(hwnd))) return false;
+            }
+            if (!string.IsNullOrWhiteSpace(target.ProcessName))
+            {
+                string process = target.ProcessName.Trim();
+                if (process.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                    process = process.Substring(0, process.Length - 4);
+                NativeMethods.GetWindowThreadProcessId(hwnd, out uint pid);
+                if (!string.Equals(GetProcessName(pid), process, StringComparison.OrdinalIgnoreCase)) return false;
+            }
+            return true;
+        }
+
         public static bool Exists(IntPtr hwnd)
         {
             return hwnd != IntPtr.Zero && NativeMethods.IsWindow(hwnd);

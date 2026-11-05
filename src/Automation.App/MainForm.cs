@@ -275,6 +275,11 @@ namespace Automation.App
             {
                 if (picker.ShowDialog() == DialogResult.OK) picked = picker.SelectedPoint;
             }
+            Thread.Sleep(150); // let the overlay disappear so WindowFromPoint sees the window underneath
+            // Resolve the clicked window now, before this form is restored on top of it.
+            WindowInfo? clickedWindow = null;
+            if (picked.HasValue && (CoordinateMode)_mode.SelectedItem == CoordinateMode.Window)
+                clickedWindow = WindowLocator.WindowAt(picked.Value.X, picked.Value.Y);
             WindowState = previous;
             Activate();
             if (!picked.HasValue) return;
@@ -282,16 +287,29 @@ namespace Automation.App
             int x = picked.Value.X, y = picked.Value.Y;
             if ((CoordinateMode)_mode.SelectedItem == CoordinateMode.Window)
             {
-                // Store the point as an offset from the chosen anchor of the target window's client area.
-                IntPtr hwnd;
-                try { hwnd = WindowLocator.Find(ReadTarget()); }
-                catch (ArgumentException ex) { SetStatus(ex.Message); return; }
-                if (hwnd == IntPtr.Zero)
+                // Store the point as an offset from the chosen anchor of the client area of the window that was
+                // actually clicked (not just the first window that matches the target), and refuse if it is not the target.
+                var target = ReadTarget();
+                if (target.IsEmpty)
                 {
-                    SetStatus("Target window not found: set the target window first (Pick window...).");
+                    SetStatus("Set the target window first (Pick window... or type a process name).");
                     return;
                 }
-                var area = WindowLocator.GetClientArea(hwnd);
+                var clicked = clickedWindow;
+                bool matches;
+                try { matches = clicked.HasValue && WindowLocator.Matches(clicked.Value.Handle, target); }
+                catch (ArgumentException ex) { SetStatus(ex.Message); return; }
+                if (!matches)
+                {
+                    SetStatus("That point is not inside a window matching the target window.");
+                    return;
+                }
+                var area = WindowLocator.GetClientArea(clicked.Value.Handle);
+                if (x < area.Left || y < area.Top || x >= area.Left + area.Width || y >= area.Top + area.Height)
+                {
+                    SetStatus("That point is outside the target window's client area (title bar or border).");
+                    return;
+                }
                 WindowLocator.FromScreen(area, (WindowAnchor)_anchor.SelectedItem, x, y, out x, out y);
             }
             _x.Value = Clamp(_x, x);
