@@ -3,43 +3,54 @@
 Cập nhật lần cuối: 2026-11-05
 
 ## Hiện tại
-- Đang ở **milestone 2** (giao diện + lưu/mở + phím nóng): code xong, build sạch, chờ người dùng test giao diện.
-- Nhánh: `preview` (docs + cấu hình Claude, PR #1), `feature_m1_scaffold` (M1, chưa push), `feature_m2_ui` (M2, cắt từ M1, chưa push). M1 và M2 chưa PR vào `preview`; khi người dùng nói "PR into preview" thì push và PR (M2 chứa luôn M1).
+- Giai đoạn tiếp theo đã code xong: **Keyboard, Command/Open, Control/Wait** (ngoài Mouse và Loop đã có). Build sạch, Core đã test bằng script với cửa sổ thật; **chờ người dùng test giao diện** (đặc biệt ô bắt phím).
+- Nhánh: `feature_keyboard_wait` (cắt từ `feature_action_tree`, chưa push). `feature_action_tree` (cây action) và M3 cũng chưa vào `preview`; khi người dùng nói "PR into preview" cần PR cả chuỗi này (xem Git bên dưới).
+- `preview` hiện có M1 + M2 (kịch bản dạng danh sách bước phẳng).
 
 ## Đã làm
-- [x] Thống nhất yêu cầu và công nghệ (C# / .NET Framework 4.8 / WinForms, chỉ Windows). Quyết định chi tiết trong `docs/PROJECT.md`.
-- [x] Nhánh `preview` đã tạo; PR #1 (docs + cấu hình Claude) đã merge vào `preview`.
-- [x] Cài .NET SDK 10.0.403 (winget) để build project net48.
-- [x] **M1:** solution, `Automation.Core` (netstandard2.0) với `MouseController` (Move có easing theo thời gian, Down, Up, Click), `Automation.App` (net48 WinForms, manifest DPI PerMonitorV2). Người dùng đã test: move, delay, click trái/phải đều đúng.
-- [x] **M2 (code):**
-  - Core: `Step`, `AutomationScript`, `ScriptSerializer` (JSON thụt lề bằng `DataContractJsonSerializer`, enum ghi dạng chữ, có `Version`), `ScriptRunner` (lặp vòng, lặp từng bước, delay, hủy bằng token, tự nhả nút chuột đang giữ khi dừng).
-  - App: danh sách bước (Add/Update/Remove/Up/Down), overlay chọn điểm toàn màn hình (`PointPickerForm`), Open/Save/New, phím nóng toàn cục **F6** Start/Stop và **Esc** dừng khẩn cấp (Esc chỉ đăng ký khi đang chạy), cửa sổ tự thu nhỏ khi chạy.
-  - Đã kiểm tra bằng code thật (qua PowerShell): lưu/mở JSON đúng giá trị (cả tọa độ âm), runner đúng thời gian và hủy được giữa chừng. **Chưa test được giao diện** (Claude không điều khiển được UI).
+- [x] M1, M2 (merge vào `preview`), M3 (tọa độ cửa sổ), cây action version 2 với Mouse + Loop (nhánh `feature_action_tree`).
+- [x] **Keyboard:** KeyPress / KeyDown / KeyUp / ComboKey / Text. Phím lưu theo tên (`KeyCodes`: A-Z, 0-9, F1-F24, Num0-9, LeftCtrl/RightCtrl, LeftShift, LeftAlt..., Enter, Tab...). `KeyCaptureBox` bắt phím người dùng bấm: chế độ một phím chỉ lấy phím đầu, chế độ combo lấy các phím giữ cùng nhau theo thứ tự bấm. Text gõ bằng Unicode (`KEYEVENTF_UNICODE`) nên gõ được tiếng Việt, `\n` thành Enter, `\t` thành Tab. Time: KeyPress/Combo là thời gian giữ phím; Text là tổng thời gian gõ chia đều cho các ký tự (0 = nhanh nhất). Target (process + title regex): nếu đặt thì cửa sổ được đưa lên trước và nếu không lên được thì **không gửi phím** (báo lỗi), tránh gõ nhầm vào chương trình khác.
+- [x] **Command/Open:** mở đường dẫn bằng shell (chương trình hoặc tài liệu). Cảnh báo: chạy file kịch bản của người khác sẽ mở bất cứ thứ gì trong đó.
+- [x] **Control/Wait:** chờ cửa sổ khớp Process/Title xuất hiện và lên trước, rồi chạy các action con. Time = thời gian mỗi lượt chờ, Retry = số lượt thử thêm. Hết lượt mà không được thì dừng script với lỗi "Timed out" (chọn mặc định này vì spec chưa nói rõ).
+- [x] **Phím dừng:** khi script chạy, F6/Esc dừng bằng hook bàn phím (`StopKeyHook`) bỏ qua phím do chính script gửi và không nuốt phím, nên script gửi F6/Esc cho chương trình khác được. Khi rảnh, F6 vẫn là hotkey toàn cục và được nhả ra khi đang bắt phím trong ô Key. Nếu không cài được hook thì quay về `RegisterHotKey`.
+- [x] Test script (chuỗi tiếng Việt dựng từ code point, không phụ thuộc encoding file; ô bắt phím thử bằng phím giả lập; hook thử qua MainForm.StartAsync thật): gõ tiếng Việt đúng từng ký tự (kể cả U+1EC7, U+1EC5, U+1ED3, U+01B0, U+01A1, U+0111) và round-trip JSON khớp; ô Key bắt đúng LeftCtrl/RightCtrl/F2/Tab/Left/F6 và combo LeftCtrl+LeftShift+S, F6 khi đang bắt không khởi động script; script gửi F6 + Esc tới cửa sổ test thì kết thúc bình thường ("Finished"), cửa sổ nhận đủ cả hai phím, hook chỉ bật khi đang chạy; giữ phím 700 ms chỉ ra một ký tự (không auto-repeat); Add/Update từ chối phím trống hoặc sai. Các test khác: round-trip JSON (Wait + con, Command, Text có xuống dòng), gõ chuỗi tiếng Việt vào cửa sổ test (từng ký tự khớp), KeyDown/KeyUp Shift + KeyPress, Combo, thời gian giữ phím (300 ms đo 310 ms), Wait thành công/hết hạn (retry hoạt động), tên phím sai và cửa sổ đích không có đều báo lỗi mà không gõ gì, Open chương trình thật và đường dẫn sai. Đã chụp ảnh kiểm tra bố cục các form Keyboard/Command/Wait.
 
 ## Việc tiếp theo
-- [ ] Người dùng test giao diện M2 (xem checklist bên dưới), báo lỗi nếu có.
-- [ ] PR M2 vào `preview` khi người dùng yêu cầu.
-- [ ] M3: tọa độ theo cửa sổ; M4: gửi phím/text, nhận diện ảnh; M5: license (xem `docs/PROJECT.md`).
+- [ ] Người dùng test giao diện (checklist dưới), báo lỗi nếu có.
+- [ ] PR vào `preview` khi người dùng yêu cầu.
+- [ ] Image (nhận diện ảnh), Record; License (M5).
 
-### Checklist test M2
-1. Add vài bước, chọn bước rồi Update/Remove/Up/Down có đúng không.
-2. "Pick on screen..." phủ được mọi màn hình, click lấy đúng tọa độ, Esc hủy.
-3. Start bằng nút và bằng F6; Esc hoặc F6 dừng được cả lúc chuột đang move chậm.
-4. Save rồi New rồi Open lại, các bước và setting giống như cũ.
-5. Loops = 0 chạy mãi đến khi dừng; MouseDown rồi dừng giữa chừng thì nút chuột được nhả.
-
-6. Thử ở scale hiển thị thật (125%/150%): layout dùng kích thước pixel cố định, báo nếu label/ô bị cắt.
+### Checklist test giao diện (giai đoạn Keyboard / Open / Wait)
+1. Category có đủ Control, Command, Mouse, Keyboard; mỗi loại hiện đúng form, không bị cắt.
+2. Keyboard, Action = KeyPress: bấm vào ô Key rồi nhấn một phím (thử Left Ctrl, F2, Tab, mũi tên, F6): ô hiện tên phím đầu tiên; nhấn Ctrl rồi A cùng lúc vẫn chỉ là LeftCtrl. Lúc đang bắt phím F6 không được khởi động script.
+3. Action = ComboKey: giữ Ctrl, Shift rồi bấm S: ô hiện LeftCtrl+LeftShift+S; nhả hết rồi bấm tổ hợp mới thì thay hoàn toàn.
+4. Action = Text: ô Text nhiều dòng, dán được đoạn văn tiếng Việt; Add rồi Update giữ nguyên nội dung. Time chỉ hiện với KeyPress / ComboKey / Text.
+5. Chạy script gồm Keyboard Text (thử cả khi Unikey/EVKey đang bật) với Target = Notepad: Notepad được đưa lên trước và chữ (kể cả tiếng Việt, xuống dòng) được gõ vào. Thử không đặt Target: gõ vào cửa sổ đang có focus. Thử script gửi phím F6 hoặc Esc cho Notepad: không tự dừng script.
+6. Dừng script giữa chừng bằng F6 và bằng Esc (bằng tay): dừng ngay, phím đang giữ được nhả.
+7. Command/Open: nhập đường dẫn hoặc Browse, chạy: chương trình mở lên; đường dẫn sai thì báo lỗi.
+8. Control/Wait: tạo Wait (Process = notepad) có action con (dùng Add khi đang chọn Wait, hoặc In). Chạy khi chưa mở Notepad rồi mở Notepad trong thời gian chờ: action con chạy. Để hết Time: báo "Timed out waiting", script dừng. Thử Retry > 0.
+9. Save rồi Open lại: mọi action Keyboard / Command / Wait và cây con giữ nguyên.
 
 ### Ghi chú cho milestone sau
-- Trường mới có giá trị mặc định khác 0 (anchor, ngưỡng giống ảnh, thời gian giữ chuột...) phải được đặt trong `[OnDeserializing] SetDefaults` của `Step`/`AutomationScript`, vì serializer không chạy constructor/initializer; thiếu thì file cũ sẽ đọc ra 0.
-- M4: `RegisterHotKey` có thể bắt cả phím do `SendInput` tạo ra, nên bước Key gửi F6/Esc có thể tự dừng kịch bản. Cần bỏ qua hotkey khi runner đang gửi phím, hoặc dùng tổ hợp có modifier làm phím dừng.
+- Trường mới có giá trị mặc định khác 0 phải đặt trong `[OnDeserializing] SetDefaults` của lớp tương ứng và không dùng `EmitDefaultValue=false` cho chúng (giá trị 0 do người dùng đặt sẽ bị mất khi nạp lại). Các sub-object (Mouse/Keyboard/Command/Loop/Wait) là tham chiếu nên dùng `EmitDefaultValue=false` an toàn.
+- Image sẽ đặt `RunContext` mới cho các action con (cửa sổ + vị trí ảnh làm gốc); action con của Image kế thừa Process của Image theo spec.
+- Khi Process khớp nhiều cửa sổ, runner lấy cửa sổ khớp đầu tiên theo z-order (ưu tiên không minimize); cần điền Title (regex) để chỉ rõ.
+- Đổi Anchor sau khi pick sẽ giữ nguyên số X/Y nhưng đổi nghĩa; phải pick lại.
+- Multi-select giữ bằng ListView thụt lề (TreeView của WinForms không chọn nhiều được). Chưa có thu gọn/mở rộng nhánh.
+- Delay ngắn (<20 ms) và mỗi vòng lặp không delay dùng chờ có nhường CPU (không dùng timer) vì Windows 11 bỏ qua `timeBeginPeriod` khi app thu nhỏ; loop zero-delay chạy hết tốc độ một lõi CPU.
+- Phím Win không bắt được trong ô Key (hệ thống chặn). Gõ Text dùng Unicode packet; chưa thử khi Unikey/EVKey đang bật (có thể làm méo) — xem checklist.
+- Game hoặc chương trình chạy admin: `SendInput` bị UIPI chặn nếu app không chạy admin (chưa có tùy chọn chạy admin).
+
+### Git
+- Chuỗi nhánh chưa vào `preview`: `feature_m3_window_coords` -> `feature_action_tree` -> `feature_keyboard_wait` (mỗi nhánh cắt từ nhánh trước). Một PR từ `feature_keyboard_wait` vào `preview` gồm tất cả.
 
 ## Ghi chú môi trường
-- Khi Claude chạy exe từ công cụ của nó, Windows có lúc báo "An Application Control policy has blocked this file" (trước đó), nhưng người dùng chạy trực tiếp thì bình thường, và về sau PowerShell của Claude nạp được DLL. Nguyên nhân chưa xác định; cần thử trên máy sạch trước khi phát hành.
+- Khi Claude chạy exe từ công cụ của nó, Windows có lúc báo "An Application Control policy has blocked this file", nhưng người dùng chạy trực tiếp thì bình thường. Nguyên nhân chưa xác định; cần thử trên máy sạch trước khi phát hành.
+- Build lỗi "file is being used" khi exe đang chạy: tắt app trước khi build (hoặc build ra thư mục khác bằng `-p:OutDir=`).
 - Lỗi cú pháp heredoc nhiều dòng trong Bash tool: tạo file bằng công cụ Write thay vì `cat <<EOF`.
 
 ## Mở / lưu ý
 - Ký số: chưa quyết định, xem lại khi phát hành rộng.
 - Kích hoạt license online (server thu hồi key): để giai đoạn sau.
 - Overlay chọn điểm chưa thử trên cấu hình nhiều màn hình có DPI khác nhau.
-- Khi hoàn thành mỗi milestone, cập nhật file này.
+- `.claude/launch.json` còn trỏ tới server npm "client-dev" không thuộc dự án này; cần sửa hoặc xóa.

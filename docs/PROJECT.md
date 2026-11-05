@@ -55,16 +55,22 @@ Automation.sln
 
 ## 5. Mô hình kịch bản và file lưu
 
-- Kịch bản là danh sách bước: Click trái/phải, Mouse-down, Mouse-up, Move (kèm duration), Key, Text, Wait, `IfImage → then/else`, Repeat, Label/Goto.
-- Mỗi bước: tọa độ, thời gian thực hiện, thời gian chờ sau bước, số lần lặp.
-- Lưu bằng JSON có trường `version`; ảnh mẫu để trong thư mục cạnh file kịch bản, hoặc đóng gói chung `.zip`.
+**Cơ chế (thiết kế lại ở phiên bản 2, thay danh sách bước phẳng):** kịch bản là **cây action**.
+- UI: thanh công cụ (New/Open/Save/Start-Stop, sau này thêm nhập License); panel trái là danh sách action thụt lề theo cấp (chọn nhiều được); panel phải là cài đặt action với các nút Add, Update, Delete, In, Out, Up, Down (Record để sau).
+- Category: Control, Command, Mouse, Keyboard. **Đã làm:** Mouse, Keyboard (KeyPress/KeyUp/KeyDown/ComboKey/Text, Target), Command/Open, Control/Loop, Control/Wait. **Chưa làm:** Control/Image, Record.
+- Mouse: Action (Click, MouseUp, MouseDown, Move, ScrollUp, ScrollDown; scroll bắt buộc dùng nút giữa), Type (Left/Right/Middle), Time (thời gian di chuyển chuột tới vị trí; với Keyboard sau này là thời gian giữ phím), Delay (chờ sau action), Process (tên process + regex tiêu đề), Anchor, vị trí X/Y. Process trống = tọa độ tuyệt đối trên desktop; có Process = offset so với vùng client của cửa sổ đó theo Anchor.
+- Loop: chứa các action con (Add khi đang chọn Loop, hoặc In). Kiểu lặp: theo số lần (0 = vô hạn), theo khoảng thời gian, hoặc tới một thời điểm. Thời gian/thời điểm chỉ kiểm tra giữa các vòng nên vòng cuối có thể vượt mốc tối đa bằng một lượt thân loop.
+- Không còn cài đặt cấp kịch bản (start delay, lặp toàn bộ, target chung, Repeat từng bước): muốn lặp thì bọc trong Loop, muốn chờ thì dùng Delay.
+- Runner đệ quy, truyền xuống một `RunContext` để node con kế thừa (cửa sổ/vị trí) — Image sau này sẽ dùng nó để các action con tính theo vị trí ảnh tìm được.
+- Lưu bằng JSON có trường `Version` (hiện là 2; file version 1 bị từ chối với thông báo rõ). Mọi thời gian lưu bằng mili giây (long); UI tự chọn đơn vị lớn nhất chia hết. Ảnh mẫu để trong thư mục cạnh file kịch bản, hoặc đóng gói chung `.zip`.
 - Chọn điểm/vùng bằng overlay toàn màn hình.
 
 ### Tọa độ theo cửa sổ
 - Cửa sổ đích xác định bằng tên process, tiêu đề (cho phép regex) hoặc class.
 - Lưu offset so với vùng client; lúc chạy lấy vị trí cửa sổ hiện tại rồi quy ra tọa độ màn hình. Vùng tìm ảnh cũng tính theo cách này.
 - Mỗi điểm có thể chọn neo (trên-trái mặc định, phải/dưới/giữa) để chịu được việc đổi kích thước cửa sổ; không có neo phù hợp thì vẫn có thể lệch.
-- Tùy chọn: đưa cửa sổ lên foreground trước khi chạy; báo lỗi và dừng nếu không tìm thấy cửa sổ hoặc nó đang minimize.
+- Khi pick vị trí: chương trình phải đang chạy (không thì từ chối), được đưa lên trước rồi mới ẩn cửa sổ của app để chọn.
+- Khi chạy: nếu cửa sổ chưa ở foreground hoặc đang minimize thì tự khôi phục và đưa lên trước (best effort); báo lỗi và dừng nếu không tìm thấy cửa sổ.
 
 ### License
 1. App tạo **Machine ID** bằng cách băm thông tin ổn định (như `MachineGuid` trong registry, serial ổ đĩa/mainboard).
@@ -79,7 +85,8 @@ Automation.sln
 1. Khung dự án (solution, lõi netstandard2.0, WinForms, manifest DPI) và engine chuột phím cơ bản.
 2. Giao diện danh sách bước, overlay chọn điểm, lưu/mở JSON, phím nóng.
 3. Tọa độ theo cửa sổ.
-4. Gửi phím, gửi text, nhận diện ảnh và điều kiện.
+3b. Thiết kế lại thành cây action (Loop, Process/Anchor theo từng action, Scroll, Time/Delay có đơn vị) — nhánh `feature_action_tree`, thay thế UI của M3.
+4. Keyboard (Key/Combo/Text), Command/Open, Control/Wait — đã code trên nhánh `feature_keyboard_wait`. Sau đó: Image (nhận diện ảnh) và Record.
 5. License theo máy và công cụ tạo key.
 
 ## 7. Quy trình git (theo CLAUDE.md)
