@@ -430,6 +430,8 @@ namespace Automation.App
         private void AddAction()
         {
             var node = ReadEditor();
+            string problem = Validate(node);
+            if (problem != null) { SetStatus(problem); return; }
             var selected = SelectedRows();
             if (selected.Count == 1 && selected[0].Node.IsContainer)
                 selected[0].Node.Children.Add(node);
@@ -443,11 +445,33 @@ namespace Automation.App
             RefreshList(new[] { node });
         }
 
+        /// <summary>Returns a message if the action could never run (for example a key that is not set), otherwise null.</summary>
+        private static string Validate(ActionNode node)
+        {
+            if (node.Category == ActionCategory.Keyboard)
+            {
+                var k = node.Keyboard;
+                try
+                {
+                    if (k.Action == KeyboardAction.ComboKey) KeyCodes.ParseCombo(k.Value);
+                    else if (k.Action != KeyboardAction.Text) KeyCodes.ParseKey(k.Value);
+                    else if (k.Value.Length == 0) return "Type the text to send first.";
+                }
+                catch (ArgumentException ex)
+                {
+                    return ex.Message + " Click the Key box and press the key(s).";
+                }
+            }
+            return null;
+        }
+
         private void UpdateAction()
         {
             var row = SingleSelectedRow();
             if (row == null) { SetStatus("Select exactly one action to update."); return; }
             var edited = ReadEditor();
+            string problem = Validate(edited);
+            if (problem != null) { SetStatus(problem); return; }
             if (!edited.IsContainer && row.Node.Children.Count > 0)
             {
                 SetStatus("This action contains other actions; move or delete them before changing it to a different type.");

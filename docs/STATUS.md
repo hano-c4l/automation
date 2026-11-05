@@ -13,7 +13,7 @@ Cập nhật lần cuối: 2026-11-05
 - [x] **Command/Open:** mở đường dẫn bằng shell (chương trình hoặc tài liệu). Cảnh báo: chạy file kịch bản của người khác sẽ mở bất cứ thứ gì trong đó.
 - [x] **Control/Wait:** chờ cửa sổ khớp Process/Title xuất hiện và lên trước, rồi chạy các action con. Time = thời gian mỗi lượt chờ, Retry = số lượt thử thêm. Hết lượt mà không được thì dừng script với lỗi "Timed out" (chọn mặc định này vì spec chưa nói rõ).
 - [x] **Phím dừng:** khi script chạy, F6/Esc dừng bằng hook bàn phím (`StopKeyHook`) bỏ qua phím do chính script gửi và không nuốt phím, nên script gửi F6/Esc cho chương trình khác được. Khi rảnh, F6 vẫn là hotkey toàn cục và được nhả ra khi đang bắt phím trong ô Key. Nếu không cài được hook thì quay về `RegisterHotKey`.
-- [x] Test script: round-trip JSON (Wait + con, Command, Text có xuống dòng), gõ chuỗi tiếng Việt vào cửa sổ test (từng ký tự khớp), KeyDown/KeyUp Shift + KeyPress, Combo, thời gian giữ phím (300 ms đo 310 ms), Wait thành công/hết hạn (retry hoạt động), tên phím sai và cửa sổ đích không có đều báo lỗi mà không gõ gì, Open chương trình thật và đường dẫn sai. Đã chụp ảnh kiểm tra bố cục các form Keyboard/Command/Wait.
+- [x] Test script (chuỗi tiếng Việt dựng từ code point, không phụ thuộc encoding file; ô bắt phím thử bằng phím giả lập; hook thử qua MainForm.StartAsync thật): gõ tiếng Việt đúng từng ký tự (kể cả U+1EC7, U+1EC5, U+1ED3, U+01B0, U+01A1, U+0111) và round-trip JSON khớp; ô Key bắt đúng LeftCtrl/RightCtrl/F2/Tab/Left/F6 và combo LeftCtrl+LeftShift+S, F6 khi đang bắt không khởi động script; script gửi F6 + Esc tới cửa sổ test thì kết thúc bình thường ("Finished"), cửa sổ nhận đủ cả hai phím, hook chỉ bật khi đang chạy; giữ phím 700 ms chỉ ra một ký tự (không auto-repeat); Add/Update từ chối phím trống hoặc sai. Các test khác: round-trip JSON (Wait + con, Command, Text có xuống dòng), gõ chuỗi tiếng Việt vào cửa sổ test (từng ký tự khớp), KeyDown/KeyUp Shift + KeyPress, Combo, thời gian giữ phím (300 ms đo 310 ms), Wait thành công/hết hạn (retry hoạt động), tên phím sai và cửa sổ đích không có đều báo lỗi mà không gõ gì, Open chương trình thật và đường dẫn sai. Đã chụp ảnh kiểm tra bố cục các form Keyboard/Command/Wait.
 
 ## Việc tiếp theo
 - [ ] Người dùng test giao diện (checklist dưới), báo lỗi nếu có.
@@ -25,7 +25,7 @@ Cập nhật lần cuối: 2026-11-05
 2. Keyboard, Action = KeyPress: bấm vào ô Key rồi nhấn một phím (thử Left Ctrl, F2, Tab, mũi tên, F6): ô hiện tên phím đầu tiên; nhấn Ctrl rồi A cùng lúc vẫn chỉ là LeftCtrl. Lúc đang bắt phím F6 không được khởi động script.
 3. Action = ComboKey: giữ Ctrl, Shift rồi bấm S: ô hiện LeftCtrl+LeftShift+S; nhả hết rồi bấm tổ hợp mới thì thay hoàn toàn.
 4. Action = Text: ô Text nhiều dòng, dán được đoạn văn tiếng Việt; Add rồi Update giữ nguyên nội dung. Time chỉ hiện với KeyPress / ComboKey / Text.
-5. Chạy script gồm Keyboard Text với Target = Notepad: Notepad được đưa lên trước và chữ (kể cả tiếng Việt, xuống dòng) được gõ vào. Thử không đặt Target: gõ vào cửa sổ đang có focus. Thử script gửi phím F6 hoặc Esc cho Notepad: không tự dừng script.
+5. Chạy script gồm Keyboard Text (thử cả khi Unikey/EVKey đang bật) với Target = Notepad: Notepad được đưa lên trước và chữ (kể cả tiếng Việt, xuống dòng) được gõ vào. Thử không đặt Target: gõ vào cửa sổ đang có focus. Thử script gửi phím F6 hoặc Esc cho Notepad: không tự dừng script.
 6. Dừng script giữa chừng bằng F6 và bằng Esc (bằng tay): dừng ngay, phím đang giữ được nhả.
 7. Command/Open: nhập đường dẫn hoặc Browse, chạy: chương trình mở lên; đường dẫn sai thì báo lỗi.
 8. Control/Wait: tạo Wait (Process = notepad) có action con (dùng Add khi đang chọn Wait, hoặc In). Chạy khi chưa mở Notepad rồi mở Notepad trong thời gian chờ: action con chạy. Để hết Time: báo "Timed out waiting", script dừng. Thử Retry > 0.
@@ -38,7 +38,7 @@ Cập nhật lần cuối: 2026-11-05
 - Đổi Anchor sau khi pick sẽ giữ nguyên số X/Y nhưng đổi nghĩa; phải pick lại.
 - Multi-select giữ bằng ListView thụt lề (TreeView của WinForms không chọn nhiều được). Chưa có thu gọn/mở rộng nhánh.
 - Delay ngắn (<20 ms) và mỗi vòng lặp không delay dùng chờ có nhường CPU (không dùng timer) vì Windows 11 bỏ qua `timeBeginPeriod` khi app thu nhỏ; loop zero-delay chạy hết tốc độ một lõi CPU.
-- Phím Win không bắt được trong ô Key (hệ thống chặn); gõ Text không đi qua IME nên Unikey/EVKey không làm méo.
+- Phím Win không bắt được trong ô Key (hệ thống chặn). Gõ Text dùng Unicode packet; chưa thử khi Unikey/EVKey đang bật (có thể làm méo) — xem checklist.
 - Game hoặc chương trình chạy admin: `SendInput` bị UIPI chặn nếu app không chạy admin (chưa có tùy chọn chạy admin).
 
 ### Git
