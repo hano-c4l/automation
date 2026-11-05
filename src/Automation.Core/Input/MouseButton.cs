@@ -1,9 +1,12 @@
+using System.Runtime.Serialization;
+
 namespace Automation.Core.Input
 {
+    [DataContract]
     public enum MouseButton
     {
-        Left,
-        Right,
-        Middle
+        [EnumMember] Left,
+        [EnumMember] Right,
+        [EnumMember] Middle
     }
 }
