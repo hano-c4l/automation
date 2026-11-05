@@ -96,15 +96,6 @@ namespace Automation.Core.Runner
         private void ExecuteKeyboard(ActionNode node, CancellationToken token)
         {
             var k = node.Keyboard;
-            if (!k.Target.IsEmpty)
-            {
-                // Keys go to whatever is in front, so bring the target there first and never type into another program.
-                IntPtr hwnd = FindWindow(k.Target);
-                Activate(hwnd, token);
-                if (!WindowLocator.IsActive(hwnd))
-                    throw new InvalidOperationException("Could not bring " + Describe(k.Target) + " to the front; keys were not sent.");
-            }
-
             int time = ToInt(k.TimeMs);
             try
             {

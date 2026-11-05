@@ -56,6 +56,7 @@ namespace Automation.App
         private readonly ToolStripStatusLabel _status = new ToolStripStatusLabel("Ready") { Spring = true, TextAlign = ContentAlignment.MiddleLeft };
 
         // Editor: common
+        private readonly TextBox _name = new TextBox { Width = 200 };
         private readonly ComboBox _category = MakeCombo(typeof(ActionCategory));
 
         // Editor: mouse
@@ -76,8 +77,6 @@ namespace Automation.App
         private readonly TextBox _kbText = new TextBox { Width = 200, Height = 90, Multiline = true, AcceptsReturn = true, AcceptsTab = true, ScrollBars = ScrollBars.Vertical };
         private readonly TimeBox _kbTime = new TimeBox(500);
         private readonly TimeBox _kbDelay = new TimeBox(500);
-        private readonly TextBox _kbProcessName = new TextBox { Width = 200 };
-        private readonly TextBox _kbProcessTitle = new TextBox { Width = 200 };
 
         // Editor: command
         private readonly ComboBox _cmdKind = MakeCombo(typeof(CommandKind));
@@ -106,8 +105,8 @@ namespace Automation.App
         public MainForm()
         {
             Text = "Automation";
-            ClientSize = new Size(1040, 560);
-            MinimumSize = new Size(900, 520);
+            ClientSize = new Size(1240, 580);
+            MinimumSize = new Size(1000, 520);
             _loopUntil.Value = DateTime.Now.AddHours(1);
             _category.SelectedItem = ActionCategory.Mouse;
             BuildLayout();
@@ -121,15 +120,18 @@ namespace Automation.App
 
         private void BuildLayout()
         {
-            _list.Columns.Add("Action", 220);
-            _list.Columns.Add("Details", 230);
-            _list.Columns.Add("Time", 70);
-            _list.Columns.Add("Delay", 70);
+            _list.Columns.Add("Name", 170);
+            _list.Columns.Add("Action", 90);
+            _list.Columns.Add("Process", 110);
+            _list.Columns.Add("Details", 300);
+            _list.Columns.Add("Time", 65);
+            _list.Columns.Add("Delay", 65);
 
             var tools = new ToolStrip { GripStyle = ToolStripGripStyle.Hidden };
             tools.Items.Add(MakeToolButton("New", (s, e) => NewScript()));
-            tools.Items.Add(MakeToolButton("Open...", (s, e) => OpenScript()));
-            tools.Items.Add(MakeToolButton("Save...", (s, e) => SaveScript()));
+            tools.Items.Add(MakeToolButton("Open", (s, e) => OpenScript()));
+            tools.Items.Add(MakeToolButton("Save", (s, e) => SaveScript(false)));
+            tools.Items.Add(MakeToolButton("Save As", (s, e) => SaveScript(true)));
             tools.Items.Add(new ToolStripSeparator());
             tools.Items.Add(_startStop);
             var statusBar = new StatusStrip { SizingGrip = false };
@@ -148,6 +150,7 @@ namespace Automation.App
             AddGridButton(buttons, "Down", 3, 1, (s, e) => MoveUpDown(1));
 
             var common = NewTable();
+            AddRow(common, "Name", _name);
             AddRow(common, "Category", _category);
 
             // Mouse
@@ -175,9 +178,6 @@ namespace Automation.App
             AddRow(kbTable, "Text", _kbText);
             AddRow(kbTable, "Time", _kbTime);
             AddRow(kbTable, "Delay", _kbDelay);
-            AddRow(kbTable, "Target process", _kbProcessName);
-            AddRow(kbTable, "Target title (regex)", _kbProcessTitle);
-            AddRow(kbTable, "", MakeButton("Pick program...", (s, e) => PickProcess(_kbProcessName)));
             _keyboardBox.Controls.Add(kbTable);
 
             // Command
@@ -222,6 +222,7 @@ namespace Automation.App
         private void WireEvents()
         {
             _list.SelectedIndexChanged += (s, e) => LoadSelectedIntoEditor();
+            _list.SizeChanged += (s, e) => FitDetailsColumn();
             _list.KeyDown += (s, e) =>
             {
                 if (e.KeyCode == Keys.Delete) DeleteActions();
@@ -300,6 +301,14 @@ namespace Automation.App
 
         private ActionNode ReadEditor()
         {
+            var node = BuildNode();
+            string name = _name.Text.Trim();
+            node.Name = name.Length == 0 ? null : name;
+            return node;
+        }
+
+        private ActionNode BuildNode()
+        {
             switch ((ActionCategory)_category.SelectedItem)
             {
                 case ActionCategory.Mouse:
@@ -323,8 +332,7 @@ namespace Automation.App
                         Action = action,
                         Value = action == KeyboardAction.Text ? _kbText.Text : _kbKey.Value,
                         TimeMs = _kbTime.Milliseconds,
-                        DelayMs = _kbDelay.Milliseconds,
-                        Target = Target(_kbProcessName, _kbProcessTitle)
+                        DelayMs = _kbDelay.Milliseconds
                     });
 
                 case ActionCategory.Command:
@@ -365,6 +373,7 @@ namespace Automation.App
             var row = SingleSelectedRow();
             if (row == null) return; // nothing or several rows selected: leave the editor as it is
             var node = row.Node;
+            _name.Text = node.Name ?? "";
             _category.SelectedItem = node.Category;
             switch (node.Category)
             {
@@ -391,8 +400,6 @@ namespace Automation.App
                     else _kbKey.Value = k.Value;
                     _kbTime.Milliseconds = k.TimeMs;
                     _kbDelay.Milliseconds = k.DelayMs;
-                    _kbProcessName.Text = k.Target.ProcessName ?? "";
-                    _kbProcessTitle.Text = k.Target.TitlePattern ?? "";
                     break;
 
                 case ActionCategory.Command:
@@ -627,10 +634,23 @@ namespace Automation.App
             }
         }
 
+        /// <summary>Gives the Details column all the width the other (short) columns leave free.</summary>
+        private void FitDetailsColumn()
+        {
+            const int Details = 3;
+            int others = 0;
+            for (int i = 0; i < _list.Columns.Count; i++)
+                if (i != Details) others += _list.Columns[i].Width;
+            int free = _list.ClientSize.Width - others;
+            _list.Columns[Details].Width = Math.Max(300, free);
+        }
+
         private static string DescribeTarget(WindowTarget target)
         {
             if (target == null || target.IsEmpty) return "";
-            return string.IsNullOrWhiteSpace(target.ProcessName) ? "title" : target.ProcessName.Trim();
+            string name = string.IsNullOrWhiteSpace(target.ProcessName) ? "" : target.ProcessName.Trim();
+            string title = string.IsNullOrWhiteSpace(target.TitlePattern) ? "" : "[" + target.TitlePattern.Trim() + "]";
+            return (name + " " + title).Trim();
         }
 
         private static string Shorten(string text)
@@ -643,15 +663,16 @@ namespace Automation.App
         {
             var n = row.Node;
             string indent = new string(' ', row.Depth * 4);
-            string name = "", details = "", time = "", delay = "";
+            string action = "", process = "", details = "", time = "", delay = "";
             switch (n.Category)
             {
                 case ActionCategory.Mouse:
                     var m = n.Mouse;
-                    name = m.Action.ToString();
-                    string where = m.Process.IsEmpty ? "Screen" : DescribeTarget(m.Process) + "/" + m.Anchor;
+                    action = m.Action.ToString();
+                    process = DescribeTarget(m.Process);
                     bool hasButton = m.Action == MouseAction.Click || m.Action == MouseAction.MouseDown || m.Action == MouseAction.MouseUp;
-                    details = (hasButton ? m.Button + " " : "") + where + " (" + m.X + ", " + m.Y + ")";
+                    details = (hasButton ? m.Button + " " : "") + "(" + m.X + ", " + m.Y + ")";
+                    if (!m.Process.IsEmpty) details += " " + m.Anchor;
                     if (m.Action == MouseAction.ScrollUp || m.Action == MouseAction.ScrollDown) details += " x" + m.ScrollNotches;
                     time = TimeBox.Format(m.TimeMs);
                     delay = TimeBox.Format(m.DelayMs);
@@ -659,28 +680,28 @@ namespace Automation.App
 
                 case ActionCategory.Keyboard:
                     var k = n.Keyboard;
-                    name = k.Action.ToString();
+                    action = k.Action.ToString();
                     details = Shorten(k.Value);
-                    if (!k.Target.IsEmpty) details += "  -> " + DescribeTarget(k.Target);
                     if (k.Action == KeyboardAction.KeyPress || k.Action == KeyboardAction.ComboKey || k.Action == KeyboardAction.Text)
                         time = TimeBox.Format(k.TimeMs);
                     delay = TimeBox.Format(k.DelayMs);
                     break;
 
                 case ActionCategory.Command:
-                    name = n.Command.Kind.ToString();
+                    action = n.Command.Kind.ToString();
                     details = n.Command.Value;
                     break;
 
                 default:
                     if (n.Control == ControlKind.Wait)
                     {
-                        name = "Wait";
-                        details = DescribeTarget(n.Wait.Process) + ", up to " + TimeBox.Format(n.Wait.TimeMs) + (n.Wait.Retry > 0 ? ", retry " + n.Wait.Retry : "");
+                        action = "Wait";
+                        process = DescribeTarget(n.Wait.Process);
+                        details = "up to " + TimeBox.Format(n.Wait.TimeMs) + (n.Wait.Retry > 0 ? ", retry " + n.Wait.Retry : "");
                     }
                     else
                     {
-                        name = "Loop";
+                        action = "Loop";
                         switch (n.Loop.Mode)
                         {
                             case LoopType.Duration: details = "for " + TimeBox.Format(n.Loop.DurationMs); break;
@@ -690,7 +711,10 @@ namespace Automation.App
                     }
                     break;
             }
-            var item = new ListViewItem(indent + name);
+            // Name column: the user's alias, or the action type when no alias is set; indented by tree depth.
+            var item = new ListViewItem(indent + (string.IsNullOrWhiteSpace(n.Name) ? action : n.Name));
+            item.SubItems.Add(action);
+            item.SubItems.Add(process);
             item.SubItems.Add(details);
             item.SubItems.Add(time);
             item.SubItems.Add(delay);
@@ -816,28 +840,34 @@ namespace Automation.App
             }
         }
 
-        private void SaveScript()
+        /// <summary>Save writes to the current file when there is one; Save As (or a new script) asks for a path.</summary>
+        private void SaveScript(bool saveAs)
         {
-            using (var dialog = new SaveFileDialog
+            string path = _currentPath;
+            if (saveAs || path == null)
             {
-                Filter = "Automation script (*.json)|*.json",
-                DefaultExt = "json",
-                FileName = _currentPath == null ? "script.json" : Path.GetFileName(_currentPath),
-                InitialDirectory = _currentPath == null ? null : Path.GetDirectoryName(_currentPath)
-            })
+                using (var dialog = new SaveFileDialog
+                {
+                    Filter = "Automation script (*.json)|*.json",
+                    DefaultExt = "json",
+                    FileName = _currentPath == null ? "script.json" : Path.GetFileName(_currentPath),
+                    InitialDirectory = _currentPath == null ? null : Path.GetDirectoryName(_currentPath)
+                })
+                {
+                    if (dialog.ShowDialog(this) != DialogResult.OK) return;
+                    path = dialog.FileName;
+                }
+            }
+            try
             {
-                if (dialog.ShowDialog(this) != DialogResult.OK) return;
-                try
-                {
-                    ScriptSerializer.Save(_script, dialog.FileName);
-                    _currentPath = dialog.FileName;
-                    UpdateTitle();
-                    SetStatus("Saved " + Path.GetFileName(dialog.FileName));
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show(this, "Cannot save the file:\n" + ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
-                }
+                ScriptSerializer.Save(_script, path);
+                _currentPath = path;
+                UpdateTitle();
+                SetStatus("Saved " + Path.GetFileName(path));
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "Cannot save the file:\n" + ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -866,7 +896,7 @@ namespace Automation.App
             runner.NodeStarted += node =>
             {
                 var line = Describe(new Row { Node = node, Depth = 0 });
-                PostStatus("Running: " + line.Text + "  " + line.SubItems[1].Text);
+                PostStatus("Running: " + line.Text + "  " + line.SubItems[3].Text);
             };
             var notes = new List<string>();
             runner.Message += text => { lock (notes) notes.Add(text); PostStatus(text); };

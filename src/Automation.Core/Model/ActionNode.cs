@@ -96,9 +96,6 @@ namespace Automation.Core.Model
         /// <summary>Wait after the action finished.</summary>
         [DataMember(Order = 4)] public long DelayMs { get; set; } = 500;
 
-        /// <summary>Window that must be in front when the keys are sent. Empty sends to whatever has the focus.</summary>
-        [DataMember(Order = 5)] public WindowTarget Target { get; set; } = new WindowTarget();
-
         [DataMember(Name = "Action", Order = 1)]
         private string ActionName
         {
@@ -112,20 +109,16 @@ namespace Automation.Core.Model
             Value = "";
             TimeMs = 500;
             DelayMs = 500;
-            Target = new WindowTarget();
         }
 
         public KeyboardSettings Clone()
         {
-            var copy = (KeyboardSettings)MemberwiseClone();
-            copy.Target = (Target ?? new WindowTarget()).Clone();
-            return copy;
+            return (KeyboardSettings)MemberwiseClone();
         }
 
         internal void Normalize()
         {
             if (Value == null) Value = "";
-            if (Target == null) Target = new WindowTarget();
             if (TimeMs < 0) TimeMs = 0;
             if (DelayMs < 0) DelayMs = 0;
         }
@@ -259,6 +252,9 @@ namespace Automation.Core.Model
     [DataContract]
     public sealed class ActionNode
     {
+        /// <summary>Optional alias shown in the action list; empty means the action type is shown.</summary>
+        [DataMember(Order = 0, EmitDefaultValue = false)] public string Name { get; set; }
+
         public ActionCategory Category { get; set; }
         public ControlKind Control { get; set; }
 
