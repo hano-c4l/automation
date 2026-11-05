@@ -137,17 +137,18 @@ namespace Automation.App
         private readonly NumericUpDown _varW = MakeNumber(0, 20000, 0);
         private readonly NumericUpDown _varH = MakeNumber(0, 20000, 0);
         private readonly Button _varPickPos = new Button { Text = "Pick position...", AutoSize = true };
+        private readonly Label _varGeoHint = new Label { AutoSize = true, MaximumSize = new Size(230, 0), Text = "With a Process the numbers are offsets from the Anchor; use the same Process and Anchor in the Mouse action." };
         private readonly Button _varPickRange = new Button { Text = "Pick range...", AutoSize = true };
 
         // Editor: condition / case
         private readonly TextBox _caseExpr = new TextBox { Width = 200 };
         private readonly Label _caseHint = new Label { AutoSize = true, MaximumSize = new Size(230, 0), Text = "True or false, for example {abc} > 3 && {abc} < 10" };
-        private readonly Label _condHint = new Label { AutoSize = true, MaximumSize = new Size(230, 0), Text = "A Condition starts with one case and an else. Select it and add Type = Case for more; add actions inside a case or the else." };
+        private readonly Label _condHint = new Label { AutoSize = true, MaximumSize = new Size(230, 0), Text = "The first case is required (it is checked first). Select the Condition and add Type = Case for more; add actions inside a case or the else. Update only changes the name." };
 
         // Editor: where positions and text come from
         private readonly ComboBox _posSource = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 120, Items = { "Input", "Variable" } };
         private readonly TextBox _posExpr = new TextBox { Width = 200 };
-        private readonly Label _posHint = new Label { AutoSize = true, MaximumSize = new Size(230, 0), Text = "Example: {img.Position} + {10,20}. Use the same Process and Anchor as the Image." };
+        private readonly Label _posHint = new Label { AutoSize = true, MaximumSize = new Size(230, 0), Text = "Example: {img.Position} + {10,20}. Use the same Process and Anchor as the Image or the Position variable." };
         private readonly Button _pickPositionButton = new Button { Text = "Pick position...", AutoSize = true };
         private readonly ComboBox _kbSource = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 120, Items = { "Input", "Variable" } };
         private readonly TextBox _kbTextExpr = new TextBox { Width = 200 };
@@ -305,6 +306,7 @@ namespace Automation.App
             AddRow(controlTable, "Y (px)", _varY);
             AddRow(controlTable, "Width", _varW);
             AddRow(controlTable, "Height", _varH);
+            AddRow(controlTable, "", _varGeoHint);
             AddRow(controlTable, "", _varPickPos);
             AddRow(controlTable, "", _varPickRange);
             AddRow(controlTable, "Condition", _caseExpr);
@@ -448,13 +450,15 @@ namespace Automation.App
                 SetRowVisible(c, geometry);
             SetRowVisible(_varW, literal && varType == VariableType.Range);
             SetRowVisible(_varH, literal && varType == VariableType.Range);
+            SetRowVisible(_varGeoHint, geometry);
             SetRowVisible(_varPickPos, literal && varType == VariableType.Position);
             SetRowVisible(_varPickRange, literal && varType == VariableType.Range);
             _varAnchor.Enabled = _varProcName.Text.Trim().Length > 0 || _varProcTitle.Text.Trim().Length > 0;
 
             // Condition and case
-            SetRowVisible(_caseExpr, caseKind);
+            SetRowVisible(_caseExpr, caseKind || condition);
             SetRowVisible(_caseHint, caseKind);
+            if (_rowLabels.TryGetValue(_caseExpr, out var caseLabel)) caseLabel.Text = condition ? "First case" : "Condition";
             SetRowVisible(_condHint, condition);
         }
 
@@ -527,7 +531,9 @@ namespace Automation.App
                         case ControlKind.Variable:
                             return ActionNode.NewVariable(BuildVariableSettings());
                         case ControlKind.Condition:
-                            return ActionNode.NewCondition();
+                            var created = ActionNode.NewCondition();
+                            created.Children[0].Case.Expression = _caseExpr.Text.Trim();
+                            return created;
                         case ControlKind.Case:
                             return ActionNode.NewCase(new CaseSettings { Expression = _caseExpr.Text.Trim() });
                         case ControlKind.Wait:
@@ -794,7 +800,7 @@ namespace Automation.App
         }
 
         /// <summary>Returns a message if the action could never run (for example a key that is not set), otherwise null.</summary>
-        private static string Validate(ActionNode node)
+        private static string Validate(ActionNode node, bool adding = true)
         {
             try
             {
@@ -820,6 +826,8 @@ namespace Automation.App
                         if (node.IsKind(ControlKind.Image))
                         {
                             if (!node.Image.HasImage) return "Capture or load a picture first.";
+                            if ((node.Image.RangeWidth > 0) != (node.Image.RangeHeight > 0))
+                                return "Set both Width and Height of the range, or leave both at 0 to search the whole area.";
                             if (!string.IsNullOrWhiteSpace(node.Image.Id) && !Expression.IsValidId(node.Image.Id))
                                 return "\"" + node.Image.Id + "\" is not a valid ID: use letters, digits and _, not starting with a digit (and not true, false, now, today).";
                         }
@@ -834,6 +842,14 @@ namespace Automation.App
                                 Expression.CheckSyntax(v.Expression);
                             }
                             else v.GetLiteral();
+                        }
+                        else if (node.IsKind(ControlKind.Condition))
+                        {
+                            // Only when creating: Update changes just the Condition's name, the cases keep their own expressions.
+                            if (!adding) break;
+                            string first = node.Children[0].Case.Expression;
+                            if (string.IsNullOrWhiteSpace(first)) return "Enter the first case, for example {abc} > 3.";
+                            Expression.CheckSyntax(first);
                         }
                         else if (node.IsKind(ControlKind.Case))
                         {
@@ -860,7 +876,7 @@ namespace Automation.App
             if (row == null) { SetStatus("Select exactly one action to update."); return; }
             if (row.Node.IsKind(ControlKind.Else)) { SetStatus("else has no settings to update."); return; }
             var edited = ReadEditor();
-            string problem = Validate(edited);
+            string problem = Validate(edited, false);
             if (problem != null) { SetStatus(problem); return; }
             // A Condition and its Cases keep their structure: they cannot turn into something else or be created by Update.
             if (row.Node.IsKind(ControlKind.Condition) != edited.IsKind(ControlKind.Condition)
