@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Linq;
@@ -29,7 +30,7 @@ namespace Automation.App
             View = View.Details,
             FullRowSelect = true,
             HideSelection = false,
-            MultiSelect = false,
+            MultiSelect = true,
             GridLines = true
         };
 
@@ -49,7 +50,8 @@ namespace Automation.App
 
         private readonly Button _startStop = new Button { Text = "Start (F6)", AutoSize = true };
         private readonly Label _status = new Label { AutoSize = true, Text = "Ready", Padding = new Padding(8, 6, 0, 0) };
-        private readonly Panel _editArea = new Panel { Dock = DockStyle.Fill };
+        // AutoSize + Dock.Top so the area is exactly as tall as its content; the parent panel scrolls when the window is small.
+        private readonly Panel _editArea = new Panel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink };
 
         public MainForm()
         {
@@ -92,6 +94,7 @@ namespace Automation.App
             // Two rows of three equal columns so every button stays visible at any display scale.
             var stepButtons = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 3, RowCount = 2 };
             for (int c = 0; c < 3; c++) stepButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33f));
+            for (int r = 0; r < 2; r++) stepButtons.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             AddGridButton(stepButtons, "Add", 0, 0, (s, e) => AddStep());
             AddGridButton(stepButtons, "Update", 1, 0, (s, e) => UpdateStep());
             AddGridButton(stepButtons, "Remove", 2, 0, (s, e) => RemoveStep());
@@ -111,7 +114,7 @@ namespace Automation.App
             _editArea.Controls.Add(settings);
             _editArea.Controls.Add(editor);
 
-            var right = new Panel { Dock = DockStyle.Right, Width = 360, Padding = new Padding(8) };
+            var right = new Panel { Dock = DockStyle.Right, Width = 380, Padding = new Padding(8), AutoScroll = true };
             right.Controls.Add(_editArea);
 
             var bottom = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, Padding = new Padding(8) };
@@ -130,6 +133,15 @@ namespace Automation.App
         private void WireEvents()
         {
             _list.SelectedIndexChanged += (s, e) => LoadSelectedIntoEditor();
+            _list.KeyDown += (s, e) =>
+            {
+                if (e.KeyCode == Keys.Delete) RemoveStep();
+                else if (e.Control && e.KeyCode == Keys.A)
+                {
+                    foreach (ListViewItem item in _list.Items) item.Selected = true;
+                    e.SuppressKeyPress = true;
+                }
+            };
             _startStop.Click += (s, e) => ToggleRun();
             _action.SelectedIndexChanged += (s, e) => _button.Enabled = (StepAction)_action.SelectedItem != StepAction.Move;
         }
@@ -153,7 +165,7 @@ namespace Automation.App
         private void LoadSelectedIntoEditor()
         {
             int index = SelectedIndex();
-            if (index < 0) return;
+            if (index < 0) return; // nothing selected, or several steps selected: leave the editor as it is
             var step = _script.Steps[index];
             _action.SelectedItem = step.Action;
             _button.SelectedItem = step.Button;
@@ -166,37 +178,57 @@ namespace Automation.App
 
         private void AddStep()
         {
-            int index = SelectedIndex();
-            int insertAt = index < 0 ? _script.Steps.Count : index + 1;
+            var selected = SelectedIndices();
+            int insertAt = selected.Count == 0 ? _script.Steps.Count : selected[selected.Count - 1] + 1;
             _script.Steps.Insert(insertAt, ReadEditor());
-            RefreshList(insertAt);
+            RefreshList(new[] { insertAt });
         }
 
         private void UpdateStep()
         {
             int index = SelectedIndex();
-            if (index < 0) { SetStatus("Select a step to update."); return; }
+            if (index < 0) { SetStatus("Select exactly one step to update."); return; }
             _script.Steps[index] = ReadEditor();
-            RefreshList(index);
+            RefreshList(new[] { index });
         }
 
         private void RemoveStep()
         {
-            int index = SelectedIndex();
-            if (index < 0) return;
-            _script.Steps.RemoveAt(index);
-            RefreshList(Math.Min(index, _script.Steps.Count - 1));
+            var selected = SelectedIndices();
+            if (selected.Count == 0) return;
+            for (int i = selected.Count - 1; i >= 0; i--) _script.Steps.RemoveAt(selected[i]);
+            int next = Math.Min(selected[0], _script.Steps.Count - 1);
+            RefreshList(next >= 0 ? new[] { next } : new int[0]);
+            SetStatus("Removed " + selected.Count + " step(s).");
         }
 
+        /// <summary>Moves every selected step one place up (-1) or down (1), keeping their relative order.</summary>
         private void MoveStep(int delta)
         {
-            int index = SelectedIndex();
-            int target = index + delta;
-            if (index < 0 || target < 0 || target >= _script.Steps.Count) return;
-            var step = _script.Steps[index];
-            _script.Steps.RemoveAt(index);
-            _script.Steps.Insert(target, step);
-            RefreshList(target);
+            var selected = SelectedIndices();
+            if (selected.Count == 0) return;
+            var picked = new HashSet<int>(selected);
+            var steps = _script.Steps;
+            bool up = delta < 0;
+            // Process in the direction of travel so a step never swaps with a neighbour that is also moving.
+            var order = up ? selected : Enumerable.Reverse(selected).ToList();
+            var newSelection = new List<int>();
+            foreach (int i in order)
+            {
+                int target = i + delta;
+                if (target < 0 || target >= steps.Count || picked.Contains(target))
+                {
+                    newSelection.Add(i); // blocked at the edge or by another selected step: stays in place
+                    continue;
+                }
+                var step = steps[i];
+                steps[i] = steps[target];
+                steps[target] = step;
+                picked.Remove(i);
+                picked.Add(target);
+                newSelection.Add(target);
+            }
+            RefreshList(newSelection);
         }
 
         private void PickPoint()
@@ -219,12 +251,19 @@ namespace Automation.App
             }
         }
 
+        /// <summary>Index of the selected step, or -1 unless exactly one step is selected.</summary>
         private int SelectedIndex()
         {
-            return _list.SelectedIndices.Count == 0 ? -1 : _list.SelectedIndices[0];
+            return _list.SelectedIndices.Count == 1 ? _list.SelectedIndices[0] : -1;
         }
 
-        private void RefreshList(int select = -1)
+        /// <summary>Selected step indices in ascending order.</summary>
+        private List<int> SelectedIndices()
+        {
+            return _list.SelectedIndices.Cast<int>().OrderBy(i => i).ToList();
+        }
+
+        private void RefreshList(IEnumerable<int> select = null)
         {
             _list.BeginUpdate();
             _list.Items.Clear();
@@ -242,11 +281,15 @@ namespace Automation.App
                 _list.Items.Add(item);
             }
             _list.EndUpdate();
-            if (select >= 0 && select < _list.Items.Count)
+            if (select == null) return;
+            int last = -1;
+            foreach (int index in select)
             {
-                _list.Items[select].Selected = true;
-                _list.EnsureVisible(select);
+                if (index < 0 || index >= _list.Items.Count) continue;
+                _list.Items[index].Selected = true;
+                last = index;
             }
+            if (last >= 0) _list.EnsureVisible(last);
         }
 
         // ---------------------------------------------------------------- files
@@ -284,7 +327,7 @@ namespace Automation.App
                     _script = ScriptSerializer.Load(dialog.FileName);
                     _currentPath = dialog.FileName;
                     LoadSettingsFromScript();
-                    RefreshList(_script.Steps.Count > 0 ? 0 : -1);
+                    RefreshList(_script.Steps.Count > 0 ? new[] { 0 } : null);
                     UpdateTitle();
                     SetStatus("Opened " + Path.GetFileName(dialog.FileName));
                 }
@@ -461,7 +504,15 @@ namespace Automation.App
 
         private static void AddGridButton(TableLayoutPanel grid, string text, int column, int row, EventHandler onClick)
         {
-            var button = new Button { Text = text, Dock = DockStyle.Fill, AutoSize = true };
+            // Anchor left/right (not Dock.Fill): Dock.Fill with AutoSize made the rows far taller than the buttons need.
+            var button = new Button
+            {
+                Text = text,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowOnly,
+                Anchor = AnchorStyles.Left | AnchorStyles.Right,
+                Margin = new Padding(2)
+            };
             button.Click += onClick;
             grid.Controls.Add(button, column, row);
         }
