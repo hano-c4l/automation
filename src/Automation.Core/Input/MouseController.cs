@@ -83,9 +83,10 @@ namespace Automation.Core.Input
             int vw = NativeMethods.GetSystemMetrics(NativeMethods.SM_CXVIRTUALSCREEN);
             int vh = NativeMethods.GetSystemMetrics(NativeMethods.SM_CYVIRTUALSCREEN);
 
-            // Normalize to 0..65535 across the whole virtual desktop (multi-monitor safe).
-            int nx = (int)Math.Round((x - vx) * 65535.0 / Math.Max(1, vw - 1));
-            int ny = (int)Math.Round((y - vy) * 65535.0 / Math.Max(1, vh - 1));
+            // Normalize to 0..65535 across the whole virtual desktop (multi-monitor safe). Windows maps back with
+            // floor(n * size / 65536), so rounding up here lands exactly on the requested pixel.
+            int nx = (int)Math.Min(65535, Math.Ceiling((x - vx) * 65536.0 / Math.Max(1, vw)));
+            int ny = (int)Math.Min(65535, Math.Ceiling((y - vy) * 65536.0 / Math.Max(1, vh)));
 
             Send(nx, ny, NativeMethods.MOUSEEVENTF_MOVE | NativeMethods.MOUSEEVENTF_ABSOLUTE | NativeMethods.MOUSEEVENTF_VIRTUALDESK);
         }

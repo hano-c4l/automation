@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
+using Automation.Core.Expressions;
+using Automation.Core.Imaging;
 using Automation.Core.Input;
 using Automation.Core.Model;
 using Automation.Core.Native;
@@ -18,6 +20,7 @@ namespace Automation.Core.Runner
         private readonly HashSet<MouseButton> _held = new HashSet<MouseButton>();
         private readonly Dictionary<string, IntPtr> _windowCache = new Dictionary<string, IntPtr>();
 
+        private readonly VariableStore _vars = new VariableStore();
         private readonly KeyboardController _keyboard;
         private readonly HashSet<int> _heldKeys = new HashSet<int>();
 
@@ -38,11 +41,12 @@ namespace Automation.Core.Runner
         {
             if (script == null) throw new ArgumentNullException(nameof(script));
             _windowCache.Clear();
+            _vars.Clear();
             // 1 ms timer resolution so short delays and the per-iteration yield are not rounded up to ~15 ms.
             NativeMethods.timeBeginPeriod(1);
             try
             {
-                ExecuteList(script.Actions, new RunContext(), token);
+                ExecuteList(script.Actions, token);
             }
             finally
             {
@@ -52,31 +56,22 @@ namespace Automation.Core.Runner
             }
         }
 
-        /// <summary>
-        /// What child actions inherit from the node that contains them. Today only the window; later an Image node
-        /// will push the place where the image was found so its children can be relative to it.
-        /// </summary>
-        private sealed class RunContext
-        {
-            public WindowTarget Window = null;
-        }
-
-        private void ExecuteList(List<ActionNode> nodes, RunContext context, CancellationToken token)
+        private void ExecuteList(List<ActionNode> nodes, CancellationToken token)
         {
             foreach (var node in nodes)
             {
                 token.ThrowIfCancellationRequested();
                 NodeStarted?.Invoke(node);
-                Execute(node, context, token);
+                Execute(node, token);
             }
         }
 
-        private void Execute(ActionNode node, RunContext context, CancellationToken token)
+        private void Execute(ActionNode node, CancellationToken token)
         {
             switch (node.Category)
             {
                 case ActionCategory.Mouse:
-                    ExecuteMouse(node, context, token);
+                    ExecuteMouse(node, token);
                     break;
                 case ActionCategory.Keyboard:
                     ExecuteKeyboard(node, token);
@@ -85,8 +80,17 @@ namespace Automation.Core.Runner
                     ExecuteCommand(node);
                     break;
                 case ActionCategory.Control:
-                    if (node.Control == ControlKind.Wait) ExecuteWait(node, context, token);
-                    else ExecuteLoop(node, context, token);
+                    switch (node.Control)
+                    {
+                        case ControlKind.Wait: ExecuteWait(node, token); break;
+                        case ControlKind.Image: ExecuteImage(node, token); break;
+                        case ControlKind.Variable: ExecuteVariable(node); break;
+                        case ControlKind.Condition: ExecuteCondition(node, token); break;
+                        case ControlKind.Case:
+                        case ControlKind.Else:
+                            throw new InvalidOperationException("A Case or Else can only be inside a Condition.");
+                        default: ExecuteLoop(node, token); break;
+                    }
                     break;
             }
         }
@@ -96,15 +100,6 @@ namespace Automation.Core.Runner
         private void ExecuteKeyboard(ActionNode node, CancellationToken token)
         {
             var k = node.Keyboard;
-            if (!k.Target.IsEmpty)
-            {
-                // Keys go to whatever is in front, so bring the target there first and never type into another program.
-                IntPtr hwnd = FindWindow(k.Target);
-                Activate(hwnd, token);
-                if (!WindowLocator.IsActive(hwnd))
-                    throw new InvalidOperationException("Could not bring " + Describe(k.Target) + " to the front; keys were not sent.");
-            }
-
             int time = ToInt(k.TimeMs);
             try
             {
@@ -127,7 +122,7 @@ namespace Automation.Core.Runner
                         _keyboard.Combo(KeyCodes.ParseCombo(k.Value), time, token);
                         break;
                     case KeyboardAction.Text:
-                        _keyboard.TypeText(k.Value, time, token);
+                        _keyboard.TypeText(k.ValueIsExpression ? EvalString(k.Value) : k.Value, time, token);
                         break;
                 }
             }
@@ -164,13 +159,102 @@ namespace Automation.Core.Runner
             _heldKeys.Clear();
         }
 
+        // ---------------------------------------------------------------- image
+
+        /// <summary>
+        /// Looks for the picture. With an ID the result is stored in that variable (Found, and when found Position and
+        /// Size). When found the children run; when not found they are skipped and the run continues.
+        /// </summary>
+        private void ExecuteImage(ActionNode node, CancellationToken token)
+        {
+            var im = node.Image;
+            if (!im.HasImage) throw new InvalidOperationException("Image: no picture is set.");
+            bool hasId = !string.IsNullOrWhiteSpace(im.Id);
+            if (hasId && !Expression.IsValidId(im.Id.Trim()))
+                throw new InvalidOperationException("Image: \"" + im.Id + "\" is not a valid ID.");
+
+            LocateResult found = ImageLocator.Locate(im, im.Process, token);
+            if (hasId) _vars.Set(im.Id.Trim(), ToImageValue(im, found));
+            if (!found.Found)
+            {
+                string best = found.Score >= 0 ? " (best match " + (int)Math.Round(found.Score * 100) + "%, needs " + im.Accuracy + "%)" : "";
+                Message?.Invoke("Image not found" + best + ".");
+                return;
+            }
+            ExecuteList(node.Children, token);
+        }
+
+        /// <summary>
+        /// Position is the chosen point of the picture measured from the same Anchor point of the Process window that
+        /// the range uses, so a Mouse action with that Process and Anchor lands on it. Without a Process it is absolute.
+        /// </summary>
+        private static ImageValue ToImageValue(ImageSettings im, LocateResult found)
+        {
+            if (!found.Found) return new ImageValue(false, default(PointValue), default(SizeValue));
+
+            WindowLocator.ToScreen(found.Rect, im.ResultAnchor, 0, 0, out int px, out int py);
+            int rx = 0, ry = 0;
+            if (found.Window.HasValue) WindowLocator.ToScreen(found.Window.Value, im.Anchor, 0, 0, out rx, out ry);
+            return new ImageValue(true, new PointValue(px - rx, py - ry), new SizeValue(found.Rect.Width, found.Rect.Height));
+        }
+
+        // ---------------------------------------------------------------- variable and condition
+
+        private void ExecuteVariable(ActionNode node)
+        {
+            var v = node.Variable;
+            string id = (v.Id ?? "").Trim();
+            if (!Expression.IsValidId(id))
+                throw new InvalidOperationException("Variable: \"" + v.Id + "\" is not a valid ID (letters, digits and _, not starting with a digit).");
+            try
+            {
+                object value = v.UseExpression ? Expression.Evaluate(v.Expression, _vars) : v.GetLiteral();
+                _vars.Set(id, Coercion.To(v.Type, value));
+            }
+            catch (ExpressionException ex)
+            {
+                throw new InvalidOperationException("Variable {" + id + "}: " + ex.Message);
+            }
+        }
+
+        /// <summary>Runs the first Case whose expression is true; if none is, runs the Else.</summary>
+        private void ExecuteCondition(ActionNode node, CancellationToken token)
+        {
+            foreach (var branch in node.Children)
+            {
+                token.ThrowIfCancellationRequested();
+                if (branch.IsKind(ControlKind.Case))
+                {
+                    bool matched;
+                    try { matched = Expression.EvaluateBool(branch.Case.Expression, _vars); }
+                    catch (ExpressionException ex) { throw new InvalidOperationException("Condition " + (string.IsNullOrWhiteSpace(branch.Name) ? "" : branch.Name + " ") + "(" + branch.Case.Expression.Trim() + "): " + ex.Message); }
+                    if (matched)
+                    {
+                        ExecuteList(branch.Children, token);
+                        return;
+                    }
+                }
+                else if (branch.IsKind(ControlKind.Else))
+                {
+                    ExecuteList(branch.Children, token);
+                    return;
+                }
+            }
+        }
+
+        private string EvalString(string text)
+        {
+            try { return Expression.EvaluateString(text, _vars); }
+            catch (ExpressionException ex) { throw new InvalidOperationException(ex.Message); }
+        }
+
         // ---------------------------------------------------------------- wait
 
         /// <summary>
         /// Waits until a window matching the process appears and is in front, then runs the children. Each attempt
         /// lasts TimeMs; after Retry more attempts the run stops with an error.
         /// </summary>
-        private void ExecuteWait(ActionNode node, RunContext context, CancellationToken token)
+        private void ExecuteWait(ActionNode node, CancellationToken token)
         {
             var w = node.Wait;
             if (w.Process.IsEmpty)
@@ -187,7 +271,7 @@ namespace Automation.Core.Runner
                     IntPtr hwnd = WindowLocator.Find(w.Process);
                     if (hwnd != IntPtr.Zero && TryActivate(hwnd, token))
                     {
-                        ExecuteList(node.Children, context, token);
+                        ExecuteList(node.Children, token);
                         return;
                     }
                     Wait(200, token);
@@ -202,7 +286,7 @@ namespace Automation.Core.Runner
         /// Duration and Until are checked between iterations, so the last iteration can overshoot the end by
         /// up to the length of one pass over the body.
         /// </summary>
-        private void ExecuteLoop(ActionNode loop, RunContext context, CancellationToken token)
+        private void ExecuteLoop(ActionNode loop, CancellationToken token)
         {
             if (loop.Children.Count == 0) return;
 
@@ -211,13 +295,13 @@ namespace Automation.Core.Runner
             {
                 case LoopType.Count:
                     for (long i = 0; settings.Count == 0 || i < settings.Count; i++)
-                        Iterate(loop, context, token);
+                        Iterate(loop, token);
                     break;
 
                 case LoopType.Duration:
                     var watch = Stopwatch.StartNew();
                     while (watch.ElapsedMilliseconds < settings.DurationMs)
-                        Iterate(loop, context, token);
+                        Iterate(loop, token);
                     break;
 
                 case LoopType.Until:
@@ -228,30 +312,40 @@ namespace Automation.Core.Runner
                         break;
                     }
                     while (DateTime.Now < until.Value)
-                        Iterate(loop, context, token);
+                        Iterate(loop, token);
                     break;
             }
         }
 
-        private void Iterate(ActionNode loop, RunContext context, CancellationToken token)
+        private void Iterate(ActionNode loop, CancellationToken token)
         {
-            ExecuteList(loop.Children, context, token);
+            ExecuteList(loop.Children, token);
             Wait(0, token); // a loop whose body has no delay still yields and checks for a stop on every pass
         }
 
         // ---------------------------------------------------------------- mouse
 
-        private void ExecuteMouse(ActionNode node, RunContext context, CancellationToken token)
+        private void ExecuteMouse(ActionNode node, CancellationToken token)
         {
             var m = node.Mouse;
             int x = m.X, y = m.Y;
-            WindowTarget target = !m.Process.IsEmpty ? m.Process : context.Window;
-            if (target != null && !target.IsEmpty)
+            if (m.UseVariable)
             {
-                IntPtr hwnd = FindWindow(target);
+                try
+                {
+                    var point = Expression.EvaluatePoint(m.PositionExpression, _vars);
+                    x = (int)Math.Round(point.X);
+                    y = (int)Math.Round(point.Y);
+                }
+                catch (ExpressionException ex) { throw new InvalidOperationException("Mouse position: " + ex.Message); }
+            }
+
+            if (!m.Process.IsEmpty)
+            {
+                IntPtr hwnd = FindWindow(m.Process);
                 Activate(hwnd, token);
                 var area = WindowLocator.GetClientArea(hwnd);
-                WindowLocator.ToScreen(area, m.Anchor, m.X, m.Y, out x, out y);
+                WindowLocator.ToScreen(area, m.Anchor, x, y, out x, out y);
                 // Never act on whatever program happens to cover the point (activation is best effort).
                 var under = WindowLocator.WindowAt(x, y);
                 if (!under.HasValue || !WindowLocator.SameProcess(under.Value.Handle, hwnd))

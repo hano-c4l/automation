@@ -45,7 +45,26 @@ namespace Automation.Core.Model
     public enum ControlKind
     {
         Loop,
-        Wait
+        Wait,
+        Image,
+        Variable,
+        /// <summary>A switch-case: children are Case nodes followed by one Else node.</summary>
+        Condition,
+        /// <summary>One branch of a Condition; runs when its expression is true and no earlier case was.</summary>
+        Case,
+        /// <summary>The last branch of a Condition; runs when no case matched.</summary>
+        Else
+    }
+
+    public enum VariableType
+    {
+        Position,
+        Range,
+        String,
+        Number,
+        Boolean,
+        Date,
+        DateTime
     }
 
     public enum LoopType
