@@ -39,7 +39,7 @@ Chương trình automation/autoclick cho Windows, người dùng cuối không p
 Automation.sln
   src/Automation.Core     (netstandard2.0)  model kịch bản, JSON, engine chuột phím (P/Invoke), so khớp ảnh,
                                             biểu thức/biến, chuyển bản ghi thành action, runner,
-                                            tọa độ theo cửa sổ; (sau này) kiểm tra license
+                                            tọa độ theo cửa sổ; kiểm tra license (Licensing/)
   src/Automation.App      (net48 WinForms)  UI cây action, overlay chọn điểm/vùng, phím nóng, hook ghi thao tác
   tools/Automation.KeyGen (net48 console)   công cụ tạo license, KHÔNG đóng gói cùng bản phát hành
 ```
@@ -76,10 +76,17 @@ Automation.sln
 - Khi chạy: nếu cửa sổ chưa ở foreground hoặc đang minimize thì tự khôi phục và đưa lên trước (best effort); báo lỗi và dừng nếu không tìm thấy cửa sổ.
 
 ### License
-1. App tạo **Machine ID** bằng cách băm thông tin ổn định (như `MachineGuid` trong registry, serial ổ đĩa/mainboard).
-2. Người dùng gửi Machine ID; chủ sản phẩm dùng `KeyGen` tạo file license gồm Machine ID, ngày hết hạn (hoặc không hết hạn), tên người dùng, tính năng, rồi ký bằng khóa riêng (ECDSA P-256 hoặc RSA, có sẵn trong .NET Framework 4.8).
-3. App chỉ nhúng khóa công khai để kiểm tra chữ ký.
-4. Chống lùi đồng hồ: lưu mốc thời gian chạy gần nhất, từ chối nếu giờ hệ thống lùi.
+1. **Machine ID** = SHA-256 của `MachineGuid` (đọc registry HKLM, chỉ đọc, không cần quyền admin; view 64-bit), lấy 20 ký tự hex, dạng `XXXXX-XXXXX-XXXXX-XXXXX`. Không đổi theo thời gian, nằm trong license và được so với máy khi kiểm tra. Người dùng **không thấy** Machine ID.
+2. **Request key** (cái người dùng gửi cho Admin): chương trình **mã hóa AES-128** Machine ID (kèm 6 byte mã kiểm tra) bằng khóa dẫn xuất từ một bí mật nhúng sẵn trong chương trình và ngày UTC `yyyyMMdd`, hiện 32 ký tự hex `XXXX-XXXX-...` (8 nhóm). Mỗi ngày một key khác; đầu ra không lộ Machine ID hay ngày (cửa sổ License không hiển thị ngày). Admin chạy `keys\make-license.bat`, nhập request key, ngày gửi (UTC, `YYYYMMDD`) và ngày hết hạn (`YYYYMMDD`, bỏ trống = vô thời hạn). KeyGen chỉ giải được khi ngày nhập **đúng khớp** với ngày tạo key; không khớp thì báo lỗi và không tạo file (admin tự quyết định ngày UTC). Kết quả là `keys\license.lic` (ghi đè nếu đã có). Giới hạn: khóa AES dẫn xuất từ bí mật nằm trong mã nguồn nên người dịch ngược chương trình vẫn tìm ra được; muốn chặt hơn thì chuyển sang mã hóa bất đối xứng (key dài hơn).
+3. `license.lic`: JSON (Product, MachineId, User, Expires, Features, Issued = ngày UTC cấp) ký **ECDSA P-256 / SHA-256**; file gồm header, payload base64 và chữ ký base64 (88 ký tự cuối). Khi đọc, mọi khoảng trắng/xuống dòng sau header bị bỏ qua nên dán text bị chat/email ngắt dòng vẫn dùng được. App chỉ nhúng khóa công khai (`LicenseManager.PublicKey`). **Khóa riêng** nằm ở `keys\license-private.key` trong thư mục dự án; `.gitignore` chặn `/keys/*` (chỉ cho `keys\*.bat`), nên không bao giờ commit; không thuộc csproj nên build/clean không xóa; phải sao lưu ra nơi khác: mất khóa thì không cấp được license mới nếu không phát hành lại bản có khóa công khai mới.
+4. **Không có license hợp lệ (thiếu, sai chữ ký, sai máy, hết hạn, đồng hồ sai, thiếu/hỏng Setting.ini với license có hạn) = khóa toàn bộ:** chương trình chỉ hiện màn hình License: request key + Copy, ô dán nội dung license ("Use pasted license"), "Import file...", Exit thì thoát. Cả hai cách đều kiểm tra rồi ghi `license.lic` **cạnh file exe**; copy chương trình sang nơi khác thì phải copy cả `license.lic` và `Setting.ini`, nếu không thì nhập lại.
+5. **License có hạn** (license vô hạn bỏ qua toàn bộ mục này: không cần mạng, không có state):
+   - **Kích hoạt (Import/dán) bắt buộc có mạng:** `TrustedClock` lấy giờ từ header `Date` của HTTPS (microsoft/google/cloudflare, kết nối có xác thực), không được thì NTP (time.windows.com, time.google.com, pool.ntp.org). Không có mạng thì từ chối. Hết hạn tính hết ngày `Expires` theo giờ chuẩn đó (đổi sang múi giờ máy).
+   - **`Setting.ini`** cạnh exe, tạo tự động khi kích hoạt. Mục `[Window]` giữ vị trí, kích thước và trạng thái phóng to của cửa sổ; mục `[App]` có `State` = giờ UTC lần cuối dùng chương trình, **mã hóa AES-CBC + ký HMAC-SHA256** với khóa phụ thuộc máy và license (sửa tay, chép từ máy/license khác đều hỏng). Không dùng registry.
+   - **Cập nhật state** lúc khởi động và sau New, Open, Save, Save As, Stop sau Start, Stop sau Record. Nếu đang **offline** và giờ máy sớm hơn state quá 2 phút thì báo lỗi (khóa); nếu **có mạng** thì giờ mạng là chuẩn và ghi đè state (đồng hồ máy từng sai không bị phạt mãi).
+   - **Thiếu `Setting.ini`, thiếu `State` hoặc state hỏng** = license không hợp lệ: chỉ cần kích hoạt lại (Import hoặc dán), chương trình tự ghi đè license.lic và Setting.ini.
+   - Sau lần lấy giờ mạng đầu tiên, giờ chạy tiếp bằng đồng hồ bấm giờ trong phiên nên chỉnh giờ máy giữa chừng vô hiệu; làm mới sau 1 giờ; nếu lần lấy giờ thất bại thì 10 phút sau mới thử lại. Offline vẫn dùng giờ máy và từ chối nếu sớm hơn ngày cấp (`Issued`) quá 1 ngày.
+6. Kiểm tra lúc khởi động và lúc bấm Start (F6), Record (F7). Nút **License** trên menu bar cho xem trạng thái, request key và nhập license mới.
 - Giới hạn: .NET dễ bị decompile/vá, nên cơ chế này chỉ ngăn chia sẻ thông thường. Có thể tăng độ khó bằng obfuscation, kiểm tra nhiều chỗ, hoặc kích hoạt online có server thu hồi key (để giai đoạn sau).
 - Khóa riêng không bao giờ được commit vào repo.
 
@@ -90,7 +97,7 @@ Automation.sln
 3. Tọa độ theo cửa sổ.
 3b. Thiết kế lại thành cây action (Loop, Process/Anchor theo từng action, Scroll, Time/Delay có đơn vị) — đã xong, thay thế UI của M3.
 4. Keyboard, Command/Open, Wait, Image, Variable, Condition, biểu thức, Record — đã xong và đã vào `preview`.
-5. **License theo máy và công cụ tạo key (KeyGen) — chưa làm.**
+5. License theo máy và công cụ tạo key (KeyGen) — đã xong, vào `preview` qua nhánh `feature_license`.
 
 ## 7. Quy trình git (theo CLAUDE.md)
 
