@@ -21,9 +21,10 @@ namespace Automation.App
         private const int HotKeyToggleId = 1;
         private const int HotKeyEscapeId = 2;
         private const string UntilFormat = "yyyy-MM-dd HH:mm:ss";
-        private const int DetailWidth = 485;
+        private const int DetailWidth = 510;
         private const int FieldWidth = 200;   // every input field
-        private const int ExtraWidth = 92;    // second column: unit text and Pick / Check buttons
+        private const int UnitWidth = 50;     // second column: unit text (px, %, Times, notches)
+        private const int ButtonWidth = 68;   // third column: Pick / Check / Capture buttons, so every button starts at the same x
         private const int LabelWidth = 100;
         private const int GroupInset = 8;    // a group box insets its content by its padding and border
 
@@ -1946,7 +1947,7 @@ namespace Automation.App
         /// <summary>A unit text (px, %) placed after a field.</summary>
         private static Label Unit(string text)
         {
-            return new Label { Text = text, AutoSize = true, Margin = new Padding(2, 6, 6, 0) };
+            return new Label { Text = text, AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(2, 0, 0, 0) };
         }
 
         /// <summary>Controls stacked top to bottom in one cell (for example a preview with its caption, or two buttons).</summary>
@@ -1984,9 +1985,11 @@ namespace Automation.App
             }
             else
             {
-                var host = new TableLayoutPanel { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, ColumnCount = 3, RowCount = 1, Margin = new Padding(0) };
+                // field | unit | button | ?   (fixed columns, so units, buttons and the ? icons each line up from row to row)
+                var host = new TableLayoutPanel { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, ColumnCount = 4, RowCount = 1, Margin = new Padding(0) };
                 host.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, FieldWidth + 6));
-                host.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, ExtraWidth));
+                host.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, UnitWidth));
+                host.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, ButtonWidth));
                 host.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
                 if (fields.Length == 1)
@@ -2008,11 +2011,9 @@ namespace Automation.App
                     host.Controls.Add(pair, 0, 0);
                 }
 
-                var extras = new FlowLayoutPanel { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, WrapContents = false, Margin = new Padding(0) };
-                if (unit != null) extras.Controls.Add(Unit(unit));
-                if (button != null) extras.Controls.Add(button);
-                host.Controls.Add(extras, 1, 0);
-                if (help != null) host.Controls.Add(new HelpIcon(help), 2, 0);
+                if (unit != null) host.Controls.Add(Unit(unit), 1, 0);
+                if (button != null) host.Controls.Add(button, 2, 0);
+                if (help != null) host.Controls.Add(new HelpIcon(help), 3, 0);
                 cell = host;
                 _rowHosts[key ?? fields[0]] = host;
             }

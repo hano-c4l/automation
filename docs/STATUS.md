@@ -34,7 +34,7 @@ Cập nhật lần cuối: 2026-11-05
 ### Chỉnh thêm (cùng nhánh feature_ui_polish)
 - [x] 7 nút icon chuyển lên thanh công cụ, góc phải, thứ tự Add, Update, Delete, In, Out, Up, Down. Add luôn bật; các nút còn lại chỉ bật khi chọn ít nhất một action (dòng End không tính); tất cả tắt khi script đang chạy.
 - [x] Giải thích ? của Time và Delay tách riêng (Mouse và Keyboard mỗi loại hai nội dung).
-- [x] Picture anchor của Image nằm dưới Height / Pick range.
+- [x] (Đã thay thế: Image giờ chỉ có một Anchor, không còn Picture anchor.)
 - [x] **Capture picture:** trước khi hiện lớp phủ, chương trình chụp một ảnh màn hình (đã dời con trỏ ra góc để không hiện hover) rồi cho người dùng chọn trên chính ảnh đó (hiển thị mờ, vùng chọn sáng); ảnh lấy cắt từ ảnh chụp sẵn đó. Vì vậy màn hình thay đổi trong lúc đang chọn không ảnh hưởng ảnh mẫu. Test: đổi nội dung cửa sổ ngay giữa lúc kéo, ảnh nhận được vẫn đúng từng pixel với ảnh trước khi kéo.
 - [x] **Mouse Move:** ô Type ẩn và không lưu giá trị Button vào file.
 - [x] Bấm nút icon trên thanh công cụ chuyển focus khỏi ô đang sửa (ToolStrip không tự lấy focus): số vừa gõ được ghi nhận ngay (test: gõ 77 rồi bấm Add ra X = 77) và ô Key nhả phím F6 toàn cục. Vẽ lại lớp phủ đóng băng ở 1920x1080 mất ~11 ms mỗi lần. Khi bấm Capture, con trỏ nhảy xuống góc dưới phải khoảng 0,25 s (để không hiện hover); Pick range vẫn dùng lớp phủ trong suốt.
@@ -49,12 +49,13 @@ Cập nhật lần cuối: 2026-11-05
 ### Chỉnh theo yêu cầu người dùng (nhánh feature_user_tweaks)
 - [x] Rà soát các sửa tay của người dùng (placeholder cho ô chữ, bỏ/đổi một số nhãn): `TextBox.Placeholder` không tồn tại nên không biên dịch được; đã thêm `HintTextBox` (ô chữ có gợi ý mờ: chữ một dòng dùng cue banner của hệ thống, nhiều dòng tự vẽ) và `NumberBox` kế thừa nó. Sửa lỗi chính tả "Póition". Phần còn lại giữ nguyên.
 - [x] Nút Update chỉ bật khi chọn đúng một dòng.
-- [x] Khoảng cách: Mouse (sau Type, sau Delay), Keyboard (trước Time), Wait (giữa Process và Wait), Image (sau ID; sau Size; Picture anchor nằm dưới Picture), Variable (sau Value type), và giữa Name, Category, Action, group box.
+- [x] Khoảng cách: Mouse (sau Type, sau Delay), Keyboard (trước Time), Wait (giữa Process và Wait), Image (sau ID; sau Size), Variable (sau Value type), và giữa Name, Category, Action, group box.
 - [x] Panel Action detail thu còn 460 px (đo nội dung rộng nhất mọi trạng thái: 418 px + lề và thanh cuộn).
 - [x] Wait: Retry có đơn vị "Times". Loop: kiểu `Count` đổi thành `Times` (nhãn, combobox, và tên lưu trong file; file cũ ghi "Count" vẫn đọc thành Times).
 
 ### Căn hàng và bố cục (nhánh feature_user_tweaks)
-- [x] Mọi ô nhập rộng đúng 200 px (ô chữ, combobox, số, ngày giờ, TimeBox: Duration giờ bằng Type và Times, Wait bằng Retry; cặp X, Y và Width, Height chia nhau 200 px nên mép phải thẳng với Process, Picture, Accuracy...). Cột thứ hai cố định cho đơn vị (px, %, Times, notches) và các nút Pick / Check / Capture; cột thứ ba cố định cho dấu ?, nên các dấu ? thẳng hàng dọc. Name, Category, Action bắt đầu cùng x với ô trong group box. Panel Action detail 485 px (nội dung rộng nhất 450 + lề + thanh cuộn). Test kiểm tra mép phải và cột ? của Mouse, Wait, Loop (3 kiểu), Image, Variable.
+- [x] Mọi ô nhập rộng đúng 200 px (ô chữ, combobox, số, ngày giờ, TimeBox: Duration giờ bằng Type và Times, Wait bằng Retry; cặp X, Y và Width, Height chia nhau 200 px nên mép phải thẳng với Process, Picture, Accuracy...). Cột thứ hai cố định cho đơn vị (px, %, Times, notches) và các nút Pick / Check / Capture; cột thứ ba cố định cho dấu ?, nên các dấu ? thẳng hàng dọc. Name, Category, Action bắt đầu cùng x với ô trong group box. Panel Action detail 510 px. Test kiểm tra mép phải và cột ? của Mouse, Wait, Loop (3 kiểu), Image, Variable.
+- [x] Các nút (Pick, Check, Capture, Pick file, Browse) cùng bắt đầu ở một x vì có cột đơn vị cố định (px, %, Times, notches) đứng trước cột nút; panel 510 px (nội dung rộng nhất 476 + lề + thanh cuộn).
 - [x] Image và Wait/Mouse nhất quán: dòng Title không có nhãn, ô Process và Title có chữ mờ ("Process Name", "Process Title (Regex)").
 
 ### Checklist test giao diện (feature_ui_polish)
@@ -80,7 +81,7 @@ Cập nhật lần cuối: 2026-11-05
 3. Condition: Category Control, Type Condition, nhập ô "First case" (bắt buộc, ví dụ `{abc} > 3`), Add: xuất hiện 4 dòng (Begin, case đầu, else, End). Chọn Condition, Type = Case, nhập `{abc} > 2`, Add: case mới nằm trước else (sau case đầu). Update trên Condition chỉ đổi tên. Chọn một case rồi Add action Mouse: nằm trong case (thụt lề). Thử xóa else / xóa case cuối / Up-Down case qua else / In-Out case: bị từ chối với thông báo. Out một action từ trong case: nằm ngay sau dòng End.
 4. Chạy: Variable abc = 5, Condition với `{abc} > 3` và `{abc} > 2`: chỉ case đầu chạy (thêm action nhìn thấy được, ví dụ Text). Đổi abc = 2 thì chạy else.
 5. Loop 5 lần chứa Variable `{n} + 1` rồi Condition: số lần mỗi nhánh đúng.
-6. Image: đặt ID `img` (và Picture anchor). Thêm Mouse, Position from = Variable, Expression `{img.Position} + {10,20}`, cùng Process và Anchor với Image: chuột đến đúng điểm; dời cửa sổ rồi chạy lại vẫn trúng. Thử `{img.Position.X + 1}, {img.Position.Y + 1}`.
+6. Image: đặt ID `img` và Anchor (dùng chung cho vùng tìm và Position trả về). Thêm Mouse, Position from = Variable, Expression `{img.Position} + {10,20}`, cùng Process và Anchor với Image: chuột đến đúng điểm; dời cửa sổ rồi chạy lại vẫn trúng. Thử `{img.Position.X + 1}, {img.Position.Y + 1}`.
 7. Condition dùng `{img.Found}`: ảnh có/không có trên màn hình cho nhánh đúng.
 8. Keyboard Text, Text from = Variable: `"Total: " + {sum}` gõ đúng.
 9. Save As chỉ hiện sau khi Open hoặc Save lần đầu.
