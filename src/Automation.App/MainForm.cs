@@ -216,17 +216,19 @@ namespace Automation.App
             var tools = new ToolStrip { GripStyle = ToolStripGripStyle.Hidden, Dock = DockStyle.Fill, RenderMode = ToolStripRenderMode.System };
             _btnNew = MakeToolButton("New", (s, e) => NewScript());
             _btnOpen = MakeToolButton("Open", (s, e) => OpenScript());
-            _btnSave = MakeToolButton("Save", (s, e) => SaveScript(false));
+            _btnSave = MakeToolButton("Save", (s, e) => { if (SaveScript(false)) LicenseAllowsWork(); });
             tools.Items.Add(_btnNew);
             tools.Items.Add(_btnOpen);
             tools.Items.Add(_btnSave);
-            _saveAs.Click += (s, e) => SaveScript(true);
+            _saveAs.Click += (s, e) => { if (SaveScript(true)) LicenseAllowsWork(); };
             tools.Items.Add(_saveAs);
             tools.Items.Add(new ToolStripSeparator());
             _collapseAll = MakeToolButton("Collapse All", (s, e) => CollapseAll(true));
             _expandAll = MakeToolButton("Expand All", (s, e) => CollapseAll(false));
             tools.Items.Add(_collapseAll);
             tools.Items.Add(_expandAll);
+            tools.Items.Add(new ToolStripSeparator());
+            tools.Items.Add(MakeToolButton("License", (s, e) => ShowLicense()));
             // Start / Stop and Record sit in the middle of the menu bar: a spacer before them is resized with the bar.
             tools.Items.Add(_centerSpacer);
             tools.Items.Add(_startStop);
@@ -1756,6 +1758,7 @@ namespace Automation.App
             RefreshList();
             UpdateTitle();
             MarkSaved();
+            LicenseAllowsWork();
         }
 
         private void OpenScript()
@@ -1773,6 +1776,7 @@ namespace Automation.App
                     UpdateTitle();
                     MarkSaved();
                     SetStatus("Opened " + Path.GetFileName(dialog.FileName));
+                    LicenseAllowsWork();
                 }
                 catch (Exception ex)
                 {
@@ -1828,7 +1832,7 @@ namespace Automation.App
         {
             if (_running) return;
             if (_recording) StopRecording();
-            else StartRecording();
+            else if (LicenseAllowsWork()) StartRecording();
         }
 
         private void StartRecording()
@@ -1867,6 +1871,7 @@ namespace Automation.App
             ApplyBusyState();
             SetToggleHotKey(true);
             SetStatus(nodes.Count == 0 ? "Nothing was recorded." : "Recorded " + nodes.Count + " action(s).");
+            LicenseAllowsWork(); // recording just ended counts as the program being used
         }
 
         /// <summary>
@@ -1896,11 +1901,31 @@ namespace Automation.App
 
         // ---------------------------------------------------------------- running
 
+        /// <summary>
+        /// Re-checks the license (set by Program; null = no check, as in tests). It returns false when the license is no
+        /// longer valid and the user did not provide a new one.
+        /// </summary>
+        public Func<bool> LicenseGuard { get; set; }
+
+        /// <summary>True when running or recording may begin; otherwise the program closes.</summary>
+        private bool LicenseAllowsWork()
+        {
+            if (LicenseGuard == null || IsDisposed || _closing || LicenseGuard()) return true;
+            Close();
+            return false;
+        }
+
+        private void ShowLicense()
+        {
+            var result = LicenseManager.Check();
+            using (var form = new LicenseForm(false, result)) form.ShowDialog(this);
+        }
+
         private void ToggleRun()
         {
             if (_recording) return;
             if (_running) _cts.Cancel();
-            else _ = StartAsync();
+            else if (LicenseAllowsWork()) _ = StartAsync();
         }
 
         private async Task StartAsync()
@@ -1939,6 +1964,7 @@ namespace Automation.App
             finally
             {
                 SetRunning(false);
+                LicenseAllowsWork(); // a run that just ended counts as the program being used
             }
         }
 
@@ -2087,16 +2113,60 @@ namespace Automation.App
 
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
+            _closing = true; // no license check from here on: the program is leaving anyway
             // A recording in progress is finished first, so its actions count as unsaved changes in the question below.
             if (_recording) StopRecording();
             // Ask first: answering No must not stop a running script.
             if (!ConfirmLoseChanges("closing the program"))
             {
+                _closing = false;
                 e.Cancel = true;
                 return;
             }
             if (_running) _cts.Cancel();
+            if (SettingsEnabled) SaveWindowSettings();
             base.OnFormClosing(e);
+        }
+
+        // ---------------------------------------------------------------- Setting.ini (window)
+
+        /// <summary>True when the program runs for real (set by Program): the window size and place are kept in Setting.ini.</summary>
+        public bool SettingsEnabled { get; set; }
+
+        private bool _closing;
+
+        protected override void OnLoad(EventArgs e)
+        {
+            if (SettingsEnabled) ApplyWindowSettings();
+            base.OnLoad(e);
+        }
+
+        private void ApplyWindowSettings()
+        {
+            var ini = IniFile.Load(IniFile.DefaultPath);
+            int? left = ini.GetInt("Window", "Left"), top = ini.GetInt("Window", "Top");
+            int? width = ini.GetInt("Window", "Width"), height = ini.GetInt("Window", "Height");
+            if (!left.HasValue || !top.HasValue || !width.HasValue || !height.HasValue) return;
+            var bounds = new Rectangle(left.Value, top.Value, Math.Max(width.Value, MinimumSize.Width), Math.Max(height.Value, MinimumSize.Height));
+            // Only where the window can still be seen (a monitor may have been unplugged).
+            if (!Screen.AllScreens.Any(s => s.WorkingArea.IntersectsWith(bounds) && Rectangle.Intersect(s.WorkingArea, bounds).Width >= 100 && Rectangle.Intersect(s.WorkingArea, bounds).Height >= 50)) return;
+            StartPosition = FormStartPosition.Manual;
+            Bounds = bounds;
+            if (ini.Get("Window", "Maximized") == "1") WindowState = FormWindowState.Maximized;
+        }
+
+        private void SaveWindowSettings()
+        {
+            var bounds = WindowState == FormWindowState.Normal ? Bounds : RestoreBounds;
+            if (bounds.Width <= 0 || bounds.Height <= 0) return;
+            var ini = IniFile.Load(IniFile.DefaultPath); // keeps the other entries (such as the license state)
+            ini.Set("Window", "Left", bounds.Left);
+            ini.Set("Window", "Top", bounds.Top);
+            ini.Set("Window", "Width", bounds.Width);
+            ini.Set("Window", "Height", bounds.Height);
+            ini.Set("Window", "Maximized", WindowState == FormWindowState.Maximized ? "1" : "0");
+            try { ini.Save(IniFile.DefaultPath); }
+            catch (IOException) { } // a read-only folder just means the window is not remembered
         }
 
         // ---------------------------------------------------------------- helpers
