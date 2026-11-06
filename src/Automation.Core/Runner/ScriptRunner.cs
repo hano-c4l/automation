@@ -185,17 +185,23 @@ namespace Automation.Core.Runner
         }
 
         /// <summary>
-        /// Position is the chosen point of the picture measured from the same Anchor point of the Process window that
-        /// the range uses, so a Mouse action with that Process and Anchor lands on it. Without a Process it is absolute.
+        /// With a Process, Position is the picture's anchor corner (centre for Center) measured from the same anchor point
+        /// of the window that the range uses, so a Mouse action with that Process and Anchor lands on it. Without a
+        /// Process it is the picture's top-left corner on the desktop.
         /// </summary>
         private static ImageValue ToImageValue(ImageSettings im, LocateResult found)
         {
             if (!found.Found) return new ImageValue(false, default(PointValue), default(SizeValue));
 
-            WindowLocator.ToScreen(found.Rect, im.ResultAnchor, 0, 0, out int px, out int py);
-            int rx = 0, ry = 0;
-            if (found.Window.HasValue) WindowLocator.ToScreen(found.Window.Value, im.Anchor, 0, 0, out rx, out ry);
-            return new ImageValue(true, new PointValue(px - rx, py - ry), new SizeValue(found.Rect.Width, found.Rect.Height));
+            PointValue position;
+            if (found.Window.HasValue)
+            {
+                WindowLocator.ToScreen(found.Rect, im.Anchor, 0, 0, out int px, out int py);
+                WindowLocator.ToScreen(found.Window.Value, im.Anchor, 0, 0, out int wx, out int wy);
+                position = new PointValue(px - wx, py - wy);
+            }
+            else position = new PointValue(found.Rect.Left, found.Rect.Top);
+            return new ImageValue(true, position, new SizeValue(found.Rect.Width, found.Rect.Height));
         }
 
         // ---------------------------------------------------------------- variable and condition

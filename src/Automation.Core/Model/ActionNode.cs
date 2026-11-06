@@ -266,10 +266,18 @@ namespace Automation.Core.Model
         /// <summary>Window the range is relative to. Empty means the desktop.</summary>
         [DataMember(Order = 1)] public WindowTarget Process { get; set; } = new WindowTarget();
 
-        /// <summary>With a Process: the point of its client area that the range is measured from.</summary>
+        /// <summary>
+        /// With a Process, the single anchor of the Image action: the corner (or centre) of the Process window that
+        /// positions are measured from. The range's matching corner is placed at (RangeX, RangeY) from it, and the
+        /// Position stored in the Image's variable is the picture's matching corner measured the same way, so a Mouse
+        /// action with the same Process and Anchor lands on it.
+        /// </summary>
         public WindowAnchor Anchor { get; set; }
 
-        /// <summary>Top-left of the search range, as an offset from the anchor (or absolute desktop pixels without a Process).</summary>
+        /// <summary>
+        /// Position of the range: where its anchor corner (centre for Center) is, as an offset from the window's anchor
+        /// point. Without a Process these are the absolute desktop pixels of the range's top-left corner.
+        /// </summary>
         [DataMember(Order = 3)] public int RangeX { get; set; }
         [DataMember(Order = 4)] public int RangeY { get; set; }
 
@@ -282,20 +290,6 @@ namespace Automation.Core.Model
 
         /// <summary>Optional variable ID. The result (found or not, Position, Size) is stored there for later actions.</summary>
         [DataMember(Order = 11, EmitDefaultValue = false)] public string Id { get; set; }
-
-        /// <summary>
-        /// Which point of the found picture the result Position refers to. The Position is measured from the same
-        /// Anchor point of the Process window that the range uses (absolute screen pixels without a Process), so a
-        /// Mouse action with the same Process and Anchor can use it directly.
-        /// </summary>
-        public WindowAnchor ResultAnchor { get; set; }
-
-        [DataMember(Name = "ResultAnchor", Order = 12)]
-        private string ResultAnchorName
-        {
-            get { return ResultAnchor.ToString(); }
-            set { ResultAnchor = ActionNode.Parse(value, WindowAnchor.TopLeft); }
-        }
 
         [DataMember(Order = 8)] public int ImageWidth { get; set; }
         [DataMember(Order = 9)] public int ImageHeight { get; set; }
@@ -369,10 +363,8 @@ namespace Automation.Core.Model
         /// <summary>Literal value of String, Number, Boolean ("true"/"false"), Date (yyyy-MM-dd) and DateTime (yyyy-MM-ddTHH:mm:ss), invariant culture.</summary>
         [DataMember(Order = 5)] public string Text { get; set; } = "";
 
-        /// <summary>Position and Range only: the window and anchor the picker measured X/Y from (the stored numbers are just X, Y, Width, Height).</summary>
-        [DataMember(Order = 6)] public WindowTarget Process { get; set; } = new WindowTarget();
-
-        public WindowAnchor Anchor { get; set; }
+        // Position and Range are plain numbers: which window and anchor they are measured from is decided by the action
+        // that uses the variable (a Mouse action's Process and Anchor).
         [DataMember(Order = 8)] public int X { get; set; }
         [DataMember(Order = 9)] public int Y { get; set; }
         [DataMember(Order = 10)] public int Width { get; set; }
@@ -385,13 +377,6 @@ namespace Automation.Core.Model
             set { Type = ActionNode.Parse(value, VariableType.Number); }
         }
 
-        [DataMember(Name = "Anchor", Order = 7)]
-        private string AnchorName
-        {
-            get { return Anchor.ToString(); }
-            set { Anchor = ActionNode.Parse(value, WindowAnchor.TopLeft); }
-        }
-
         [OnDeserializing]
         private void SetDefaults(StreamingContext context)
         {
@@ -399,7 +384,6 @@ namespace Automation.Core.Model
             Type = VariableType.Number;
             Expression = "";
             Text = "";
-            Process = new WindowTarget();
         }
 
         /// <summary>The literal value converted to its type.</summary>
@@ -417,9 +401,7 @@ namespace Automation.Core.Model
 
         public VariableSettings Clone()
         {
-            var copy = (VariableSettings)MemberwiseClone();
-            copy.Process = (Process ?? new WindowTarget()).Clone();
-            return copy;
+            return (VariableSettings)MemberwiseClone();
         }
 
         internal void Normalize()
@@ -427,7 +409,6 @@ namespace Automation.Core.Model
             if (Id == null) Id = "";
             if (Expression == null) Expression = "";
             if (Text == null) Text = "";
-            if (Process == null) Process = new WindowTarget();
             if (Width < 0) Width = 0;
             if (Height < 0) Height = 0;
         }

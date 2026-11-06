@@ -10,14 +10,15 @@ namespace Automation.App
         private static readonly string[] UnitShort = { "ms", "s", "min", "h" };
         private static readonly long[] UnitFactors = { 1, 1000, 60000, 3600000 };
 
-        private readonly NumericUpDown _value = new NumericUpDown { Minimum = 0, Maximum = 1000000000, Width = 90 };
-        private readonly ComboBox _unit = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 100 };
+        // 94 + 6 + 100 = 200: the same width as every other input field.
+        private readonly NumericUpDown _value = new NumericUpDown { Minimum = 0, Maximum = 1000000000, Width = 94, Margin = new Padding(0, 0, 6, 0) };
+        private readonly ComboBox _unit = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 100, Margin = new Padding(0) };
 
         public TimeBox(long defaultMs)
         {
             AutoSize = true;
             WrapContents = false;
-            Margin = new Padding(0);
+            Margin = new Padding(3);
             _unit.Items.AddRange(UnitNames);
             _unit.SelectedIndex = 0;
             Controls.Add(_value);
