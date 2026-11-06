@@ -101,8 +101,16 @@ namespace Automation.Core.Imaging
             window = area;
             if (whole) return area;
 
+            // The range's anchor corner (its centre for Center) sits at (RangeX, RangeY) from the window's anchor point.
             WindowLocator.ToScreen(area, s.Anchor, s.RangeX, s.RangeY, out int x, out int y);
-            return new ClientArea { Left = x, Top = y, Width = s.RangeWidth, Height = s.RangeHeight };
+            WindowLocator.AnchorFraction(s.Anchor, out double fx, out double fy);
+            return new ClientArea
+            {
+                Left = x - (int)Math.Round(fx * s.RangeWidth),
+                Top = y - (int)Math.Round(fy * s.RangeHeight),
+                Width = s.RangeWidth,
+                Height = s.RangeHeight
+            };
         }
 
         private static ClientArea Intersect(ClientArea a, ClientArea b)

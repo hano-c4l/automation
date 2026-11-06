@@ -79,10 +79,10 @@ Examples
   {img.Position} + {10,20}
   {img.Position.X + 1}, {img.Position.Y + 1}
 
-A Position measured from a window (an Image with a Process, or a Position
-variable picked with a Process) is an offset from that window's Anchor. Use
-the same Process and Anchor in this Mouse action so the point lands on the
-right place. Without a Process the Position is a point on the desktop.");
+A Position coming from an Image with a Process is an offset from that window's
+Anchor. Use the same Process and Anchor in this Mouse action so the point lands
+on the right place (the Image's own anchor does not matter here). Without a
+Process the Position is a point on the desktop.");
 
         public static readonly HelpTopic ExpressionText = Expression("Text from a variable",
 @"The result is converted to text and typed. Numbers drop a useless "".0"",
@@ -125,10 +125,10 @@ Special characters  . * + ? ( ) [ ] { } | ^ $ \  have a meaning. To match one
 of them literally put a backslash before it, for example \. or \(.
 
 Use the title to tell apart several windows of the same program.
-Process is the program name without .exe (use Pick program...).");
+Process is the program name without .exe (use the Pick button next to Process).");
 
-        public static readonly HelpTopic Count = new HelpTopic("Count",
-@"How many times the actions inside the Loop run.
+        public static readonly HelpTopic Count = new HelpTopic("Times",
+@"How many times the actions inside the Loop run (Type = Times).
 
   0        = forever: repeat until you stop the script (F6 or Esc)
   1, 2...  repeat that many times");
@@ -153,28 +153,35 @@ screen is 0,0) and the anchor does not matter.
 If you change the anchor after picking a point, pick the point again: the
 numbers stay but their meaning changes.");
 
-        public static readonly HelpTopic RangeAnchor = new HelpTopic("Range anchor",
-@"Used only when a Process is set. The search range (Range X / Y) and the
-position stored in the Image variable are measured from this point of the
-program window's client area: TopLeft, TopRight, BottomLeft, BottomRight or
-Center.
+        public static readonly HelpTopic RangeAnchor = new HelpTopic("Anchor (Image)",
+@"Used only when a Process is set. The Image action has ONE anchor, used for the
+search range and for the position it reports:
 
-A Mouse action that uses {id.Position} must have the same Process and Anchor.");
+  Range (px) X, Y    where the range's matching corner sits, measured from the
+                     same corner of the program window's client area
+  Position (result)  the found picture's matching corner measured the same way,
+                     stored in the Image's variable: {id.Position}
 
-        public static readonly HelpTopic PictureAnchor = new HelpTopic("Picture anchor",
-@"Which point of the picture that was found is reported as its Position:
-TopLeft (default), TopRight, BottomLeft, BottomRight or Center.
+Example: window 700x700, range 200x200, picture 100x100 in the middle of it.
+  TopLeft      range Position 100,100  ->  {id.Position} = 150,150
+  BottomRight  range Position -400,-400 -> {id.Position} = -450,-450
+               (negative = inside the window, measured from the bottom-right)
 
-Choose Center to click the middle of a button, for example:
-  Picture anchor = Center, Mouse position = {id.Position}.");
+A Mouse action with the same Process and Anchor and the expression {id.Position}
+lands on that corner of the picture. The Mouse action's own Anchor is all that
+matters there; it does not need to know the Image's anchor.");
 
-        public static readonly HelpTopic RangeSize = new HelpTopic("Range size",
-@"The area that is searched for the picture, in pixels. Its top-left corner is
-Range X / Range Y (from the Range anchor).
+        public static readonly HelpTopic RangeSize = new HelpTopic("Range",
+@"The area that is searched for the picture, in pixels.
+
+X, Y            the range's anchor corner (see Anchor), as an offset from the same
+                anchor point of the Process window. Without a Process: the
+                top-left of the range on the desktop.
+Width, Height   the size of the range (the row under X, Y).
 
 Width and Height both 0 mean: search everything - the whole client area of the
-Process window, or the whole desktop when there is no Process. In that case
-Range X and Y are ignored. Set both Width and Height, or leave both at 0.
+Process window, or the whole desktop when there is no Process. X and Y are
+ignored then. Set both Width and Height, or leave both at 0.
 
 A smaller range is faster and avoids matching a look-alike elsewhere.");
 
@@ -196,18 +203,18 @@ The picture is compared by its pattern (edges, text, icons), not by overall
 brightness, so a slightly brighter or noisier copy still matches. A button
 with a different colour or without its text does not.
 
-90 is a good start. Use Find now to see the real percentage of what is on the
+90 is a good start. Use Check to see the real percentage of what is on the
 screen, then set a value a little below it. Too low finds look-alikes; too high
 misses small changes. It does not help when the picture is partly covered.");
 
-        public static readonly HelpTopic WaitTime = new HelpTopic("Wait up to",
+        public static readonly HelpTopic WaitTime = new HelpTopic("Wait",
 @"How long one attempt waits for the window to appear and come to the front.
 If it does not, the attempt is repeated (see Retry). When all attempts fail the
 script stops with an error. When the window is ready the actions inside run.");
 
         public static readonly HelpTopic Retry = new HelpTopic("Retry",
 @"How many more attempts are made after the first one times out.
-0 means a single attempt. Total waiting time is (Retry + 1) x Wait up to.");
+0 means a single attempt. Total waiting time is (Retry + 1) x Wait.");
 
         public static readonly HelpTopic MouseTime = new HelpTopic("Time (Mouse)",
 @"How long the cursor takes to glide from where it is to the position of this
@@ -251,11 +258,10 @@ With 'Use an expression' the result is converted to this type. Declaring the
 same ID again with another type replaces the variable and the later type wins.");
 
         public static readonly HelpTopic PositionPick = new HelpTopic("Position and Range",
-@"With a Process, the numbers are offsets from the Anchor of that program's
-client area. A Mouse action that uses this variable must use the same Process
-and Anchor. Without a Process they are desktop coordinates.
+@"A Position or Range variable holds only numbers. Which window and anchor they
+are measured from is decided by the action that uses the variable, for example
+a Mouse action's Process and Anchor.
 
-Pick position... / Pick range... fill the numbers by clicking or dragging on
-screen (the program is brought to the front first).");
+The Pick button fills the numbers from the screen (desktop coordinates).");
     }
 }

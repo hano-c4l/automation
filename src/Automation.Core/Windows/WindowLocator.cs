@@ -161,6 +161,19 @@ namespace Automation.Core.Windows
             offsetY = screenY - ay;
         }
 
+        /// <summary>The anchor as fractions of a rectangle: (0,0) top-left, (1,1) bottom-right, (0.5,0.5) centre.</summary>
+        public static void AnchorFraction(WindowAnchor anchor, out double fx, out double fy)
+        {
+            switch (anchor)
+            {
+                case WindowAnchor.TopRight: fx = 1; fy = 0; break;
+                case WindowAnchor.BottomLeft: fx = 0; fy = 1; break;
+                case WindowAnchor.BottomRight: fx = 1; fy = 1; break;
+                case WindowAnchor.Center: fx = 0.5; fy = 0.5; break;
+                default: fx = 0; fy = 0; break;
+            }
+        }
+
         private static void AnchorPoint(ClientArea area, WindowAnchor anchor, out int x, out int y)
         {
             switch (anchor)
