@@ -4,3 +4,13 @@ obj/
 *.user
 *.suo
 .claude/settings.local.json
+
+# License private keys and the license issued for a developer machine: never commit
+*.key
+license.lic
+
+# Folder for the license signing key: never commit, and never delete it in a build or clean step
+/keys/*
+!/keys/*.bat
+
+Setting.ini

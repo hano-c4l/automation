@@ -1,11 +1,11 @@
 # Status
 
-Cập nhật lần cuối: 2026-11-06
+Cập nhật lần cuối: 2026-11-07
 
 ## Hiện tại
-- Tất cả tính năng đã chốt đều đã code và vào `preview` (PR #1–#6), **trừ License (M5)**. Chương trình chạy được đầy đủ: Mouse, Keyboard, Command/Open, Loop, Wait, Image, Variable, Condition, biểu thức, Record, lưu/mở file.
-- Nhánh đang làm: `feature_docs_update` (chỉ cập nhật tài liệu).
-- Việc còn lại: **License (M5)** và công cụ KeyGen; test tay trên giao diện thật (xem checklist); ký số và kích hoạt online để sau.
+- Tất cả tính năng đã chốt đều đã code và vào `preview` và `main` (PR #1–#10), trừ License (M5) vào `preview` qua nhánh `feature_license`. Chương trình chạy được đầy đủ: Mouse, Keyboard, Command/Open, Loop, Wait, Image, Variable, Condition, biểu thức, Record, lưu/mở file.
+- Nhánh đang làm: `feature_license` (License đã vào `preview` khi PR được merge).
+- Việc còn lại: test tay License (Import qua giao diện, máy sạch); test tay trên giao diện thật (xem checklist); ký số và kích hoạt online để sau.
 
 ## Những gì đã có
 
@@ -32,6 +32,13 @@ Cập nhật lần cuối: 2026-11-06
 ### Sửa lỗi đáng nhớ
 - Con trỏ chuột từng lệch 1 px do làm tròn khi quy ra tọa độ 0..65535; đã sửa (test quét 400 điểm + 4 góc).
 - `Placeholder` không có trên `TextBox` của .NET Framework: dùng `HintTextBox`.
+
+## License (M5)
+- `Automation.Core/Licensing`: `LicenseData`/`LicenseCodec` (payload JSON và file `.lic`, đọc được cả khi bị ngắt dòng), `MachineIdFormat`, `RequestKey` (Machine ID mã hóa AES theo ngày UTC), `LicenseState` (state mã hóa + HMAC), `TrustedClock` (giờ từ internet: HTTPS Date, rồi NTP), `LicenseChecker` (chữ ký ECDSA P-256, đúng máy, hạn dùng). `Automation.App`: `LicenseManager` (Machine ID từ registry HKLM chỉ đọc, `license.lic` và `Setting.ini` cạnh exe), `IniFile`, `LicenseForm` (request key + Copy, ô dán, Import file), cổng kiểm tra trong `Program.Main`, nút License trên menu bar. `tools/Automation.KeyGen`: `genkey`, `machineid`, `issue`. **Chương trình không ghi gì vào registry.** Ngoài `license.lic` chỉ có `Setting.ini` (vị trí/kích thước cửa sổ; license có hạn thì thêm `State`).
+- License vô hạn: không cần mạng, không có state. License có hạn: kích hoạt cần mạng; `Setting.ini` có `State` mã hóa = lần cuối dùng, cập nhật khi khởi động và sau New/Open/Save/Save As/Stop (sau Start hoặc Record); offline mà giờ máy lùi quá 2 phút thì khóa; thiếu hoặc hỏng `Setting.ini` thì chỉ cần kích hoạt lại (tự ghi đè). Mỗi lần so sánh state còn so với hạn dùng (lấy giờ lớn hơn giữa bây giờ và state khi offline): quá hạn thì báo hết hạn và hiện màn hình kích hoạt. Cửa sổ kích hoạt có ghi chú license có hạn cần bật mạng. Chi tiết trong `docs/PROJECT.md` mục License.
+- Không có license hợp lệ thì chỉ hiện màn hình License. Khóa riêng ở `keys\license-private.key` trong thư mục dự án (`.gitignore` chặn `/keys/*`, chỉ cho phép `keys\*.bat`; không thuộc csproj nên build/clean không xóa; vẫn cần sao lưu ra nơi khác). Bản build trên máy dev có `license.lic` không hạn cho máy này cạnh exe (không commit; `Setting.ini` cũng bị ignore).
+- Cấp license: chạy `keys\make-license.bat`, nhập request key, ngày gửi (UTC, YYYYMMDD, phải khớp đúng ngày tạo key) và ngày hết hạn (YYYYMMDD, trống = vô thời hạn) -> `keys\license.lic` (ghi đè). Bat không tự build: không thấy KeyGen thì báo cập nhật đường dẫn `KEYGEN` ở đầu file (build trước bằng `dotnet build tools\Automation.KeyGen -c Release`).
+- Đã test (logic bằng harness + exe và bat thật): kích hoạt có hạn offline bị từ chối, online tạo `license.lic` và `Setting.ini` (state không đọc được bằng mắt), offline lùi giờ bị khóa, trong ngưỡng 2 phút thì qua, giờ mạng ghi đè state, xóa/sửa/chép state sang máy khác đều bị `StateInvalid` và kích hoạt lại thì chạy, license vô hạn không hỏi giờ, request key khứ hồi/sai ngày/gõ nhầm, bat báo lỗi khi ngày lệch 1 ngày hoặc thiếu KeyGen, cửa sổ License (xem ảnh chụp: đủ ô dán, Use pasted license, Import file, Exit), cửa sổ chính nhớ vị trí/kích thước qua `Setting.ini`. Chưa thử Import qua giao diện bằng tay và máy sạch.
 
 ## Kiểm thử
 - Harness C# trong thư mục scratchpad của phiên làm việc (không nằm trong repo): project `net48` tham chiếu Core/App, chạy bằng `dotnet run`. Gồm: ExprTests (biểu thức, vi-VN), VarTests (runner: Variable/Condition/Loop, Image trên cửa sổ thật gồm ví dụ 700x700 với cả năm anchor), RecordTests (bộ chuyển đổi), UiTests (soạn qua giao diện, mọi quy tắc cây, căn hàng/độ rộng, ô số, placeholder, hotkey, khóa, ghi qua hook thật bằng thao tác giả lập, overlay Pick/Capture bằng chuột giả lập). Lần chạy gần nhất: tất cả qua, trừ một lần test con trỏ-trúng-pixel lệch do chuột thật bị chạm lúc test (chạy lại thì qua).
@@ -66,7 +73,7 @@ Cập nhật lần cuối: 2026-11-06
 - Lỗi cú pháp heredoc nhiều dòng trong Bash tool: tạo file bằng công cụ Write.
 
 ## Mở / lưu ý
-- License (M5): Machine ID, file license ký ECDSA, KeyGen riêng, chống lùi đồng hồ (xem `docs/PROJECT.md`); nút nhập License sẽ nằm trên thanh menu.
+- Cách cấp license: xem mục "License (M5)" ở trên và `docs/PROJECT.md`.
 - Ký số chưa quyết định; kích hoạt license online để giai đoạn sau.
 - Overlay chọn điểm chưa thử trên cấu hình nhiều màn hình có DPI khác nhau.
 - Chưa có công cụ chuyển đổi file cũ khi đổi ngữ nghĩa Anchor của Image (vùng tìm của Image có Process, anchor khác TopLeft và có đặt vùng sẽ dịch chỗ) hoặc file version 1.
