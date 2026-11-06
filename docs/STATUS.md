@@ -58,6 +58,13 @@ Cập nhật lần cuối: 2026-11-05
 - [x] Các nút (Pick, Check, Capture, Pick file, Browse) cùng bắt đầu ở một x vì có cột đơn vị cố định (px, %, Times, notches) đứng trước cột nút; panel 510 px (nội dung rộng nhất 476 + lề + thanh cuộn).
 - [x] Image và Wait/Mouse nhất quán: dòng Title không có nhãn, ô Process và Title có chữ mờ ("Process Name", "Process Title (Regex)").
 
+### Record và chỉnh bố cục (nhánh feature_user_tweaks)
+- [x] **Record** (nút cạnh Start/Stop, phím F7 để bắt đầu / dừng): ghi bằng hook bàn phím và chuột cấp thấp (thao tác vẫn đến chương trình bình thường). Bấm và nhả chuột tại cùng chỗ = Click; nhả ở chỗ khác = MouseDown + MouseUp (kéo, MouseUp có Time bằng thời gian kéo); các nấc lăn chuột liền nhau tại một chỗ = một Scroll với số nấc; phím = Key press (giữ bao lâu thì Time bấy lâu); phím bấm khi đang giữ Ctrl/Alt/Shift/Win = Combo key; phím bổ trợ bấm riêng = Key press của nó. Khoảng nghỉ đến action sau thành Delay (trừ 100 ms thời gian rê chuột tới điểm). Tọa độ là tọa độ màn hình (không có Process). Không ghi: di chuyển chuột đơn thuần, thao tác trên chính cửa sổ chương trình, phím F6 và F7, phím không có tên. Kết quả chèn như Add: vào trong Loop / Wait / Image / case / else đang chọn, sau action đang chọn (sau cả Condition nếu chọn dòng Condition), hoặc cuối danh sách nếu không chọn gì. Đã test qua hook thật bằng thao tác giả lập (click, kéo, lăn 3 nấc, A, Ctrl+C, F6 bị bỏ qua, F7 dừng) và bộ chuyển đổi bằng sự kiện tổng hợp.
+- [x] Khi đang Start hoặc Record: mọi nút và ô bị khóa (New, Open, Save, Save As, các icon, danh sách, phần chi tiết); chỉ còn Stop của việc đang chạy (Start hoặc Record).
+- [x] Start/Stop và Record nằm giữa thanh menu (khoảng trống phía trước tự co giãn theo bề rộng).
+- [x] Đơn vị chuyển vào nhãn: Position (px), Range (px), Size (px), Accuracy (%), Retry (times), Scroll (notches). Không còn cột đơn vị; nút Pick/Check/Capture/Browse và dấu ? dùng chung một cột ngay sau ô: hàng không có nút thì dấu ? đứng đúng chỗ nút; hàng có nút thì ? nằm sau nút.
+- [x] Image: hàng vùng tìm đổi tên "Range (px)", hàng kích thước không còn nhãn "Size"; ảnh xem trước không mất viền phải; nút Capture không bị cắt. Panel 475 px.
+
 ### Checklist test giao diện (feature_ui_polish)
 1. Bấm các dấu ? (Count, Title, Anchor, Expression, ID, Accuracy...): cửa sổ giải thích hiện đúng nội dung, đọc được, đóng bằng Close/Esc.
 2. New khi danh sách có dữ liệu chưa lưu: hỏi xác nhận; No thì giữ nguyên, Yes thì xóa. Mở/lưu file rồi New khi chưa sửa: không hỏi; sửa rồi New: hỏi và nêu tên file. Open và đóng chương trình cũng hỏi như vậy (ngoài yêu cầu ban đầu, có thể bỏ).
