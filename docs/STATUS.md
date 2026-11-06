@@ -38,6 +38,12 @@ Cập nhật lần cuối: 2026-11-05
 - [x] **Mouse Move:** ô Type ẩn và không lưu giá trị Button vào file.
 - [x] Bấm nút icon trên thanh công cụ chuyển focus khỏi ô đang sửa (ToolStrip không tự lấy focus): số vừa gõ được ghi nhận ngay (test: gõ 77 rồi bấm Add ra X = 77) và ô Key nhả phím F6 toàn cục. Vẽ lại lớp phủ đóng băng ở 1920x1080 mất ~11 ms mỗi lần. Khi bấm Capture, con trỏ nhảy xuống góc dưới phải khoảng 0,25 s (để không hiện hover); Pick range vẫn dùng lớp phủ trong suốt.
 
+### Bố cục chi tiết (cùng nhánh)
+- [x] Nút icon nằm cùng hàng với menu, canh trái cùng mép với phần Action detail (một ToolStrip riêng, rộng bằng panel chi tiết); icon đen đậm cỡ lớn hơn khi bật, xám nhạt khi tắt.
+- [x] Panel Action detail rộng 540 px. **Position** là một hàng hai ô (X, Y), **Size** là một hàng hai ô (Width, Height); nút Pick program nằm bên phải ô Process, Pick position bên phải Position, Pick range bên phải Size; Browse bên phải Path.
+- [x] Image: nhãn "Pic"; Capture và Pick (trước là Capture picture / Load file) nằm bên phải ảnh xem trước; hàng Accuracy là: ô số, %, nút Check (trước là Find now), rồi dấu ?.
+- [x] Các ô số X, Y, Width, Height dùng `NumberBox` (ô chữ chỉ nhận số, có chữ mờ X / Y / Width / Height khi để trống; trống tính là 0; chỉ ô cho phép số âm mới nhận dấu trừ).
+
 ### Checklist test giao diện (feature_ui_polish)
 1. Bấm các dấu ? (Count, Title, Anchor, Expression, ID, Accuracy...): cửa sổ giải thích hiện đúng nội dung, đọc được, đóng bằng Close/Esc.
 2. New khi danh sách có dữ liệu chưa lưu: hỏi xác nhận; No thì giữ nguyên, Yes thì xóa. Mở/lưu file rồi New khi chưa sửa: không hỏi; sửa rồi New: hỏi và nêu tên file. Open và đóng chương trình cũng hỏi như vậy (ngoài yêu cầu ban đầu, có thể bỏ).
@@ -45,7 +51,8 @@ Cập nhật lần cuối: 2026-11-05
 4. Chọn Condition: ô Condition hiện case đầu; sửa rồi Update thì case đầu đổi.
 5. Nút icon rõ ràng, hover hiện tên; xem ở 125% và 150%: glyph và dấu ? không bị cắt.
 6. Action nằm ngoài group box, Control/Command ghi Action; đơn vị px, %, notches nằm sau ô nhập.
-7. Nút icon trên thanh công cụ: chưa chọn gì thì chỉ Add sáng; chọn một dòng thì các nút khác sáng; xem ở 125%/150% không bị cắt.
+7. Nút icon trên thanh công cụ nằm thẳng mép trái với phần Action detail; chưa chọn gì thì chỉ Add đậm, chọn một dòng thì các nút khác đậm; xem ở 125%/150% không bị cắt.
+7b. Position/Size một hàng với ô mờ gợi ý; Pick program / Pick position / Pick range đúng chỗ bên phải; Image: Pic, Capture, Pick, Check.
 8. Capture picture: bấm Capture lúc màn hình có thứ đang thay đổi (hiệu ứng, hover, popup đóng): ảnh trong Picture đúng với những gì thấy lúc khoanh.
 9. Mouse, Action = Move: không có ô Type; lưu file thì action Move không có "Button".
 

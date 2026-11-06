@@ -21,6 +21,7 @@ namespace Automation.App
         private const int HotKeyToggleId = 1;
         private const int HotKeyEscapeId = 2;
         private const string UntilFormat = "yyyy-MM-dd HH:mm:ss";
+        private const int DetailWidth = 540;
 
         private readonly MouseController _mouse = new MouseController();
         private readonly KeyboardController _keyboard = new KeyboardController();
@@ -71,8 +72,8 @@ namespace Automation.App
         private readonly TextBox _processTitle = new TextBox { Width = 200 };
         private readonly Button _pickProcessButton = new Button { Text = "Pick program...", AutoSize = true };
         private readonly ComboBox _anchor = MakeCombo(typeof(WindowAnchor));
-        private readonly NumericUpDown _x = MakeNumber(-20000, 20000, 0);
-        private readonly NumericUpDown _y = MakeNumber(-20000, 20000, 0);
+        private readonly NumberBox _x = new NumberBox { Minimum = -20000, Maximum = 20000, Placeholder = "X" };
+        private readonly NumberBox _y = new NumberBox { Minimum = -20000, Maximum = 20000, Placeholder = "Y" };
         private readonly NumericUpDown _notches = MakeNumber(1, 1000, 1);
 
         // Editor: keyboard
@@ -102,18 +103,18 @@ namespace Automation.App
         private readonly TextBox _imgProcessName = new TextBox { Width = 200 };
         private readonly TextBox _imgProcessTitle = new TextBox { Width = 200 };
         private readonly ComboBox _imgAnchor = MakeCombo(typeof(WindowAnchor));
-        private readonly NumericUpDown _imgX = MakeNumber(-20000, 20000, 0);
-        private readonly NumericUpDown _imgY = MakeNumber(-20000, 20000, 0);
-        private readonly NumericUpDown _imgW = MakeNumber(0, 20000, 0);
-        private readonly NumericUpDown _imgH = MakeNumber(0, 20000, 0);
+        private readonly NumberBox _imgX = new NumberBox { Minimum = -20000, Maximum = 20000, Placeholder = "X" };
+        private readonly NumberBox _imgY = new NumberBox { Minimum = -20000, Maximum = 20000, Placeholder = "Y" };
+        private readonly NumberBox _imgW = new NumberBox { Minimum = 0, Maximum = 20000, Placeholder = "Width" };
+        private readonly NumberBox _imgH = new NumberBox { Minimum = 0, Maximum = 20000, Placeholder = "Height" };
         private readonly NumericUpDown _imgAccuracy = MakeNumber(1, 100, 90);
         private readonly PictureBox _imgPreview = new PictureBox { Width = 200, Height = 90, SizeMode = PictureBoxSizeMode.Zoom, BorderStyle = BorderStyle.FixedSingle };
         private readonly Label _imgInfo = new Label { AutoSize = true, Text = "No picture" };
         private readonly Button _imgPickProcess = new Button { Text = "Pick program...", AutoSize = true };
         private readonly Button _imgPickRange = new Button { Text = "Pick range...", AutoSize = true };
-        private readonly Button _imgCapture = new Button { Text = "Capture picture...", AutoSize = true };
-        private readonly Button _imgLoad = new Button { Text = "Load file...", AutoSize = true };
-        private readonly Button _imgFind = new Button { Text = "Find now", AutoSize = true };
+        private readonly Button _imgCapture = new Button { Text = "Capture", AutoSize = true };
+        private readonly Button _imgLoad = new Button { Text = "Pick", AutoSize = true };
+        private readonly Button _imgFind = new Button { Text = "Check", AutoSize = true };
         private readonly TextBox _imgId = new TextBox { Width = 200 };
         private readonly ComboBox _imgResultAnchor = MakeCombo(typeof(WindowAnchor));
         private RawImage _imageRaw;
@@ -131,10 +132,10 @@ namespace Automation.App
         private readonly TextBox _varProcTitle = new TextBox { Width = 200 };
         private readonly Button _varPickProc = new Button { Text = "Pick program...", AutoSize = true };
         private readonly ComboBox _varAnchor = MakeCombo(typeof(WindowAnchor));
-        private readonly NumericUpDown _varX = MakeNumber(-20000, 20000, 0);
-        private readonly NumericUpDown _varY = MakeNumber(-20000, 20000, 0);
-        private readonly NumericUpDown _varW = MakeNumber(0, 20000, 0);
-        private readonly NumericUpDown _varH = MakeNumber(0, 20000, 0);
+        private readonly NumberBox _varX = new NumberBox { Minimum = -20000, Maximum = 20000, Placeholder = "X" };
+        private readonly NumberBox _varY = new NumberBox { Minimum = -20000, Maximum = 20000, Placeholder = "Y" };
+        private readonly NumberBox _varW = new NumberBox { Minimum = 0, Maximum = 20000, Placeholder = "Width" };
+        private readonly NumberBox _varH = new NumberBox { Minimum = 0, Maximum = 20000, Placeholder = "Height" };
         private readonly Button _varPickPos = new Button { Text = "Pick position...", AutoSize = true };
         private readonly Button _varPickRange = new Button { Text = "Pick range...", AutoSize = true };
 
@@ -170,8 +171,8 @@ namespace Automation.App
         public MainForm()
         {
             Text = "Automation";
-            ClientSize = new Size(1240, 580);
-            MinimumSize = new Size(1000, 520);
+            ClientSize = new Size(1380, 600);
+            MinimumSize = new Size(1150, 540);
             _loopUntil.Value = DateTime.Now.AddHours(1);
             _varDateTime.Value = DateTime.Now;
             _controlKind.Items.Remove(ControlKind.Else); // the else line is created with its Condition, never added by hand
@@ -199,7 +200,7 @@ namespace Automation.App
             _list.Columns.Add("Time", 65);
             _list.Columns.Add("Delay", 65);
 
-            var tools = new ToolStrip { GripStyle = ToolStripGripStyle.Hidden };
+            var tools = new ToolStrip { GripStyle = ToolStripGripStyle.Hidden, Dock = DockStyle.Fill, RenderMode = ToolStripRenderMode.System };
             tools.Items.Add(MakeToolButton("New", (s, e) => NewScript()));
             tools.Items.Add(MakeToolButton("Open", (s, e) => OpenScript()));
             tools.Items.Add(MakeToolButton("Save", (s, e) => SaveScript(false)));
@@ -210,17 +211,32 @@ namespace Automation.App
             var statusBar = new StatusStrip { SizingGrip = false };
             statusBar.Items.Add(_status);
 
-            // Action buttons as icons on the right of the toolbar (hover for the name). Right-aligned items are laid out
-            // from the right edge, so they are added in reverse to read Add, Update, Delete, In, Out, Up, Down.
-            _btnDown = MakeToolIcon("\uE74B", "\u2193", "Down", (s, e) => MoveUpDown(1));
-            _btnUp = MakeToolIcon("\uE74A", "\u2191", "Up", (s, e) => MoveUpDown(-1));
-            _btnOut = MakeToolIcon("\uE72B", "\u2190", "Out: move out of the container", (s, e) => MoveOut());
-            _btnIn = MakeToolIcon("\uE72A", "\u2192", "In: move into the Loop, Wait or Image above", (s, e) => MoveIn());
-            _btnDelete = MakeToolIcon("\uE74D", "\u2715", "Delete the selected actions", (s, e) => DeleteActions());
-            _btnUpdate = MakeToolIcon("\uE70F", "\u270E", "Update the selected action", (s, e) => UpdateAction());
+            // Action buttons as icons (hover for the name). They sit in the same row as the menu, over the detail panel
+            // and left-aligned with it: a second strip whose width and left padding match that panel.
+            var iconBar = new ToolStrip
+            {
+                GripStyle = ToolStripGripStyle.Hidden,
+                Dock = DockStyle.Fill,
+                CanOverflow = false,
+                RenderMode = ToolStripRenderMode.System,
+                Padding = new Padding(8, 0, 0, 0) // the detail panel's own left padding
+            };
             _btnAdd = MakeToolIcon("\uE710", "+", "Add", (s, e) => AddAction());
-            foreach (var button in new[] { _btnDown, _btnUp, _btnOut, _btnIn, _btnDelete, _btnUpdate, _btnAdd })
-                tools.Items.Add(button);
+            _btnUpdate = MakeToolIcon("\uE70F", "\u270E", "Update the selected action", (s, e) => UpdateAction());
+            _btnDelete = MakeToolIcon("\uE74D", "\u2715", "Delete the selected actions", (s, e) => DeleteActions());
+            _btnIn = MakeToolIcon("\uE72A", "\u2192", "In: move into the Loop, Wait or Image above", (s, e) => MoveIn());
+            _btnOut = MakeToolIcon("\uE72B", "\u2190", "Out: move out of the container", (s, e) => MoveOut());
+            _btnUp = MakeToolIcon("\uE74A", "\u2191", "Up", (s, e) => MoveUpDown(-1));
+            _btnDown = MakeToolIcon("\uE74B", "\u2193", "Down", (s, e) => MoveUpDown(1));
+            foreach (var button in new[] { _btnAdd, _btnUpdate, _btnDelete, _btnIn, _btnOut, _btnUp, _btnDown })
+                iconBar.Items.Add(button);
+
+            var topBar = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 2, RowCount = 1 };
+            topBar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+            topBar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, DetailWidth));
+            topBar.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            topBar.Controls.Add(tools, 0, 0);
+            topBar.Controls.Add(iconBar, 1, 0);
 
             // Name, Category and Action sit outside the group boxes; only the Action of the chosen category is shown.
             var common = NewTable();
@@ -239,14 +255,11 @@ namespace Automation.App
             AddRow(mouseTable, "Scroll", _notches, null, "notches");
             AddRow(mouseTable, "Time", _time, Help.MouseTime);
             AddRow(mouseTable, "Delay", _delay, Help.MouseDelay);
-            AddRow(mouseTable, "Process", _processName);
+            AddRow(mouseTable, "Process", new Control[] { _processName, _pickProcessButton });
             AddRow(mouseTable, "Title (regex)", _processTitle, Help.TitleRegex);
-            AddRow(mouseTable, "", _pickProcessButton);
             AddRow(mouseTable, "Anchor", _anchor, Help.Anchor);
             AddRow(mouseTable, "Position from", _posSource, Help.Anchor);
-            AddRow(mouseTable, "X", _x, null, "px");
-            AddRow(mouseTable, "Y", _y, null, "px");
-            AddRow(mouseTable, "", _pickPositionButton);
+            AddRow(mouseTable, "Position", new Control[] { _x, _y, Unit("px"), _pickPositionButton });
             AddRow(mouseTable, "Expression", _posExpr, Help.ExpressionPosition);
             _mouseBox.Controls.Add(mouseTable);
 
@@ -262,8 +275,7 @@ namespace Automation.App
 
             // Command
             var cmdTable = NewTable();
-            AddRow(cmdTable, "Path", _cmdValue);
-            AddRow(cmdTable, "", MakeButton("Browse...", (s, e) => BrowseCommandPath()));
+            AddRow(cmdTable, "Path", new Control[] { _cmdValue, MakeButton("Browse...", (s, e) => BrowseCommandPath()) });
             _commandBox.Controls.Add(cmdTable);
 
             // Control
@@ -272,28 +284,19 @@ namespace Automation.App
             AddRow(controlTable, "Count", _loopCount, Help.Count);
             AddRow(controlTable, "Duration", _loopDuration);
             AddRow(controlTable, "Until", _loopUntil);
-            AddRow(controlTable, "Process", _waitProcessName);
+            AddRow(controlTable, "Process", new Control[] { _waitProcessName, _waitPick });
             AddRow(controlTable, "Title (regex)", _waitProcessTitle, Help.TitleRegex);
-            AddRow(controlTable, "", _waitPick);
             AddRow(controlTable, "Wait up to", _waitTime, Help.WaitTime);
             AddRow(controlTable, "Retry", _waitRetry, Help.Retry);
             AddRow(controlTable, "ID", _imgId, Help.Id);
-            AddRow(controlTable, "Process", _imgProcessName);
+            AddRow(controlTable, "Process", new Control[] { _imgProcessName, _imgPickProcess });
             AddRow(controlTable, "Title (regex)", _imgProcessTitle, Help.TitleRegex);
-            AddRow(controlTable, "", _imgPickProcess);
             AddRow(controlTable, "Range anchor", _imgAnchor, Help.RangeAnchor);
-            AddRow(controlTable, "Range X", _imgX, null, "px");
-            AddRow(controlTable, "Range Y", _imgY, null, "px");
-            AddRow(controlTable, "Width", _imgW, Help.RangeSize, "px");
-            AddRow(controlTable, "Height", _imgH, Help.RangeSize, "px");
-            AddRow(controlTable, "", _imgPickRange);
+            AddRow(controlTable, "Position", new Control[] { _imgX, _imgY, Unit("px") }, Help.RangeSize);
+            AddRow(controlTable, "Size", new Control[] { _imgW, _imgH, Unit("px"), _imgPickRange }, Help.RangeSize);
             AddRow(controlTable, "Picture anchor", _imgResultAnchor, Help.PictureAnchor);
-            AddRow(controlTable, "Picture", _imgPreview);
-            AddRow(controlTable, "", _imgInfo);
-            AddRow(controlTable, "", _imgCapture);
-            AddRow(controlTable, "", _imgLoad);
-            AddRow(controlTable, "Accuracy", _imgAccuracy, Help.Accuracy, "%");
-            AddRow(controlTable, "", _imgFind);
+            AddRow(controlTable, "Pic", new Control[] { Stack(_imgPreview, _imgInfo), Stack(_imgCapture, _imgLoad) }, null, _imgPreview);
+            AddRow(controlTable, "Accuracy", new Control[] { _imgAccuracy, Unit("%"), _imgFind }, Help.Accuracy);
             AddRow(controlTable, "ID", _varId, Help.Id);
             AddRow(controlTable, "Value type", _varType, Help.ValueType);
             AddRow(controlTable, "", _varUseExpr);
@@ -302,16 +305,11 @@ namespace Automation.App
             AddRow(controlTable, "Value", _varBool);
             AddRow(controlTable, "Date", _varDate);
             AddRow(controlTable, "Date and time", _varDateTime);
-            AddRow(controlTable, "Process", _varProcName);
+            AddRow(controlTable, "Process", new Control[] { _varProcName, _varPickProc });
             AddRow(controlTable, "Title (regex)", _varProcTitle, Help.TitleRegex);
-            AddRow(controlTable, "", _varPickProc);
             AddRow(controlTable, "Anchor", _varAnchor, Help.Anchor);
-            AddRow(controlTable, "X", _varX, Help.PositionPick, "px");
-            AddRow(controlTable, "Y", _varY, null, "px");
-            AddRow(controlTable, "Width", _varW, null, "px");
-            AddRow(controlTable, "Height", _varH, null, "px");
-            AddRow(controlTable, "", _varPickPos);
-            AddRow(controlTable, "", _varPickRange);
+            AddRow(controlTable, "Position", new Control[] { _varX, _varY, Unit("px"), _varPickPos }, Help.PositionPick);
+            AddRow(controlTable, "Size", new Control[] { _varW, _varH, Unit("px"), _varPickRange });
             AddRow(controlTable, "Condition", _caseExpr, Help.ExpressionCase);
             _controlBox.Controls.Add(controlTable);
 
@@ -322,14 +320,14 @@ namespace Automation.App
             _editArea.Controls.Add(_mouseBox);
             _editArea.Controls.Add(common);
 
-            var right = new Panel { Dock = DockStyle.Right, Width = 400, Padding = new Padding(8), AutoScroll = true };
+            var right = new Panel { Dock = DockStyle.Right, Width = DetailWidth, Padding = new Padding(8), AutoScroll = true };
             right.Controls.Add(_editArea);
 
             // Fill control first, edge-docked panels afterwards.
             Controls.Add(_list);
             Controls.Add(right);
             Controls.Add(statusBar);
-            Controls.Add(tools);
+            Controls.Add(topBar);
         }
 
         private void WireEvents()
@@ -1858,6 +1856,11 @@ namespace Automation.App
             return new NumericUpDown { Minimum = min, Maximum = max, Value = value, Width = 120 };
         }
 
+        private static decimal Clamp(NumberBox box, int value)
+        {
+            return Math.Max(box.Minimum, Math.Min(box.Maximum, value));
+        }
+
         private static decimal Clamp(NumericUpDown box, int value)
         {
             return Math.Max(box.Minimum, Math.Min(box.Maximum, value));
@@ -1884,10 +1887,10 @@ namespace Automation.App
             var button = new ToolStripButton(mdl2 ? mdl2Glyph : fallbackGlyph)
             {
                 DisplayStyle = ToolStripItemDisplayStyle.Text,
-                Font = new Font(mdl2 ? "Segoe MDL2 Assets" : "Segoe UI Symbol", 11f),
+                Font = new Font(mdl2 ? "Segoe MDL2 Assets" : "Segoe UI Symbol", 13f, FontStyle.Bold),
+                ForeColor = Color.Black,
                 ToolTipText = tip,
                 AccessibleName = tip,
-                Alignment = ToolStripItemAlignment.Right,
                 Padding = new Padding(4, 2, 4, 2) // the button grows with its glyph, so it fits at any display scaling
             };
             // A ToolStrip button does not take focus, so the field being edited would keep it: move focus away first.
@@ -1907,11 +1910,28 @@ namespace Automation.App
             _btnAdd.Enabled = !_running;
             foreach (var button in new[] { _btnUpdate, _btnDelete, _btnIn, _btnOut, _btnUp, _btnDown })
                 button.Enabled = any && !_running;
+            // Strong black when usable, pale grey when not, so the two states are easy to tell apart.
+            foreach (var button in new[] { _btnAdd, _btnUpdate, _btnDelete, _btnIn, _btnOut, _btnUp, _btnDown })
+                button.ForeColor = button.Enabled ? Color.Black : Color.FromArgb(185, 185, 185);
         }
 
         private static TableLayoutPanel NewTable()
         {
             return new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 2 };
+        }
+
+        /// <summary>A unit text (px, %) placed after a field.</summary>
+        private static Label Unit(string text)
+        {
+            return new Label { Text = text, AutoSize = true, Margin = new Padding(2, 6, 6, 0) };
+        }
+
+        /// <summary>Controls stacked top to bottom in one cell (for example a preview with its caption, or two buttons).</summary>
+        private static FlowLayoutPanel Stack(params Control[] controls)
+        {
+            var panel = new FlowLayoutPanel { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, FlowDirection = FlowDirection.TopDown, WrapContents = false, Margin = new Padding(0, 0, 6, 0) };
+            panel.Controls.AddRange(controls);
+            return panel;
         }
 
         /// <summary>
@@ -1920,22 +1940,32 @@ namespace Automation.App
         /// </summary>
         private void AddRow(TableLayoutPanel table, string label, Control control, HelpTopic help = null, string unit = null)
         {
+            var parts = new List<Control> { control };
+            if (unit != null) parts.Add(Unit(unit));
+            AddRow(table, label, parts.ToArray(), help);
+        }
+
+        /// <summary>
+        /// Adds a row whose cell holds several fields side by side (Position = X and Y, Size = Width and Height, a field and
+        /// its pick button...). The first control stands for the row in SetRowVisible; a "?" icon goes last.
+        /// </summary>
+        private void AddRow(TableLayoutPanel table, string label, Control[] parts, HelpTopic help = null, Control key = null)
+        {
             var caption = new Label { Text = label, AutoSize = true, Anchor = AnchorStyles.Left, Padding = new Padding(0, 6, 8, 0) };
-            Control cell = control;
-            if (help != null || unit != null)
+            Control cell = parts[0];
+            if (parts.Length > 1 || help != null)
             {
                 var host = new FlowLayoutPanel { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, WrapContents = false, Margin = new Padding(0) };
-                host.Controls.Add(control);
-                if (unit != null) host.Controls.Add(new Label { Text = unit, AutoSize = true, Margin = new Padding(2, 6, 2, 0) });
+                host.Controls.AddRange(parts);
                 if (help != null) host.Controls.Add(new HelpIcon(help));
                 cell = host;
-                _rowHosts[control] = host;
+                _rowHosts[key ?? parts[0]] = host;
             }
             // Explicit cells: with auto placement a hidden control is skipped and the later controls shift into the wrong columns.
             int row = table.RowCount++;
             table.Controls.Add(caption, 0, row);
             table.Controls.Add(cell, 1, row);
-            _rowLabels[control] = caption;
+            _rowLabels[key ?? parts[0]] = caption;
         }
 
         private void SetRowVisible(Control control, bool visible)
