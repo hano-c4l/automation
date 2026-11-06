@@ -48,6 +48,12 @@ namespace Automation.App
             ApplyPlaceholder();
         }
 
+        protected override void OnTextChanged(EventArgs e)
+        {
+            base.OnTextChanged(e);
+            if (Multiline) Invalidate(); // the self-painted hint must be redrawn (erased or shown) with every change
+        }
+
         protected override void WndProc(ref Message m)
         {
             base.WndProc(ref m);

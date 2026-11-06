@@ -125,7 +125,7 @@ Special characters  . * + ? ( ) [ ] { } | ^ $ \  have a meaning. To match one
 of them literally put a backslash before it, for example \. or \(.
 
 Use the title to tell apart several windows of the same program.
-Process is the program name without .exe (use Pick program...).");
+Process is the program name without .exe (use the Pick button next to Process).");
 
         public static readonly HelpTopic Count = new HelpTopic("Times",
 @"How many times the actions inside the Loop run (Type = Times).
@@ -154,7 +154,7 @@ If you change the anchor after picking a point, pick the point again: the
 numbers stay but their meaning changes.");
 
         public static readonly HelpTopic RangeAnchor = new HelpTopic("Range anchor",
-@"Used only when a Process is set. The search range (Range X / Y) and the
+@"Used only when a Process is set. The search range (Position) and the
 position stored in the Image variable are measured from this point of the
 program window's client area: TopLeft, TopRight, BottomLeft, BottomRight or
 Center.
@@ -170,11 +170,11 @@ Choose Center to click the middle of a button, for example:
 
         public static readonly HelpTopic RangeSize = new HelpTopic("Range size",
 @"The area that is searched for the picture, in pixels. Its top-left corner is
-Range X / Range Y (from the Range anchor).
+Position X / Y (from the Range anchor).
 
 Width and Height both 0 mean: search everything - the whole client area of the
 Process window, or the whole desktop when there is no Process. In that case
-Range X and Y are ignored. Set both Width and Height, or leave both at 0.
+Position X and Y are ignored. Set both Width and Height, or leave both at 0.
 
 A smaller range is faster and avoids matching a look-alike elsewhere.");
 
@@ -196,18 +196,18 @@ The picture is compared by its pattern (edges, text, icons), not by overall
 brightness, so a slightly brighter or noisier copy still matches. A button
 with a different colour or without its text does not.
 
-90 is a good start. Use Find now to see the real percentage of what is on the
+90 is a good start. Use Check to see the real percentage of what is on the
 screen, then set a value a little below it. Too low finds look-alikes; too high
 misses small changes. It does not help when the picture is partly covered.");
 
-        public static readonly HelpTopic WaitTime = new HelpTopic("Wait up to",
+        public static readonly HelpTopic WaitTime = new HelpTopic("Wait",
 @"How long one attempt waits for the window to appear and come to the front.
 If it does not, the attempt is repeated (see Retry). When all attempts fail the
 script stops with an error. When the window is ready the actions inside run.");
 
         public static readonly HelpTopic Retry = new HelpTopic("Retry",
 @"How many more attempts are made after the first one times out.
-0 means a single attempt. Total waiting time is (Retry + 1) x Wait up to.");
+0 means a single attempt. Total waiting time is (Retry + 1) x Wait.");
 
         public static readonly HelpTopic MouseTime = new HelpTopic("Time (Mouse)",
 @"How long the cursor takes to glide from where it is to the position of this
@@ -255,7 +255,7 @@ same ID again with another type replaces the variable and the later type wins.")
 client area. A Mouse action that uses this variable must use the same Process
 and Anchor. Without a Process they are desktop coordinates.
 
-Pick position... / Pick range... fill the numbers by clicking or dragging on
+The Pick buttons next to Position and Size fill the numbers by clicking or dragging on
 screen (the program is brought to the front first).");
     }
 }

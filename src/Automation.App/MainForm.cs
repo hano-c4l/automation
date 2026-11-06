@@ -863,7 +863,7 @@ namespace Automation.App
             }
             else if (selected.Count == 1 && selected[0].Node.IsKind(ControlKind.Condition))
             {
-                SetStatus("A Condition holds cases: add Type = Case, or select a case or the else to add an action inside it.");
+                SetStatus("A Condition holds cases: set Action = Case, or select a case or the else to add an action inside it.");
                 return;
             }
             else if (selected.Count == 1 && selected[0].Node.IsContainer)
