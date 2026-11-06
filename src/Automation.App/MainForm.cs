@@ -70,7 +70,7 @@ namespace Automation.App
         private readonly TimeBox _delay = new TimeBox(500);
         private readonly TextBox _processName = new TextBox { Width = 200 };
         private readonly TextBox _processTitle = new TextBox { Width = 200 };
-        private readonly Button _pickProcessButton = new Button { Text = "Pick program...", AutoSize = true };
+        private readonly Button _pickProcessButton = new Button { Text = "Pick", AutoSize = true };
         private readonly ComboBox _anchor = MakeCombo(typeof(WindowAnchor));
         private readonly NumberBox _x = new NumberBox { Minimum = -20000, Maximum = 20000, Placeholder = "X" };
         private readonly NumberBox _y = new NumberBox { Minimum = -20000, Maximum = 20000, Placeholder = "Y" };
@@ -97,7 +97,7 @@ namespace Automation.App
         private readonly TextBox _waitProcessTitle = new TextBox { Width = 200 };
         private readonly TimeBox _waitTime = new TimeBox(10000);
         private readonly NumericUpDown _waitRetry = MakeNumber(0, 1000, 0);
-        private readonly Button _waitPick = new Button { Text = "Pick program...", AutoSize = true };
+        private readonly Button _waitPick = new Button { Text = "Pick", AutoSize = true };
 
         // Editor: image
         private readonly TextBox _imgProcessName = new TextBox { Width = 200 };
@@ -110,8 +110,8 @@ namespace Automation.App
         private readonly NumericUpDown _imgAccuracy = MakeNumber(1, 100, 90);
         private readonly PictureBox _imgPreview = new PictureBox { Width = 200, Height = 90, SizeMode = PictureBoxSizeMode.Zoom, BorderStyle = BorderStyle.FixedSingle };
         private readonly Label _imgInfo = new Label { AutoSize = true, Text = "No picture" };
-        private readonly Button _imgPickProcess = new Button { Text = "Pick program...", AutoSize = true };
-        private readonly Button _imgPickRange = new Button { Text = "Pick range...", AutoSize = true };
+        private readonly Button _imgPickProcess = new Button { Text = "Pick", AutoSize = true };
+        private readonly Button _imgPickRange = new Button { Text = "Pick", AutoSize = true };
         private readonly Button _imgCapture = new Button { Text = "Capture", AutoSize = true };
         private readonly Button _imgLoad = new Button { Text = "Pick", AutoSize = true };
         private readonly Button _imgFind = new Button { Text = "Check", AutoSize = true };
@@ -130,14 +130,14 @@ namespace Automation.App
         private readonly DateTimePicker _varDateTime = new DateTimePicker { Format = DateTimePickerFormat.Custom, CustomFormat = UntilFormat, Width = 200 };
         private readonly TextBox _varProcName = new TextBox { Width = 200 };
         private readonly TextBox _varProcTitle = new TextBox { Width = 200 };
-        private readonly Button _varPickProc = new Button { Text = "Pick program...", AutoSize = true };
+        private readonly Button _varPickProc = new Button { Text = "Pick", AutoSize = true };
         private readonly ComboBox _varAnchor = MakeCombo(typeof(WindowAnchor));
         private readonly NumberBox _varX = new NumberBox { Minimum = -20000, Maximum = 20000, Placeholder = "X" };
         private readonly NumberBox _varY = new NumberBox { Minimum = -20000, Maximum = 20000, Placeholder = "Y" };
         private readonly NumberBox _varW = new NumberBox { Minimum = 0, Maximum = 20000, Placeholder = "Width" };
         private readonly NumberBox _varH = new NumberBox { Minimum = 0, Maximum = 20000, Placeholder = "Height" };
-        private readonly Button _varPickPos = new Button { Text = "Pick position...", AutoSize = true };
-        private readonly Button _varPickRange = new Button { Text = "Pick range...", AutoSize = true };
+        private readonly Button _varPickPos = new Button { Text = "Pick", AutoSize = true };
+        private readonly Button _varPickRange = new Button { Text = "Pick", AutoSize = true };
 
         // Editor: condition / case
         private readonly TextBox _caseExpr = new TextBox { Width = 200 };
@@ -145,7 +145,7 @@ namespace Automation.App
         // Editor: where positions and text come from
         private readonly ComboBox _posSource = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 120, Items = { "Input", "Variable" } };
         private readonly TextBox _posExpr = new TextBox { Width = 200 };
-        private readonly Button _pickPositionButton = new Button { Text = "Pick position...", AutoSize = true };
+        private readonly Button _pickPositionButton = new Button { Text = "Pick", AutoSize = true };
         private readonly ComboBox _kbSource = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 120, Items = { "Input", "Variable" } };
         private readonly TextBox _kbTextExpr = new TextBox { Width = 200 };
         private readonly ToolStripButton _saveAs = new ToolStripButton("Save As") { DisplayStyle = ToolStripItemDisplayStyle.Text };
@@ -259,7 +259,7 @@ namespace Automation.App
             AddRow(mouseTable, "Title (regex)", _processTitle, Help.TitleRegex);
             AddRow(mouseTable, "Anchor", _anchor, Help.Anchor);
             AddRow(mouseTable, "Position from", _posSource, Help.Anchor);
-            AddRow(mouseTable, "Position", new Control[] { _x, _y, Unit("px"), _pickPositionButton });
+            AddRow(mouseTable, "Position", new Control[] { _x, _y, Unit("px"), _pickPositionButton }, Help.Anchor);
             AddRow(mouseTable, "Expression", _posExpr, Help.ExpressionPosition);
             _mouseBox.Controls.Add(mouseTable);
 
@@ -295,7 +295,7 @@ namespace Automation.App
             AddRow(controlTable, "Position", new Control[] { _imgX, _imgY, Unit("px") }, Help.RangeSize);
             AddRow(controlTable, "Size", new Control[] { _imgW, _imgH, Unit("px"), _imgPickRange }, Help.RangeSize);
             AddRow(controlTable, "Picture anchor", _imgResultAnchor, Help.PictureAnchor);
-            AddRow(controlTable, "Pic", new Control[] { Stack(_imgPreview, _imgInfo), Stack(_imgCapture, _imgLoad) }, null, _imgPreview);
+            AddRow(controlTable, "Picture", new Control[] { Stack(_imgPreview, _imgInfo), Stack(_imgCapture, _imgLoad) }, null, _imgPreview);
             AddRow(controlTable, "Accuracy", new Control[] { _imgAccuracy, Unit("%"), _imgFind }, Help.Accuracy);
             AddRow(controlTable, "ID", _varId, Help.Id);
             AddRow(controlTable, "Value type", _varType, Help.ValueType);
@@ -312,6 +312,18 @@ namespace Automation.App
             AddRow(controlTable, "Size", new Control[] { _varW, _varH, Unit("px"), _varPickRange });
             AddRow(controlTable, "Condition", _caseExpr, Help.ExpressionCase);
             _controlBox.Controls.Add(controlTable);
+
+            _tips.SetToolTip(_pickProcessButton, "Pick a running program: click any window of it");
+            _tips.SetToolTip(_waitPick, "Pick a running program: click any window of it");
+            _tips.SetToolTip(_imgPickProcess, "Pick a running program: click any window of it");
+            _tips.SetToolTip(_varPickProc, "Pick a running program: click any window of it");
+            _tips.SetToolTip(_pickPositionButton, "Pick a point on the screen (or in the program's window when a Process is set)");
+            _tips.SetToolTip(_varPickPos, "Pick a point on the screen (or in the program's window when a Process is set)");
+            _tips.SetToolTip(_imgPickRange, "Pick an area: drag a rectangle on the screen");
+            _tips.SetToolTip(_varPickRange, "Pick an area: drag a rectangle on the screen");
+            _tips.SetToolTip(_imgCapture, "Capture: drag a rectangle on the screen to use it as the picture");
+            _tips.SetToolTip(_imgLoad, "Pick: choose an image file to use as the picture");
+            _tips.SetToolTip(_imgFind, "Check: look for the picture on the screen now and show the match");
 
             // Docked top-to-bottom: the control added last is docked first.
             _editArea.Controls.Add(_controlBox);

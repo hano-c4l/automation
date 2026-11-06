@@ -40,8 +40,9 @@ Cập nhật lần cuối: 2026-11-05
 
 ### Bố cục chi tiết (cùng nhánh)
 - [x] Nút icon nằm cùng hàng với menu, canh trái cùng mép với phần Action detail (một ToolStrip riêng, rộng bằng panel chi tiết); icon đen đậm cỡ lớn hơn khi bật, xám nhạt khi tắt.
-- [x] Panel Action detail rộng 540 px. **Position** là một hàng hai ô (X, Y), **Size** là một hàng hai ô (Width, Height); nút Pick program nằm bên phải ô Process, Pick position bên phải Position, Pick range bên phải Size; Browse bên phải Path.
-- [x] Image: nhãn "Pic"; Capture và Pick (trước là Capture picture / Load file) nằm bên phải ảnh xem trước; hàng Accuracy là: ô số, %, nút Check (trước là Find now), rồi dấu ?.
+- [x] Tất cả nút chọn (program, position, range) đều ghi là **Pick** (tooltip nói rõ chọn gì; tôi hiểu "Pic" trong yêu cầu là "Pick"); nhãn hàng ảnh vẫn là "Picture".
+- [x] Panel Action detail rộng 540 px. **Position** là một hàng hai ô (X, Y), **Size** là một hàng hai ô (Width, Height); nút Pick nằm bên phải ô Process, bên phải Position và bên phải Size; Browse bên phải Path.
+- [x] Image: Capture và Pick (trước là Capture picture / Load file) nằm bên phải ảnh xem trước; hàng Accuracy là: ô số, %, nút Check (trước là Find now), rồi dấu ?.
 - [x] Các ô số X, Y, Width, Height dùng `NumberBox` (ô chữ chỉ nhận số, có chữ mờ X / Y / Width / Height khi để trống; trống tính là 0; chỉ ô cho phép số âm mới nhận dấu trừ).
 
 ### Checklist test giao diện (feature_ui_polish)
@@ -52,7 +53,7 @@ Cập nhật lần cuối: 2026-11-05
 5. Nút icon rõ ràng, hover hiện tên; xem ở 125% và 150%: glyph và dấu ? không bị cắt.
 6. Action nằm ngoài group box, Control/Command ghi Action; đơn vị px, %, notches nằm sau ô nhập.
 7. Nút icon trên thanh công cụ nằm thẳng mép trái với phần Action detail; chưa chọn gì thì chỉ Add đậm, chọn một dòng thì các nút khác đậm; xem ở 125%/150% không bị cắt.
-7b. Position/Size một hàng với ô mờ gợi ý; Pick program / Pick position / Pick range đúng chỗ bên phải; Image: Pic, Capture, Pick, Check.
+7b. Position/Size một hàng với ô mờ gợi ý; nút Pick đúng chỗ bên phải (hover xem tooltip); Image: Capture, Pick, Check.
 8. Capture picture: bấm Capture lúc màn hình có thứ đang thay đổi (hiệu ứng, hover, popup đóng): ảnh trong Picture đúng với những gì thấy lúc khoanh.
 9. Mouse, Action = Move: không có ô Type; lưu file thì action Move không có "Button".
 
