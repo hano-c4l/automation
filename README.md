@@ -1,2 +1,53 @@
-# automation
-Automation Tool
+# Automation
+
+Công cụ automation / autoclick cho Windows (10 1903+ và 11). Chạy trên .NET Framework 4.8 (có sẵn trong Windows), người dùng cuối không phải cài thêm gì.
+
+Người dùng soạn một kịch bản gồm các action xếp thành cây, rồi chạy bằng F6 hoặc ghi lại thao tác thật bằng F7.
+
+## Tính năng
+
+- **Chuột:** Click, Mouse Down/Up, Move (có thời gian di chuyển), cuộn chuột; vị trí theo màn hình hoặc theo cửa sổ của chương trình đích (Process, Title, Anchor) để cửa sổ dời chỗ vẫn click đúng.
+- **Bàn phím:** một phím, tổ hợp phím, hoặc cả đoạn text (kể cả tiếng Việt).
+- **Điều khiển:** Loop (số lần, khoảng thời gian, tới thời điểm), Wait (chờ cửa sổ), Image (nhận diện ảnh trong một vùng), Variable, Condition (switch-case), biểu thức `{biến}`; Command/Open để mở file hoặc chương trình.
+- **Record (F7):** ghi lại click, kéo thả, cuộn và phím thành action; có tùy chọn "All event" để ghi cả di chuyển chuột.
+- Lưu và mở kịch bản dạng JSON (ảnh mẫu nằm trong file), danh sách action thu gọn hoặc mở rộng theo nhánh.
+- **License theo máy:** chương trình chỉ chạy khi có `license.lic` hợp lệ cho máy đó (có hoặc không có hạn dùng).
+
+## Cấu trúc
+
+```
+Automation.sln
+  src/Automation.Core     (netstandard2.0)  model kịch bản, JSON, engine chuột phím, so khớp ảnh, biểu thức, runner, kiểm tra license
+  src/Automation.App      (net48 WinForms)  giao diện, overlay chọn điểm/vùng, phím nóng, ghi thao tác
+  tools/Automation.KeyGen (net48 console)   công cụ cấp license, chỉ dành cho chủ sản phẩm, không phát hành cùng chương trình
+  keys/                                      make-license.bat và khóa riêng (khóa riêng không được commit)
+  docs/                                      PROJECT.md (yêu cầu và quyết định), STATUS.md (tình trạng hiện tại)
+```
+
+## Build và chạy
+
+Cần .NET SDK (10.0 trở lên) để build; chạy chương trình chỉ cần Windows.
+
+```bash
+dotnet build -c Release
+```
+
+Chương trình nằm ở `src/Automation.App/bin/Release/net48/Automation.App.exe`. Tắt chương trình đang chạy trước khi build, nếu không file sẽ bị khóa.
+
+## License
+
+1. Lần đầu chạy, chương trình hiện màn hình License với **request key**; người dùng gửi key này cho admin.
+2. Admin chạy `keys\make-license.bat`, nhập request key, ngày gửi key (UTC, `YYYYMMDD`) và ngày hết hạn (`YYYYMMDD`, để trống nếu vô thời hạn) để tạo `license.lic`. Cần build `tools/Automation.KeyGen` trước và có khóa riêng `keys\license-private.key`.
+3. Người dùng dán nội dung hoặc import file `license.lic` trong màn hình License. File được lưu cạnh file exe, nên copy chương trình sang nơi khác thì phải copy cả `license.lic` (và `Setting.ini` nếu license có hạn).
+
+License có hạn cần mạng khi kích hoạt. Chi tiết xem mục License trong [docs/PROJECT.md](docs/PROJECT.md).
+
+## Tài liệu
+
+- [docs/PROJECT.md](docs/PROJECT.md): mục tiêu, quyết định kỹ thuật, mô hình kịch bản, license, kế hoạch.
+- [docs/STATUS.md](docs/STATUS.md): tình trạng hiện tại, checklist test tay, ghi chú kỹ thuật.
+- [CLAUDE.md](CLAUDE.md): quy ước làm việc (git, ngôn ngữ, subagent).
+
+## Quy trình git
+
+`main` là production, `preview` là nhánh test; việc mới làm trên nhánh `feature_xxx` tách từ `preview`.
