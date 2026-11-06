@@ -55,6 +55,10 @@ namespace Automation.App
         private readonly HashSet<int> _keysDown = new HashSet<int>();
         private readonly uint _ownProcess = (uint)Process.GetCurrentProcess().Id;
         private readonly Stopwatch _clock = new Stopwatch();
+        private const int WM_MOUSEMOVE = 0x0200;
+        private const long MoveIntervalMs = 8; // dense on purpose: RecordConverter drops the points that add no shape
+        private int _buttonsDown;
+        private long _lastMoveMs = -MoveIntervalMs;
         private IntPtr _keyHook, _mouseHook;
         private Action _onStopKey;
 
@@ -80,6 +84,8 @@ namespace Automation.App
             if (IsRecording) return true;
             _events.Clear();
             _keysDown.Clear();
+            _buttonsDown = 0;
+            _lastMoveMs = -MoveIntervalMs;
             // F7 still held from the press that started recording must not count as the press that stops it.
             if ((GetAsyncKeyState(RecordKey) & 0x8000) != 0) _keysDown.Add(RecordKey);
             _onStopKey = onStopKey;
@@ -162,8 +168,16 @@ namespace Automation.App
                             int delta = (short)((data.mouseData >> 16) & 0xFFFF);
                             e.Notches = delta / 120 != 0 ? delta / 120 : Math.Sign(delta);
                             break;
-                        default: keep = false; break; // plain moves are not recorded: only where buttons and the wheel act
+                        case WM_MOUSEMOVE:
+                            // Moves count only while a button is held (a drag); throttled so a drag stays a manageable number of actions.
+                            e.Kind = RecordedKind.Move;
+                            keep = _buttonsDown > 0 && e.TimeMs - _lastMoveMs >= MoveIntervalMs;
+                            if (keep) _lastMoveMs = e.TimeMs;
+                            break;
+                        default: keep = false; break;
                     }
+                    if (msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN || msg == WM_MBUTTONDOWN) _buttonsDown++;
+                    else if ((msg == WM_LBUTTONUP || msg == WM_RBUTTONUP || msg == WM_MBUTTONUP) && _buttonsDown > 0) _buttonsDown--;
                     if (keep) _events.Add(e);
                 }
             }

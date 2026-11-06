@@ -63,15 +63,92 @@ namespace Automation.App
             base.WndProc(ref m);
         }
 
+        protected override void OnGotFocus(EventArgs e)
+        {
+            base.OnGotFocus(e);
+            InstallHook();
+        }
+
         protected override void OnLostFocus(EventArgs e)
         {
+            RemoveHook();
             _down.Clear();
             base.OnLostFocus(e);
         }
 
+        protected override void OnHandleDestroyed(EventArgs e)
+        {
+            RemoveHook();
+            base.OnHandleDestroyed(e);
+        }
+
+        // A low-level hook sees combinations the window never receives (Alt+Tab is handled by the system before
+        // the window gets the Tab) and lets them be swallowed, so the task switcher does not open while capturing.
+        private const int WH_KEYBOARD_LL = 13;
+        private const uint LLKHF_EXTENDED = 0x01;
+        private delegate IntPtr HookProc(int nCode, IntPtr wParam, IntPtr lParam);
+        private HookProc _hookProc;
+        private IntPtr _hook;
+
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        private struct KBDLLHOOKSTRUCT { public uint vkCode, scanCode, flags, time; public IntPtr dwExtraInfo; }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+        private static extern IntPtr SetWindowsHookEx(int idHook, HookProc lpfn, IntPtr hMod, uint dwThreadId);
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool UnhookWindowsHookEx(IntPtr hhk);
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
+        [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+        private static extern IntPtr GetModuleHandle(string moduleName);
+
+        private void InstallHook()
+        {
+            if (_hook != IntPtr.Zero) return;
+            _hookProc = HookCallback;
+            IntPtr module = GetModuleHandle(System.Diagnostics.Process.GetCurrentProcess().MainModule.ModuleName);
+            _hook = SetWindowsHookEx(WH_KEYBOARD_LL, _hookProc, module, 0); // zero = not available: the normal key path still works
+        }
+
+        private void RemoveHook()
+        {
+            if (_hook == IntPtr.Zero) return;
+            UnhookWindowsHookEx(_hook);
+            _hook = IntPtr.Zero;
+        }
+
+        private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
+        {
+            if (nCode >= 0 && Focused && Form.ActiveForm != null)
+            {
+                int msg = wParam.ToInt32();
+                bool down = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN;
+                bool up = msg == WM_KEYUP || msg == WM_SYSKEYUP;
+                if (down || up)
+                {
+                    var data = (KBDLLHOOKSTRUCT)System.Runtime.InteropServices.Marshal.PtrToStructure(lParam, typeof(KBDLLHOOKSTRUCT));
+                    int vk = (int)data.vkCode;
+                    switch (vk)
+                    {
+                        case 0x10: vk = data.scanCode == 0x36 ? 0xA1 : 0xA0; break;
+                        case 0x11: vk = (data.flags & LLKHF_EXTENDED) != 0 ? 0xA3 : 0xA2; break;
+                        case 0x12: vk = (data.flags & LLKHF_EXTENDED) != 0 ? 0xA5 : 0xA4; break;
+                    }
+                    OnKeyCode(vk, down);
+                    return (IntPtr)1; // swallow: nothing else reacts to the key while it is being captured
+                }
+            }
+            return CallNextHookEx(_hook, nCode, wParam, lParam);
+        }
+
         private void OnKey(Message m, bool down)
         {
-            int vk = ResolveKey(m);
+            if (_hook != IntPtr.Zero) return; // the hook already reported this key
+            OnKeyCode(ResolveKey(m), down);
+        }
+
+        private void OnKeyCode(int vk, bool down)
+        {
             if (down)
             {
                 if (!_down.Add(vk)) return; // auto-repeat

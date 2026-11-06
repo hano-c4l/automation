@@ -9,6 +9,8 @@ namespace Automation.Core.Recording
     {
         MouseDown,
         MouseUp,
+        /// <summary>The cursor moved while a mouse button was held (only these moves are recorded).</summary>
+        Move,
         Wheel,
         KeyDown,
         KeyUp
@@ -30,7 +32,7 @@ namespace Automation.Core.Recording
 
     /// <summary>
     /// Turns recorded raw input into actions:
-    /// press and release of a mouse button at about the same place = Click; elsewhere = MouseDown + MouseUp (a drag);
+    /// press and release of a mouse button at about the same place = Click; elsewhere = MouseDown + Move actions along the recorded path + MouseUp (a drag);
     /// wheel turns at one place = one Scroll with the number of notches; a key = Key press (held as long as it was);
     /// a key pressed while Ctrl / Alt / Shift / Win is held = Combo key. The pause before the next action becomes Delay.
     /// Positions are desktop coordinates (no Process).
@@ -59,6 +61,7 @@ namespace Automation.Core.Recording
         {
             var items = new List<Item>();
             var pendingMouse = new Dictionary<MouseButton, RecordedEvent>();
+            var pendingPath = new Dictionary<MouseButton, List<RecordedEvent>>(); // cursor positions seen while the button was held
             var keysDown = new Dictionary<int, long>();          // key -> time pressed
             var modifierOrder = new List<int>();                  // modifiers held, in press order
             var usedModifiers = new HashSet<int>();               // modifiers that took part in a combination
@@ -70,22 +73,39 @@ namespace Automation.Core.Recording
                 {
                     case RecordedKind.MouseDown:
                         pendingMouse[e.Button] = e;
+                        pendingPath[e.Button] = new List<RecordedEvent>();
+                        break;
+
+                    case RecordedKind.Move:
+                        // Moves belong to every button currently held.
+                        foreach (var path in pendingPath.Values) path.Add(e);
                         break;
 
                     case RecordedKind.MouseUp:
                         if (!pendingMouse.TryGetValue(e.Button, out var down)) break; // its press was not recorded
                         pendingMouse.Remove(e.Button);
+                        var points = pendingPath.TryGetValue(e.Button, out var p) ? p : new List<RecordedEvent>();
+                        pendingPath.Remove(e.Button);
                         bool click = Math.Abs(e.X - down.X) <= ClickDistance && Math.Abs(e.Y - down.Y) <= ClickDistance && e.TimeMs - down.TimeMs <= ClickTimeMs;
+                        foreach (var pt in points)
+                            if (Math.Abs(pt.X - down.X) > ClickDistance || Math.Abs(pt.Y - down.Y) > ClickDistance) click = false; // wandered away and came back: still a drag
                         if (click)
                         {
                             items.Add(new Item { Node = Mouse(MouseAction.Click, down.Button, down.X, down.Y, MoveTimeMs), Start = down.TimeMs, End = e.TimeMs });
                         }
                         else
                         {
-                            // A drag: press, then glide to the release point in about the time it took, then release.
+                            // A drag: press, follow the recorded path with Move actions, then release.
                             items.Add(new Item { Node = Mouse(MouseAction.MouseDown, down.Button, down.X, down.Y, MoveTimeMs), Start = down.TimeMs, End = down.TimeMs });
-                            long glide = Math.Min(MaxHoldMs, Math.Max(0, e.TimeMs - down.TimeMs));
-                            items.Add(new Item { Node = Mouse(MouseAction.MouseUp, down.Button, e.X, e.Y, glide), Start = down.TimeMs, End = e.TimeMs });
+                            long previous = down.TimeMs;
+                            foreach (var pt in Simplify(down, points, e))
+                            {
+                                long step = Math.Min(MaxHoldMs, Math.Max(0, pt.TimeMs - previous));
+                                items.Add(new Item { Node = Mouse(MouseAction.Move, MouseButton.Left, pt.X, pt.Y, step), Start = previous, End = Math.Max(previous, pt.TimeMs) });
+                                previous = Math.Max(previous, pt.TimeMs);
+                            }
+                            long glide = Math.Min(MaxHoldMs, Math.Max(0, e.TimeMs - previous));
+                            items.Add(new Item { Node = Mouse(MouseAction.MouseUp, down.Button, e.X, e.Y, glide), Start = previous, End = Math.Max(previous, e.TimeMs) });
                         }
                         break;
 
@@ -167,6 +187,50 @@ namespace Automation.Core.Recording
                 result.Add(item.Node);
             }
             return result;
+        }
+
+        /// <summary>A drag path may deviate this many pixels from the straight line between kept points.</summary>
+        public const double PathTolerance = 1.0;
+
+        /// <summary>
+        /// Ramer-Douglas-Peucker: keeps the points that give the path its shape (the corners and curves) and drops those
+        /// that lie within <see cref="PathTolerance"/> of the line between their neighbours. The start and end are fixed.
+        /// </summary>
+        private static List<RecordedEvent> Simplify(RecordedEvent start, List<RecordedEvent> middle, RecordedEvent end)
+        {
+            var all = new List<RecordedEvent>(middle.Count + 2) { start };
+            all.AddRange(middle);
+            all.Add(end);
+            var keep = new bool[all.Count];
+            keep[0] = keep[all.Count - 1] = true;
+            var stack = new Stack<KeyValuePair<int, int>>();
+            stack.Push(new KeyValuePair<int, int>(0, all.Count - 1));
+            while (stack.Count > 0)
+            {
+                var range = stack.Pop();
+                int far = -1;
+                double max = PathTolerance;
+                for (int i = range.Key + 1; i < range.Value; i++)
+                {
+                    double d = DistanceToLine(all[i], all[range.Key], all[range.Value]);
+                    if (d > max) { max = d; far = i; }
+                }
+                if (far < 0) continue;
+                keep[far] = true;
+                stack.Push(new KeyValuePair<int, int>(range.Key, far));
+                stack.Push(new KeyValuePair<int, int>(far, range.Value));
+            }
+            var result = new List<RecordedEvent>();
+            for (int i = 1; i < all.Count - 1; i++) if (keep[i]) result.Add(all[i]);
+            return result;
+        }
+
+        private static double DistanceToLine(RecordedEvent p, RecordedEvent a, RecordedEvent b)
+        {
+            double dx = b.X - a.X, dy = b.Y - a.Y;
+            double length = Math.Sqrt(dx * dx + dy * dy);
+            if (length < 1e-9) return Math.Sqrt((p.X - a.X) * (double)(p.X - a.X) + (p.Y - a.Y) * (double)(p.Y - a.Y));
+            return Math.Abs(dy * (p.X - a.X) - dx * (p.Y - a.Y)) / length;
         }
 
         private static string Name(int virtualKey)
