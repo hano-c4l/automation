@@ -9,6 +9,17 @@ namespace Automation.Core.Model
     {
         public static void Save(AutomationScript script, string path)
         {
+            File.WriteAllBytes(path, ToBytes(script));
+        }
+
+        /// <summary>The text that Save would write; used to tell whether a script changed since it was saved.</summary>
+        public static string ToJson(AutomationScript script)
+        {
+            return Encoding.UTF8.GetString(ToBytes(script));
+        }
+
+        private static byte[] ToBytes(AutomationScript script)
+        {
             script.Version = AutomationScript.CurrentVersion;
             var serializer = new DataContractJsonSerializer(typeof(AutomationScript));
             using (var ms = new MemoryStream())
@@ -17,7 +28,7 @@ namespace Automation.Core.Model
                 {
                     serializer.WriteObject(writer, script);
                 }
-                File.WriteAllBytes(path, ms.ToArray());
+                return ms.ToArray();
             }
         }
 

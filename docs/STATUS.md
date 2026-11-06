@@ -3,8 +3,8 @@
 Cập nhật lần cuối: 2026-11-05
 
 ## Hiện tại
-- Nhánh `feature_variables` (cắt từ `feature_name_columns`, chưa push; cả hai nhánh chưa vào `preview`) thêm: **Variable, Condition (Case/Else), ID cho Image, Mouse/Text dùng biểu thức biến**, bỏ cơ chế Image làm gốc tọa độ cho action con, Save As chỉ hiện khi có file. Build sạch; Core và UI đã test bằng harness C# (dưới culture vi-VN). **Chờ người dùng test thao tác tay.**
-- `preview` có: M1-M3, cây action, Keyboard, Open, Wait (PR #3). Chuỗi chưa vào `preview`: `feature_name_columns` (Name, cột, Save As, Image) -> `feature_variables`.
+- Nhánh `feature_ui_polish` (cắt từ `preview` sau PR #4, chưa push): chỉnh giao diện theo yêu cầu (xem mục "Giao diện" bên dưới). Build sạch; UI test bằng harness qua. **Chờ người dùng xem/test thao tác tay.**
+- `preview` đã có tất cả đến Variable/Condition (PR #3, #4).
 
 ## Đã làm
 - [x] M1, M2, M3, cây action, Mouse/Loop, Keyboard, Command/Open, Control/Wait (đã vào `preview`).
@@ -18,6 +18,44 @@ Cập nhật lần cuối: 2026-11-05
 - [x] **Save As** chỉ hiện khi đang mở từ file hoặc đã lưu.
 - [x] **Sửa lỗi lệch 1 pixel:** `MouseController` làm tròn xuống khi quy đổi tọa độ ra 0..65535 nên đôi khi trỏ chuột lệch 1 px (thấy ở tọa độ nhỏ). Đã đổi sang làm tròn lên theo công thức Windows dùng; test quét 400 điểm ngẫu nhiên + 4 góc màn hình đều trúng đúng pixel.
 - [x] **Test:** ExprTests (bộ ví dụ của người dùng: `{abc} + 1`, `{abc} > 3`/`> 2`/else với abc=5 chỉ chạy case đầu, `{abc.Position.X + 1}, ...`, `{abc.Position} + {1,1}`; ưu tiên toán tử, ngắn mạch, chia 0, chuỗi có escape, ngày, biến chưa có, vị trí lỗi cú pháp, vi-VN), VarTests (runner: switch 5/3/2, vòng lặp 5 lần có Condition bên trong đếm đúng, mọi kiểu literal, Position/Range, Mouse dùng biến, Text từ biểu thức, ID/kiểu sai, JSON round trip và sửa Condition hỏng, Image: (110,220), Center, BottomRight (-600,-300), Found/not found, desktop), UiTests (soạn Variable/Condition qua giao diện, mọi quy tắc cây ở trên, picker bằng chuột giả lập).
+
+### Giao diện (feature_ui_polish)
+- [x] **Action** là combo chung bên ngoài group box, cùng chỗ với Name và Category (Control và Command đã đổi nhãn Type thành Action; Mouse vẫn có "Type" là nút chuột).
+- [x] 7 nút Add, Update, Delete, In, Out, Up, Down thành nút icon (Segoe MDL2 Assets nếu có, không thì ký hiệu thường) kèm tooltip.
+- [x] **Action = Case** chỉ có trong danh sách khi đang chọn một dòng thuộc Condition (Begin, case, else, End hoặc action bên trong). Add/Update một Case bị từ chối nếu Condition đã có case cùng biểu thức (bỏ qua khoảng trắng, phân biệt hoa thường), vì case thứ hai không bao giờ chạy tới. "First case" đổi tên thành "Condition".
+- [x] **Xác nhận khi mất dữ liệu:** New hỏi khi danh sách chưa lưu (không có file mà có dữ liệu) hoặc file đang mở đã bị sửa; file mở/lưu xong chưa sửa thì không hỏi. Cùng quy tắc áp dụng cho Open (hỏi sau khi chọn file) và khi đóng chương trình. "Đã sửa" so sánh JSON hiện tại với JSON lúc mở/lưu/new.
+- [x] **Icon ?** cạnh các ô có giải thích: biểu thức (Variable, Position của Mouse, Text của Keyboard, Condition của case), Title (regex), Count (0 = forever), Anchor, Range anchor, Picture anchor, Width/Height (0 = tìm hết), ID, Accuracy, Wait up to, Retry, Time/Delay, Value type, Position/Range. Bấm vào mở cửa sổ giải thích (cú pháp biểu thức, toán tử, ngày, Position, thuộc tính, true/false/now/today, lỗi...).
+- [x] **Đơn vị** (px, %, notches) nằm sau ô nhập thay vì trong nhãn.
+- [x] Condition đã tạo: ô "Condition" chứa case đầu tiên; Update ghi lại (kiểm cú pháp và trùng case). Đóng chương trình khi script đang chạy: hỏi trước, trả lời No thì script vẫn chạy. Kích thước nút icon và "?" tính theo font nên vừa ở 125%/150% (chưa thử trên máy scale thật; harness chạy ở 96 DPI). Quy tắc trùng case giữ khoảng trắng trong chuỗi trong dấu nháy.
+- Lưu ý kiểm thử: lần chạy harness cuối (sau khi sửa trình tự test) bị Application Control chặn exe mới, nên chưa chạy lại được; lần chạy ngay trước đó chỉ còn 2 lỗi do trình tự test (không phải lỗi sản phẩm).
+- Test (harness): vị trí/ẩn hiện của Action, 7 nút icon, ô ? và đơn vị có mặt, bấm ? mở đúng nội dung, Case xuất hiện/biến mất theo vùng chọn (kể cả dòng End), từ chối case trùng khi Add và Update, New/đóng cửa sổ hỏi hay không hỏi đúng các tình huống.
+
+### Chỉnh thêm (cùng nhánh feature_ui_polish)
+- [x] 7 nút icon chuyển lên thanh công cụ, góc phải, thứ tự Add, Update, Delete, In, Out, Up, Down. Add luôn bật; các nút còn lại chỉ bật khi chọn ít nhất một action (dòng End không tính); tất cả tắt khi script đang chạy.
+- [x] Giải thích ? của Time và Delay tách riêng (Mouse và Keyboard mỗi loại hai nội dung).
+- [x] Picture anchor của Image nằm dưới Height / Pick range.
+- [x] **Capture picture:** trước khi hiện lớp phủ, chương trình chụp một ảnh màn hình (đã dời con trỏ ra góc để không hiện hover) rồi cho người dùng chọn trên chính ảnh đó (hiển thị mờ, vùng chọn sáng); ảnh lấy cắt từ ảnh chụp sẵn đó. Vì vậy màn hình thay đổi trong lúc đang chọn không ảnh hưởng ảnh mẫu. Test: đổi nội dung cửa sổ ngay giữa lúc kéo, ảnh nhận được vẫn đúng từng pixel với ảnh trước khi kéo.
+- [x] **Mouse Move:** ô Type ẩn và không lưu giá trị Button vào file.
+- [x] Bấm nút icon trên thanh công cụ chuyển focus khỏi ô đang sửa (ToolStrip không tự lấy focus): số vừa gõ được ghi nhận ngay (test: gõ 77 rồi bấm Add ra X = 77) và ô Key nhả phím F6 toàn cục. Vẽ lại lớp phủ đóng băng ở 1920x1080 mất ~11 ms mỗi lần. Khi bấm Capture, con trỏ nhảy xuống góc dưới phải khoảng 0,25 s (để không hiện hover); Pick range vẫn dùng lớp phủ trong suốt.
+
+### Bố cục chi tiết (cùng nhánh)
+- [x] Nút icon nằm cùng hàng với menu, canh trái cùng mép với phần Action detail (một ToolStrip riêng, rộng bằng panel chi tiết); icon đen đậm cỡ lớn hơn khi bật, xám nhạt khi tắt.
+- [x] Tất cả nút chọn (program, position, range) đều ghi là **Pick** (tooltip nói rõ chọn gì; tôi hiểu "Pic" trong yêu cầu là "Pick"); nhãn hàng ảnh vẫn là "Picture".
+- [x] Panel Action detail rộng 540 px. **Position** là một hàng hai ô (X, Y), **Size** là một hàng hai ô (Width, Height); nút Pick nằm bên phải ô Process, bên phải Position và bên phải Size; Browse bên phải Path.
+- [x] Image: Capture và Pick (trước là Capture picture / Load file) nằm bên phải ảnh xem trước; hàng Accuracy là: ô số, %, nút Check (trước là Find now), rồi dấu ?.
+- [x] Các ô số X, Y, Width, Height dùng `NumberBox` (ô chữ chỉ nhận số, có chữ mờ X / Y / Width / Height khi để trống; trống tính là 0; chỉ ô cho phép số âm mới nhận dấu trừ).
+
+### Checklist test giao diện (feature_ui_polish)
+1. Bấm các dấu ? (Count, Title, Anchor, Expression, ID, Accuracy...): cửa sổ giải thích hiện đúng nội dung, đọc được, đóng bằng Close/Esc.
+2. New khi danh sách có dữ liệu chưa lưu: hỏi xác nhận; No thì giữ nguyên, Yes thì xóa. Mở/lưu file rồi New khi chưa sửa: không hỏi; sửa rồi New: hỏi và nêu tên file. Open và đóng chương trình cũng hỏi như vậy (ngoài yêu cầu ban đầu, có thể bỏ).
+3. Action = Case chỉ có khi chọn một dòng thuộc Condition; thử tạo hai case giống nhau (kể cả khác khoảng trắng): bị từ chối.
+4. Chọn Condition: ô Condition hiện case đầu; sửa rồi Update thì case đầu đổi.
+5. Nút icon rõ ràng, hover hiện tên; xem ở 125% và 150%: glyph và dấu ? không bị cắt.
+6. Action nằm ngoài group box, Control/Command ghi Action; đơn vị px, %, notches nằm sau ô nhập.
+7. Nút icon trên thanh công cụ nằm thẳng mép trái với phần Action detail; chưa chọn gì thì chỉ Add đậm, chọn một dòng thì các nút khác đậm; xem ở 125%/150% không bị cắt.
+7b. Position/Size một hàng với ô mờ gợi ý; nút Pick đúng chỗ bên phải (hover xem tooltip); Image: Capture, Pick, Check.
+8. Capture picture: bấm Capture lúc màn hình có thứ đang thay đổi (hiệu ứng, hover, popup đóng): ảnh trong Picture đúng với những gì thấy lúc khoanh.
+9. Mouse, Action = Move: không có ô Type; lưu file thì action Move không có "Button".
 
 ## Việc tiếp theo
 - [ ] Người dùng test giao diện (checklist dưới), báo lỗi nếu có.
