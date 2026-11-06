@@ -168,10 +168,10 @@ namespace Automation.App
         private string _savedSnapshot = "";
 
         /// <summary>
-        /// Asked before unsaved changes would be lost (New, Open, closing). Receives the message and returns true to go on.
-        /// Null shows a Yes/No dialog; tests replace it.
+        /// Asked before unsaved changes would be lost (New, Open, closing). Receives the message and returns Yes (save first),
+        /// No (go on without saving) or Cancel. Null shows a Yes/No/Cancel dialog; tests replace it.
         /// </summary>
-        public Func<string, bool> ConfirmDiscard { get; set; }
+        public Func<string, DialogResult> ConfirmSave { get; set; }
         // AutoSize + Dock.Top so the area is exactly as tall as its content; the parent panel scrolls when the window is small.
         private readonly Panel _editArea = new Panel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink };
 
@@ -1303,14 +1303,14 @@ namespace Automation.App
         // ---------------------------------------------------------------- picking
 
         /// <summary>Minimizes this window, lets the user click one point on screen and returns it with the window under it.</summary>
-        private bool RunOverlay(out Point point, out WindowInfo? window)
+        private bool RunOverlay(out Point point, out WindowInfo? window, bool highlightWindows = false)
         {
             var previous = WindowState;
             WindowState = FormWindowState.Minimized;
             Application.DoEvents();
             Thread.Sleep(250); // let the minimize animation finish so the overlay is not captured behind it
             Point? picked = null;
-            using (var picker = new PointPickerForm())
+            using (var picker = new PointPickerForm { HighlightWindows = highlightWindows })
             {
                 if (picker.ShowDialog() == DialogResult.OK) picked = picker.SelectedPoint;
             }
@@ -1374,7 +1374,13 @@ namespace Automation.App
         /// <summary>Lets the user click any window to fill in a process name box.</summary>
         private void PickProcess(TextBox nameBox)
         {
-            if (!RunOverlay(out Point p, out WindowInfo? info) || !info.HasValue) return;
+            if (!RunOverlay(out Point p, out WindowInfo? info, true) || !info.HasValue) return;
+            if (WindowLocator.IsDesktopSurface(info.Value.Handle))
+            {
+                nameBox.Text = "";
+                SetStatus("Full desktop (no process): the desktop, taskbar and Start menu are not a program, so Process is left empty.");
+                return;
+            }
             if (string.Equals(info.Value.ProcessName, Process.GetCurrentProcess().ProcessName, StringComparison.OrdinalIgnoreCase))
             {
                 SetStatus("That is this program's own window; pick another window.");
@@ -1637,21 +1643,28 @@ namespace Automation.App
             return ScriptSerializer.ToJson(_script) != _savedSnapshot;
         }
 
-        /// <summary>True when there is nothing to lose or the user agrees to lose it.</summary>
-        private bool ConfirmLoseChanges(string question)
+        /// <summary>
+        /// Asks whether to save unsaved changes before <paramref name="next"/> (e.g. "creating a new script").
+        /// Yes = save first (to the current file, or via the Save dialog); No = go on without saving; Cancel = stay.
+        /// Returns true when it is fine to go on.
+        /// </summary>
+        private bool ConfirmLoseChanges(string next)
         {
             if (!IsDirty()) return true;
             string what = _currentPath == null
                 ? "The actions in the list have not been saved."
                 : "\"" + Path.GetFileName(_currentPath) + "\" has changes that have not been saved.";
-            string message = what + " Unsaved data will be lost.\n\n" + question;
-            if (ConfirmDiscard != null) return ConfirmDiscard(message);
-            return MessageBox.Show(this, message, Text, MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) == DialogResult.Yes;
+            string message = what + "\n\nDo you want to save before " + next + "?";
+            DialogResult answer = ConfirmSave != null
+                ? ConfirmSave(message)
+                : MessageBox.Show(this, message, Text, MessageBoxButtons.YesNoCancel, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button1);
+            if (answer == DialogResult.Yes) return SaveScript(false); // a cancelled Save dialog cancels the whole action
+            return answer == DialogResult.No;
         }
 
         private void NewScript()
         {
-            if (!ConfirmLoseChanges("Do you want to start a new script anyway?")) return;
+            if (!ConfirmLoseChanges("creating a new script")) return;
             _script = new AutomationScript();
             _currentPath = null;
             RefreshList();
@@ -1661,10 +1674,10 @@ namespace Automation.App
 
         private void OpenScript()
         {
+            if (!ConfirmLoseChanges("opening another script")) return;
             using (var dialog = new OpenFileDialog { Filter = "Automation script (*.json)|*.json|All files (*.*)|*.*" })
             {
                 if (dialog.ShowDialog(this) != DialogResult.OK) return;
-                if (!ConfirmLoseChanges("Do you want to open \"" + Path.GetFileName(dialog.FileName) + "\" anyway?")) return;
                 try
                 {
                     _script = ScriptSerializer.Load(dialog.FileName);
@@ -1682,7 +1695,7 @@ namespace Automation.App
         }
 
         /// <summary>Save writes to the current file when there is one; Save As (or a new script) asks for a path.</summary>
-        private void SaveScript(bool saveAs)
+        private bool SaveScript(bool saveAs)
         {
             string path = _currentPath;
             if (saveAs || path == null)
@@ -1695,7 +1708,7 @@ namespace Automation.App
                     InitialDirectory = _currentPath == null ? null : Path.GetDirectoryName(_currentPath)
                 })
                 {
-                    if (dialog.ShowDialog(this) != DialogResult.OK) return;
+                    if (dialog.ShowDialog(this) != DialogResult.OK) return false;
                     path = dialog.FileName;
                 }
             }
@@ -1706,10 +1719,12 @@ namespace Automation.App
                 MarkSaved();
                 UpdateTitle();
                 SetStatus("Saved " + Path.GetFileName(path));
+                return true;
             }
             catch (Exception ex)
             {
                 MessageBox.Show(this, "Cannot save the file:\n" + ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return false;
             }
         }
 
@@ -1743,7 +1758,8 @@ namespace Automation.App
             }
             _recording = true;
             ApplyBusyState();
-            SetStatus("Recording... click, scroll and type in your programs; press F7 or Stop recording to finish.");
+            WindowState = FormWindowState.Minimized; // get out of the way of the programs being recorded
+            SetStatus("Recording... click, scroll and type in your programs; press F7 to finish (the program is minimized).");
         }
 
         private void StopRecording()
@@ -1751,6 +1767,9 @@ namespace Automation.App
             if (!_recording) return;
             var events = _recorder.Stop();
             _recording = false;
+            // Bring the window back first so the user sees at once that recording has stopped.
+            WindowState = FormWindowState.Normal;
+            WindowLocator.BringToFront(Handle);
             var nodes = RecordConverter.Build(events);
             if (nodes.Count > 0)
             {
@@ -1907,7 +1926,7 @@ namespace Automation.App
                 }
                 SetToggleHotKey(true);
                 WindowState = FormWindowState.Normal;
-                Activate();
+                WindowLocator.BringToFront(Handle);
             }
         }
 
@@ -1981,7 +2000,7 @@ namespace Automation.App
             // A recording in progress is finished first, so its actions count as unsaved changes in the question below.
             if (_recording) StopRecording();
             // Ask first: answering No must not stop a running script.
-            if (!ConfirmLoseChanges("Do you want to close the program anyway?"))
+            if (!ConfirmLoseChanges("closing the program"))
             {
                 e.Cancel = true;
                 return;

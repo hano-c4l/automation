@@ -197,6 +197,33 @@ namespace Automation.Core.Windows
             return new WindowInfo { Handle = hwnd, Title = GetTitle(hwnd), ProcessName = GetProcessName(pid) };
         }
 
+        [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+        private static extern int GetClassName(IntPtr hWnd, StringBuilder text, int max);
+
+        private static readonly HashSet<string> DesktopClasses = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "Progman", "WorkerW", "Shell_TrayWnd", "Shell_SecondaryTrayWnd"
+        };
+
+        private static readonly HashSet<string> DesktopProcesses = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "StartMenuExperienceHost", "SearchHost", "SearchApp", "ShellExperienceHost"
+        };
+
+        /// <summary>
+        /// True for the desktop background, the taskbar and the Start / search menus. They belong to the shell (explorer)
+        /// but are not a program to target: they count as the full desktop (no Process).
+        /// </summary>
+        public static bool IsDesktopSurface(IntPtr hwnd)
+        {
+            if (hwnd == IntPtr.Zero) return false;
+            var cls = new StringBuilder(64);
+            GetClassName(hwnd, cls, cls.Capacity);
+            if (DesktopClasses.Contains(cls.ToString())) return true;
+            NativeMethods.GetWindowThreadProcessId(hwnd, out uint pid);
+            return DesktopProcesses.Contains(GetProcessName(pid));
+        }
+
         /// <summary>Restores the window if minimized and tries to make it the foreground window (best effort).</summary>
         public static void BringToFront(IntPtr hwnd)
         {
