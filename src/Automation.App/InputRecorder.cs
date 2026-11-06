@@ -74,6 +74,30 @@ namespace Automation.App
         /// <summary>Normally input on this program's own windows is not recorded; tests that host their target window in this process turn this off.</summary>
         public bool IgnoreOwnWindows { get; set; } = true;
 
+        /// <summary>False: cursor moves are recorded only while a button is held (drags). True: every move is recorded.</summary>
+        public bool AllEvents { get; set; }
+
+        [DllImport("user32.dll")]
+        private static extern uint MapVirtualKey(uint code, uint mapType);
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetKeyboardLayout(uint threadId);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        private static extern int ToUnicodeEx(uint vk, uint scan, byte[] keyState, [Out, MarshalAs(UnmanagedType.LPWStr)] System.Text.StringBuilder buffer, int size, uint flags, IntPtr layout);
+
+        /// <summary>The text a key types on the current keyboard layout (null for keys that type nothing or only a dead key).</summary>
+        public static string CharOf(int virtualKey, bool shift)
+        {
+            var state = new byte[256];
+            if (shift) state[0x10] = 0x80;
+            var buffer = new System.Text.StringBuilder(8);
+            uint scan = MapVirtualKey((uint)virtualKey, 0);
+            // Flag 4: do not change the keyboard's dead-key state.
+            int count = ToUnicodeEx((uint)virtualKey, scan, state, buffer, buffer.Capacity, 4, GetKeyboardLayout(0));
+            if (count != 1) return null;
+            char c = buffer[0];
+            return char.IsControl(c) ? null : c.ToString();
+        }
+
         public bool IsRecording { get { return _keyHook != IntPtr.Zero; } }
 
         public int Count { get { return _events.Count; } }
@@ -171,7 +195,7 @@ namespace Automation.App
                         case WM_MOUSEMOVE:
                             // Moves count only while a button is held (a drag); throttled so a drag stays a manageable number of actions.
                             e.Kind = RecordedKind.Move;
-                            keep = _buttonsDown > 0 && e.TimeMs - _lastMoveMs >= MoveIntervalMs;
+                            keep = (AllEvents || _buttonsDown > 0) && e.TimeMs - _lastMoveMs >= MoveIntervalMs;
                             if (keep) _lastMoveMs = e.TimeMs;
                             break;
                         default: keep = false; break;

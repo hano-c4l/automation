@@ -53,13 +53,43 @@ namespace Automation.Core.Recording
             public long Start;
             public long End;
             public int Seq;   // creation order, keeps a drag's MouseDown before its MouseUp when they start together
+            public int TypedKey;      // virtual key when this is plain typing (no modifier, or Shift only)
+            public bool TypedShift;
         }
 
         private static readonly HashSet<int> Modifiers = new HashSet<int> { 0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0x5B, 0x5C };
 
-        public static List<ActionNode> Build(IList<RecordedEvent> events)
+        /// <param name="charOf">Maps (virtual key, shift held) to the text typed on the user's keyboard layout, or null when the key types nothing.
+        /// Null uses <see cref="DefaultCharOf"/>.</param>
+        public static List<ActionNode> Build(IList<RecordedEvent> events, Func<int, bool, string> charOf = null)
         {
+            if (charOf == null) charOf = DefaultCharOf;
             var items = new List<Item>();
+            var freeRun = new List<RecordedEvent>();   // cursor moves seen while no button was held (All event mode)
+
+            void FlushFreeMoves()
+            {
+                if (freeRun.Count == 0) return;
+                long prev = 0;
+                var kept = SimplifyAll(freeRun);
+                for (int i = 0; i < kept.Count; i++)
+                {
+                    var pt = kept[i];
+                    if (i == 0)
+                    {
+                        items.Add(new Item { Node = Mouse(MouseAction.Move, MouseButton.Left, pt.X, pt.Y, MoveTimeMs), Start = pt.TimeMs, End = pt.TimeMs });
+                        prev = pt.TimeMs;
+                    }
+                    else
+                    {
+                        long step = Math.Min(MaxHoldMs, Math.Max(0, pt.TimeMs - prev));
+                        items.Add(new Item { Node = Mouse(MouseAction.Move, MouseButton.Left, pt.X, pt.Y, step), Start = prev, End = Math.Max(prev, pt.TimeMs) });
+                        prev = Math.Max(prev, pt.TimeMs);
+                    }
+                }
+                freeRun.Clear();
+            }
+
             var pendingMouse = new Dictionary<MouseButton, RecordedEvent>();
             var pendingPath = new Dictionary<MouseButton, List<RecordedEvent>>(); // cursor positions seen while the button was held
             var keysDown = new Dictionary<int, long>();          // key -> time pressed
@@ -69,6 +99,7 @@ namespace Automation.Core.Recording
 
             foreach (var e in events)
             {
+                if (e.Kind != RecordedKind.Move) FlushFreeMoves();
                 switch (e.Kind)
                 {
                     case RecordedKind.MouseDown:
@@ -78,7 +109,8 @@ namespace Automation.Core.Recording
 
                     case RecordedKind.Move:
                         // Moves belong to every button currently held.
-                        foreach (var path in pendingPath.Values) path.Add(e);
+                        if (pendingPath.Count > 0) foreach (var path in pendingPath.Values) path.Add(e);
+                        else freeRun.Add(e);
                         break;
 
                     case RecordedKind.MouseUp:
@@ -159,19 +191,23 @@ namespace Automation.Core.Recording
                             var names = new List<string>();
                             foreach (int m in mods) names.Add(Name(m));
                             names.Add(Name(e.VirtualKey));
-                            AddKey(items, KeyboardAction.ComboKey, KeyCodes.Join(names), hold, pressed, e.TimeMs);
+                            bool onlyShift = mods.TrueForAll(m => m == 0xA0 || m == 0xA1);
+                            AddKey(items, KeyboardAction.ComboKey, KeyCodes.Join(names), hold, pressed, e.TimeMs, onlyShift ? e.VirtualKey : 0, true);
                         }
                         else
                         {
-                            AddKey(items, KeyboardAction.KeyPress, Name(e.VirtualKey), hold, pressed, e.TimeMs);
+                            AddKey(items, KeyboardAction.KeyPress, Name(e.VirtualKey), hold, pressed, e.TimeMs, e.VirtualKey, false);
                         }
                         break;
                 }
             }
 
+            FlushFreeMoves();
+
             // Order by when each action started; the pause until the next one becomes this one's Delay.
             for (int i = 0; i < items.Count; i++) items[i].Seq = i;
             items.Sort((a, b) => a.Start != b.Start ? a.Start.CompareTo(b.Start) : a.Seq.CompareTo(b.Seq));
+            items = MergeTyping(items, charOf);
             var result = new List<ActionNode>();
             for (int i = 0; i < items.Count; i++)
             {
@@ -201,6 +237,16 @@ namespace Automation.Core.Recording
             var all = new List<RecordedEvent>(middle.Count + 2) { start };
             all.AddRange(middle);
             all.Add(end);
+            var kept = SimplifyAll(all);
+            kept.RemoveAt(0);
+            kept.RemoveAt(kept.Count - 1);
+            return kept;
+        }
+
+        /// <summary>Like <see cref="Simplify"/> for a free run of moves: the first and last points are kept too.</summary>
+        private static List<RecordedEvent> SimplifyAll(List<RecordedEvent> all)
+        {
+            if (all.Count <= 2) return new List<RecordedEvent>(all);
             var keep = new bool[all.Count];
             keep[0] = keep[all.Count - 1] = true;
             var stack = new Stack<KeyValuePair<int, int>>();
@@ -221,7 +267,7 @@ namespace Automation.Core.Recording
                 stack.Push(new KeyValuePair<int, int>(far, range.Value));
             }
             var result = new List<RecordedEvent>();
-            for (int i = 1; i < all.Count - 1; i++) if (keep[i]) result.Add(all[i]);
+            for (int i = 0; i < all.Count; i++) if (keep[i]) result.Add(all[i]);
             return result;
         }
 
@@ -238,11 +284,56 @@ namespace Automation.Core.Recording
             return KeyCodes.TryGetName(virtualKey, out string name) ? name : null;
         }
 
-        private static void AddKey(List<Item> items, KeyboardAction action, string value, long hold, long start, long end)
+        /// <param name="typedKey">Virtual key when this press is plain typing (no modifier, or Shift only); otherwise 0.</param>
+        private static void AddKey(List<Item> items, KeyboardAction action, string value, long hold, long start, long end, int typedKey = 0, bool shift = false)
         {
             if (string.IsNullOrEmpty(value) || value.Contains("++") || value.StartsWith("+") || value.EndsWith("+")) return; // a key without a name cannot be replayed
             var node = ActionNode.NewKeyboard(new KeyboardSettings { Action = action, Value = value, TimeMs = hold, DelayMs = 0 });
-            items.Add(new Item { Node = node, Start = start, End = end });
+            items.Add(new Item { Node = node, Start = start, End = end, TypedKey = typedKey, TypedShift = shift });
+        }
+
+        /// <summary>The text a key types on a US-style layout: letters, digits and space. Used when no layout-aware resolver is given.</summary>
+        public static string DefaultCharOf(int virtualKey, bool shift)
+        {
+            if (virtualKey >= 0x41 && virtualKey <= 0x5A) return ((char)(shift ? virtualKey : virtualKey + 32)).ToString();
+            if (virtualKey >= 0x30 && virtualKey <= 0x39 && !shift) return ((char)virtualKey).ToString();
+            if (virtualKey == 0x20 && !shift) return " ";
+            return null;
+        }
+
+        /// <summary>Longest pause between two typed keys that still counts as the same piece of text.</summary>
+        private const long TypingGapMs = 1500;
+
+        /// <summary>Joins runs of two or more typed keys into one Text action (Time = how long the typing took).</summary>
+        private static List<Item> MergeTyping(List<Item> items, Func<int, bool, string> charOf)
+        {
+            var result = new List<Item>();
+            int i = 0;
+            while (i < items.Count)
+            {
+                string first = items[i].TypedKey != 0 ? charOf(items[i].TypedKey, items[i].TypedShift) : null;
+                if (string.IsNullOrEmpty(first)) { result.Add(items[i++]); continue; }
+                var text = new System.Text.StringBuilder(first);
+                int j = i + 1;
+                while (j < items.Count && items[j].TypedKey != 0 && items[j].Start - items[j - 1].End <= TypingGapMs)
+                {
+                    string next = charOf(items[j].TypedKey, items[j].TypedShift);
+                    if (string.IsNullOrEmpty(next)) break;
+                    text.Append(next);
+                    j++;
+                }
+                if (j - i < 2)
+                {
+                    result.Add(items[i++]); // a single key stays a key press
+                    continue;
+                }
+                long start = items[i].Start, end = items[j - 1].End;
+                for (int k = i; k < j; k++) end = Math.Max(end, items[k].End);
+                var node = ActionNode.NewKeyboard(new KeyboardSettings { Action = KeyboardAction.Text, Value = text.ToString(), TimeMs = end - start, DelayMs = 0 });
+                result.Add(new Item { Node = node, Start = start, End = end });
+                i = j;
+            }
+            return result;
         }
 
         private static ActionNode Mouse(MouseAction action, MouseButton button, int x, int y, long timeMs)
