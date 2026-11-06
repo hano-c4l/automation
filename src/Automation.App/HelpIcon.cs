@@ -27,7 +27,11 @@ namespace Automation.App
         public HelpIcon(HelpTopic topic)
         {
             _topic = topic;
-            Size = new Size(20, 20);
+            using (var font = new Font("Segoe UI", 9f, FontStyle.Bold))
+            {
+                int side = Math.Max(20, TextRenderer.MeasureText("?", font).Height + 4); // follows the font, so it fits at any display scaling
+                Size = new Size(side, side);
+            }
             Margin = new Padding(4, 3, 0, 0);
             Cursor = Cursors.Hand;
             TabStop = false;

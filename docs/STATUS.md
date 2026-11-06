@@ -26,7 +26,17 @@ Cập nhật lần cuối: 2026-11-05
 - [x] **Xác nhận khi mất dữ liệu:** New hỏi khi danh sách chưa lưu (không có file mà có dữ liệu) hoặc file đang mở đã bị sửa; file mở/lưu xong chưa sửa thì không hỏi. Cùng quy tắc áp dụng cho Open (hỏi sau khi chọn file) và khi đóng chương trình. "Đã sửa" so sánh JSON hiện tại với JSON lúc mở/lưu/new.
 - [x] **Icon ?** cạnh các ô có giải thích: biểu thức (Variable, Position của Mouse, Text của Keyboard, Condition của case), Title (regex), Count (0 = forever), Anchor, Range anchor, Picture anchor, Width/Height (0 = tìm hết), ID, Accuracy, Wait up to, Retry, Time/Delay, Value type, Position/Range. Bấm vào mở cửa sổ giải thích (cú pháp biểu thức, toán tử, ngày, Position, thuộc tính, true/false/now/today, lỗi...).
 - [x] **Đơn vị** (px, %, notches) nằm sau ô nhập thay vì trong nhãn.
+- [x] Condition đã tạo: ô "Condition" chứa case đầu tiên; Update ghi lại (kiểm cú pháp và trùng case). Đóng chương trình khi script đang chạy: hỏi trước, trả lời No thì script vẫn chạy. Kích thước nút icon và "?" tính theo font nên vừa ở 125%/150% (chưa thử trên máy scale thật; harness chạy ở 96 DPI). Quy tắc trùng case giữ khoảng trắng trong chuỗi trong dấu nháy.
+- Lưu ý kiểm thử: lần chạy harness cuối (sau khi sửa trình tự test) bị Application Control chặn exe mới, nên chưa chạy lại được; lần chạy ngay trước đó chỉ còn 2 lỗi do trình tự test (không phải lỗi sản phẩm).
 - Test (harness): vị trí/ẩn hiện của Action, 7 nút icon, ô ? và đơn vị có mặt, bấm ? mở đúng nội dung, Case xuất hiện/biến mất theo vùng chọn (kể cả dòng End), từ chối case trùng khi Add và Update, New/đóng cửa sổ hỏi hay không hỏi đúng các tình huống.
+
+### Checklist test giao diện (feature_ui_polish)
+1. Bấm các dấu ? (Count, Title, Anchor, Expression, ID, Accuracy...): cửa sổ giải thích hiện đúng nội dung, đọc được, đóng bằng Close/Esc.
+2. New khi danh sách có dữ liệu chưa lưu: hỏi xác nhận; No thì giữ nguyên, Yes thì xóa. Mở/lưu file rồi New khi chưa sửa: không hỏi; sửa rồi New: hỏi và nêu tên file. Open và đóng chương trình cũng hỏi như vậy (ngoài yêu cầu ban đầu, có thể bỏ).
+3. Action = Case chỉ có khi chọn một dòng thuộc Condition; thử tạo hai case giống nhau (kể cả khác khoảng trắng): bị từ chối.
+4. Chọn Condition: ô Condition hiện case đầu; sửa rồi Update thì case đầu đổi.
+5. Nút icon rõ ràng, hover hiện tên; xem ở 125% và 150%: glyph và dấu ? không bị cắt.
+6. Action nằm ngoài group box, Control/Command ghi Action; đơn vị px, %, notches nằm sau ô nhập.
 
 ## Việc tiếp theo
 - [ ] Người dùng test giao diện (checklist dưới), báo lỗi nếu có.

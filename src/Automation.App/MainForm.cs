@@ -239,7 +239,7 @@ namespace Automation.App
             AddRow(mouseTable, "Title (regex)", _processTitle, Help.TitleRegex);
             AddRow(mouseTable, "", _pickProcessButton);
             AddRow(mouseTable, "Anchor", _anchor, Help.Anchor);
-            AddRow(mouseTable, "Position from", _posSource);
+            AddRow(mouseTable, "Position from", _posSource, Help.Anchor);
             AddRow(mouseTable, "X", _x, null, "px");
             AddRow(mouseTable, "Y", _y, null, "px");
             AddRow(mouseTable, "", _pickPositionButton);
@@ -673,6 +673,9 @@ namespace Automation.App
                         case ControlKind.Variable:
                             LoadVariableSettings(node.Variable);
                             break;
+                        case ControlKind.Condition:
+                            _caseExpr.Text = node.Children[0].Case.Expression; // the first case; Update writes it back
+                            break;
                         case ControlKind.Case:
                             _caseExpr.Text = node.Case.Expression;
                             break;
@@ -775,9 +778,26 @@ namespace Automation.App
             if (wasCase) _controlKind.SelectedIndex = 0;
         }
 
+        /// <summary>The expression without spacing, except inside quoted text where spaces are part of the value.</summary>
         private static string Canonical(string expression)
         {
-            return new string((expression ?? "").Where(c => !char.IsWhiteSpace(c)).ToArray());
+            var sb = new System.Text.StringBuilder();
+            char quote = '\0';
+            foreach (char c in expression ?? "")
+            {
+                if (quote != '\0')
+                {
+                    sb.Append(c);
+                    if (c == quote) quote = '\0';
+                }
+                else if (c == '"' || c == '\'')
+                {
+                    quote = c;
+                    sb.Append(c);
+                }
+                else if (!char.IsWhiteSpace(c)) sb.Append(c);
+            }
+            return sb.ToString();
         }
 
         /// <summary>A message if another case of the Condition already has the same condition (spacing ignored); such a case could never run.</summary>
@@ -837,7 +857,7 @@ namespace Automation.App
         }
 
         /// <summary>Returns a message if the action could never run (for example a key that is not set), otherwise null.</summary>
-        private static string Validate(ActionNode node, bool adding = true)
+        private static string Validate(ActionNode node)
         {
             try
             {
@@ -882,8 +902,6 @@ namespace Automation.App
                         }
                         else if (node.IsKind(ControlKind.Condition))
                         {
-                            // Only when creating: Update changes just the Condition's name, the cases keep their own expressions.
-                            if (!adding) break;
                             string first = node.Children[0].Case.Expression;
                             if (string.IsNullOrWhiteSpace(first)) return "Enter the condition, for example {abc} > 3.";
                             Expression.CheckSyntax(first);
@@ -913,7 +931,7 @@ namespace Automation.App
             if (row == null) { SetStatus("Select exactly one action to update."); return; }
             if (row.Node.IsKind(ControlKind.Else)) { SetStatus("else has no settings to update."); return; }
             var edited = ReadEditor();
-            string problem = Validate(edited, false);
+            string problem = Validate(edited);
             if (problem != null) { SetStatus(problem); return; }
             // A Condition and its Cases keep their structure: they cannot turn into something else or be created by Update.
             if (row.Node.IsKind(ControlKind.Condition) != edited.IsKind(ControlKind.Condition)
@@ -932,7 +950,16 @@ namespace Automation.App
                 string duplicate = DuplicateCase(row.Parent, edited, row.Node);
                 if (duplicate != null) { SetStatus(duplicate); return; }
             }
+            string firstCase = null;
+            if (edited.IsKind(ControlKind.Condition))
+            {
+                // Update on a Condition changes its name and its first case.
+                firstCase = edited.Children[0].Case.Expression;
+                string duplicate = DuplicateCase(row.Node, edited.Children[0], row.Node.Children[0]);
+                if (duplicate != null) { SetStatus(duplicate); return; }
+            }
             edited.Children = row.Node.Children;
+            if (firstCase != null) edited.Children[0].Case.Expression = firstCase;
             row.Siblings[row.Siblings.IndexOf(row.Node)] = edited;
             RefreshList(new[] { edited });
         }
@@ -1786,12 +1813,13 @@ namespace Automation.App
 
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
-            if (_running) _cts.Cancel();
+            // Ask first: answering No must not stop a running script.
             if (!ConfirmLoseChanges("Do you want to close the program anyway?"))
             {
                 e.Cancel = true;
                 return;
             }
+            if (_running) _cts.Cancel();
             base.OnFormClosing(e);
         }
 
@@ -1833,11 +1861,15 @@ namespace Automation.App
         private Button MakeIconButton(string mdl2Glyph, string fallbackGlyph, string tip, EventHandler onClick)
         {
             bool mdl2 = FontFamily.Families.Any(f => f.Name == "Segoe MDL2 Assets");
+            var font = new Font(mdl2 ? "Segoe MDL2 Assets" : "Segoe UI Symbol", 11f);
+            string glyph = mdl2 ? mdl2Glyph : fallbackGlyph;
+            // Sized from the glyph itself, so the button still fits it at 125% / 150% display scaling.
+            var glyphSize = TextRenderer.MeasureText(glyph, font);
             var button = new Button
             {
-                Text = mdl2 ? mdl2Glyph : fallbackGlyph,
-                Font = new Font(mdl2 ? "Segoe MDL2 Assets" : "Segoe UI Symbol", 11f),
-                Size = new Size(38, 32),
+                Text = glyph,
+                Font = font,
+                Size = new Size(Math.Max(38, glyphSize.Width + 20), Math.Max(32, glyphSize.Height + 12)),
                 Margin = new Padding(2),
                 TabStop = false,
                 AccessibleName = tip
