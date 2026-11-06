@@ -1885,8 +1885,8 @@ namespace Automation.App
             if (running)
             {
                 // While a script runs, F6 and Esc stop it through a keyboard hook that ignores keys the script sends
-                // itself (and does not swallow them), so a script can still send F6 or Esc to another program.
-                HotKeyNative.UnregisterHotKey(Handle, HotKeyToggleId);
+                // itself (and does not swallow them), so a script can still send F6, F7 or Esc to another program.
+                SetToggleHotKey(false);
                 if (!_stopHook.Start(() => _cts?.Cancel()))
                 {
                     // Fallback if the hook cannot be installed: plain global hot keys (they also swallow the keys).
@@ -1927,15 +1927,16 @@ namespace Automation.App
         /// Registers or releases the global F6 (start/stop) and F7 (record) keys. They are released while the Key box records
         /// a key, while a script runs (a hook watches F6/Esc then) and while recording (the recorder watches F7).
         /// </summary>
-        private void SetToggleHotKey(bool enabled)
+        /// <param name="report">Say in the status bar when a key is taken by another program (only at start-up, so it never hides a run's result).</param>
+        private void SetToggleHotKey(bool enabled, bool report = false)
         {
             if (!IsHandleCreated) return;
             HotKeyNative.UnregisterHotKey(Handle, HotKeyToggleId);
             HotKeyNative.UnregisterHotKey(Handle, HotKeyRecordId);
             if (!enabled || _running || _recording) return;
-            if (!HotKeyNative.RegisterHotKey(Handle, HotKeyToggleId, HotKeyNative.MOD_NOREPEAT, (uint)Keys.F6))
+            if (!HotKeyNative.RegisterHotKey(Handle, HotKeyToggleId, HotKeyNative.MOD_NOREPEAT, (uint)Keys.F6) && report)
                 SetStatus("F6 is used by another program; use the Start button.");
-            if (!HotKeyNative.RegisterHotKey(Handle, HotKeyRecordId, HotKeyNative.MOD_NOREPEAT, (uint)Keys.F7))
+            if (!HotKeyNative.RegisterHotKey(Handle, HotKeyRecordId, HotKeyNative.MOD_NOREPEAT, (uint)Keys.F7) && report)
                 SetStatus("F7 is used by another program; use the Record button.");
         }
 
@@ -1949,7 +1950,7 @@ namespace Automation.App
         protected override void OnHandleCreated(EventArgs e)
         {
             base.OnHandleCreated(e);
-            SetToggleHotKey(true);
+            SetToggleHotKey(true, true);
         }
 
         protected override void OnHandleDestroyed(EventArgs e)
@@ -1977,6 +1978,8 @@ namespace Automation.App
 
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
+            // A recording in progress is finished first, so its actions count as unsaved changes in the question below.
+            if (_recording) StopRecording();
             // Ask first: answering No must not stop a running script.
             if (!ConfirmLoseChanges("Do you want to close the program anyway?"))
             {
@@ -1984,7 +1987,6 @@ namespace Automation.App
                 return;
             }
             if (_running) _cts.Cancel();
-            if (_recording) StopRecording();
             base.OnFormClosing(e);
         }
 

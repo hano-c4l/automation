@@ -157,7 +157,7 @@ numbers stay but their meaning changes.");
 @"Used only when a Process is set. The Image action has ONE anchor, used for the
 search range and for the position it reports:
 
-  Position (range)   where the range's matching corner sits, measured from the
+  Range (px) X, Y    where the range's matching corner sits, measured from the
                      same corner of the program window's client area
   Position (result)  the found picture's matching corner measured the same way,
                      stored in the Image's variable: {id.Position}
@@ -174,13 +174,13 @@ matters there; it does not need to know the Image's anchor.");
         public static readonly HelpTopic RangeSize = new HelpTopic("Range",
 @"The area that is searched for the picture, in pixels.
 
-Position   the range's anchor corner (see Anchor), as an offset from the same
-           anchor point of the Process window. Without a Process: the
-           top-left of the range on the desktop.
-Size       Width and Height of the range.
+X, Y            the range's anchor corner (see Anchor), as an offset from the same
+                anchor point of the Process window. Without a Process: the
+                top-left of the range on the desktop.
+Width, Height   the size of the range (the row under X, Y).
 
 Width and Height both 0 mean: search everything - the whole client area of the
-Process window, or the whole desktop when there is no Process. Position is
+Process window, or the whole desktop when there is no Process. X and Y are
 ignored then. Set both Width and Height, or leave both at 0.
 
 A smaller range is faster and avoids matching a look-alike elsewhere.");
