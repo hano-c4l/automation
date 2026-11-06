@@ -36,6 +36,7 @@ Cập nhật lần cuối: 2026-11-05
 - [x] Picture anchor của Image nằm dưới Height / Pick range.
 - [x] **Capture picture:** trước khi hiện lớp phủ, chương trình chụp một ảnh màn hình (đã dời con trỏ ra góc để không hiện hover) rồi cho người dùng chọn trên chính ảnh đó (hiển thị mờ, vùng chọn sáng); ảnh lấy cắt từ ảnh chụp sẵn đó. Vì vậy màn hình thay đổi trong lúc đang chọn không ảnh hưởng ảnh mẫu. Test: đổi nội dung cửa sổ ngay giữa lúc kéo, ảnh nhận được vẫn đúng từng pixel với ảnh trước khi kéo.
 - [x] **Mouse Move:** ô Type ẩn và không lưu giá trị Button vào file.
+- [x] Bấm nút icon trên thanh công cụ chuyển focus khỏi ô đang sửa (ToolStrip không tự lấy focus): số vừa gõ được ghi nhận ngay (test: gõ 77 rồi bấm Add ra X = 77) và ô Key nhả phím F6 toàn cục. Vẽ lại lớp phủ đóng băng ở 1920x1080 mất ~11 ms mỗi lần. Khi bấm Capture, con trỏ nhảy xuống góc dưới phải khoảng 0,25 s (để không hiện hover); Pick range vẫn dùng lớp phủ trong suốt.
 
 ### Checklist test giao diện (feature_ui_polish)
 1. Bấm các dấu ? (Count, Title, Anchor, Expression, ID, Accuracy...): cửa sổ giải thích hiện đúng nội dung, đọc được, đóng bằng Close/Esc.

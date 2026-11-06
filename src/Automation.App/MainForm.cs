@@ -1890,7 +1890,13 @@ namespace Automation.App
                 Alignment = ToolStripItemAlignment.Right,
                 Padding = new Padding(4, 2, 4, 2) // the button grows with its glyph, so it fits at any display scaling
             };
-            button.Click += onClick;
+            // A ToolStrip button does not take focus, so the field being edited would keep it: move focus away first.
+            // That commits typed numbers (Validating) and ends key recording (Leave re-registers the F6 hot key).
+            button.Click += (s, e) =>
+            {
+                if (!_running) _list.Focus();
+                onClick(s, e);
+            };
             return button;
         }
 
