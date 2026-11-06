@@ -187,7 +187,7 @@ namespace Automation.Core.Model
         private string ModeName
         {
             get { return Mode.ToString(); }
-            set { Mode = ActionNode.Parse(value, LoopType.Count); }
+            set { Mode = ActionNode.Parse(value, LoopType.Times); }
         }
 
         [OnDeserializing]

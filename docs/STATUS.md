@@ -45,6 +45,13 @@ Cập nhật lần cuối: 2026-11-05
 - [x] Image: Capture và Pick (trước là Capture picture / Load file) nằm bên phải ảnh xem trước; hàng Accuracy là: ô số, %, nút Check (trước là Find now), rồi dấu ?.
 - [x] Các ô số X, Y, Width, Height dùng `NumberBox` (ô chữ chỉ nhận số, có chữ mờ X / Y / Width / Height khi để trống; trống tính là 0; chỉ ô cho phép số âm mới nhận dấu trừ).
 
+### Chỉnh theo yêu cầu người dùng (nhánh feature_user_tweaks)
+- [x] Rà soát các sửa tay của người dùng (placeholder cho ô chữ, bỏ/đổi một số nhãn): `TextBox.Placeholder` không tồn tại nên không biên dịch được; đã thêm `HintTextBox` (ô chữ có gợi ý mờ: chữ một dòng dùng cue banner của hệ thống, nhiều dòng tự vẽ) và `NumberBox` kế thừa nó. Sửa lỗi chính tả "Póition". Phần còn lại giữ nguyên.
+- [x] Nút Update chỉ bật khi chọn đúng một dòng.
+- [x] Khoảng cách: Mouse (sau Type, sau Delay), Keyboard (trước Time), Wait (giữa Process và Wait), Image (sau ID; sau Size; Picture anchor nằm dưới Picture), Variable (sau Value type), và giữa Name, Category, Action, group box.
+- [x] Panel Action detail thu còn 460 px (đo nội dung rộng nhất mọi trạng thái: 418 px + lề và thanh cuộn).
+- [x] Wait: Retry có đơn vị "Times". Loop: kiểu `Count` đổi thành `Times` (nhãn, combobox, và tên lưu trong file; file cũ ghi "Count" vẫn đọc thành Times).
+
 ### Checklist test giao diện (feature_ui_polish)
 1. Bấm các dấu ? (Count, Title, Anchor, Expression, ID, Accuracy...): cửa sổ giải thích hiện đúng nội dung, đọc được, đóng bằng Close/Esc.
 2. New khi danh sách có dữ liệu chưa lưu: hỏi xác nhận; No thì giữ nguyên, Yes thì xóa. Mở/lưu file rồi New khi chưa sửa: không hỏi; sửa rồi New: hỏi và nêu tên file. Open và đóng chương trình cũng hỏi như vậy (ngoài yêu cầu ban đầu, có thể bỏ).

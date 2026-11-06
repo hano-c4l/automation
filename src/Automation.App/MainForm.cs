@@ -21,7 +21,7 @@ namespace Automation.App
         private const int HotKeyToggleId = 1;
         private const int HotKeyEscapeId = 2;
         private const string UntilFormat = "yyyy-MM-dd HH:mm:ss";
-        private const int DetailWidth = 540;
+        private const int DetailWidth = 460;
 
         private readonly MouseController _mouse = new MouseController();
         private readonly KeyboardController _keyboard = new KeyboardController();
@@ -60,7 +60,7 @@ namespace Automation.App
         private readonly ToolStripStatusLabel _status = new ToolStripStatusLabel("Ready") { Spring = true, TextAlign = ContentAlignment.MiddleLeft };
 
         // Editor: common
-        private readonly TextBox _name = new TextBox { Width = 200 };
+        private readonly HintTextBox _name = new HintTextBox { Width = 200, Placeholder = "Alias Name"  };
         private readonly ComboBox _category = MakeCombo(typeof(ActionCategory));
 
         // Editor: mouse
@@ -68,8 +68,8 @@ namespace Automation.App
         private readonly ComboBox _button = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 120 };
         private readonly TimeBox _time = new TimeBox(500);
         private readonly TimeBox _delay = new TimeBox(500);
-        private readonly TextBox _processName = new TextBox { Width = 200 };
-        private readonly TextBox _processTitle = new TextBox { Width = 200 };
+        private readonly HintTextBox _processName = new HintTextBox { Width = 200, Placeholder = "Process Name" };
+        private readonly HintTextBox _processTitle = new HintTextBox { Width = 200, Placeholder = "Process Title (Regex)" };
         private readonly Button _pickProcessButton = new Button { Text = "Pick", AutoSize = true };
         private readonly ComboBox _anchor = MakeCombo(typeof(WindowAnchor));
         private readonly NumberBox _x = new NumberBox { Minimum = -20000, Maximum = 20000, Placeholder = "X" };
@@ -79,13 +79,13 @@ namespace Automation.App
         // Editor: keyboard
         private readonly ComboBox _kbAction = MakeCombo(typeof(KeyboardAction));
         private readonly KeyCaptureBox _kbKey = new KeyCaptureBox { Width = 200 };
-        private readonly TextBox _kbText = new TextBox { Width = 200, Height = 90, Multiline = true, AcceptsReturn = true, AcceptsTab = true, ScrollBars = ScrollBars.Vertical };
+        private readonly HintTextBox _kbText = new HintTextBox { Width = 200, Height = 90, Multiline = true, AcceptsReturn = true, AcceptsTab = true, ScrollBars = ScrollBars.Vertical, Placeholder = "Text Content" };
         private readonly TimeBox _kbTime = new TimeBox(500);
         private readonly TimeBox _kbDelay = new TimeBox(500);
 
         // Editor: command
         private readonly ComboBox _cmdKind = MakeCombo(typeof(CommandKind));
-        private readonly TextBox _cmdValue = new TextBox { Width = 200 };
+        private readonly HintTextBox _cmdValue = new HintTextBox { Width = 200, Placeholder = "Process Path" };
 
         // Editor: control (loop, wait)
         private readonly ComboBox _controlKind = MakeCombo(typeof(ControlKind));
@@ -93,8 +93,8 @@ namespace Automation.App
         private readonly NumericUpDown _loopCount = MakeNumber(0, 1000000000, 1);
         private readonly TimeBox _loopDuration = new TimeBox(10000);
         private readonly DateTimePicker _loopUntil = new DateTimePicker { Format = DateTimePickerFormat.Custom, CustomFormat = UntilFormat, Width = 200 };
-        private readonly TextBox _waitProcessName = new TextBox { Width = 200 };
-        private readonly TextBox _waitProcessTitle = new TextBox { Width = 200 };
+        private readonly HintTextBox _waitProcessName = new HintTextBox { Width = 200, Placeholder = "Process Name" };
+        private readonly HintTextBox _waitProcessTitle = new HintTextBox { Width = 200, Placeholder = "Process Title (Regex)" };
         private readonly TimeBox _waitTime = new TimeBox(10000);
         private readonly NumericUpDown _waitRetry = MakeNumber(0, 1000, 0);
         private readonly Button _waitPick = new Button { Text = "Pick", AutoSize = true };
@@ -144,10 +144,10 @@ namespace Automation.App
 
         // Editor: where positions and text come from
         private readonly ComboBox _posSource = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 120, Items = { "Input", "Variable" } };
-        private readonly TextBox _posExpr = new TextBox { Width = 200 };
+        private readonly HintTextBox _posExpr = new HintTextBox { Width = 200, Placeholder = "Position Expression"  };
         private readonly Button _pickPositionButton = new Button { Text = "Pick", AutoSize = true };
         private readonly ComboBox _kbSource = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 120, Items = { "Input", "Variable" } };
-        private readonly TextBox _kbTextExpr = new TextBox { Width = 200 };
+        private readonly HintTextBox _kbTextExpr = new HintTextBox { Width = 200, Placeholder = "Text Expression" };
         private readonly ToolStripButton _saveAs = new ToolStripButton("Save As") { DisplayStyle = ToolStripItemDisplayStyle.Text };
 
         private readonly GroupBox _mouseBox = new GroupBox { Text = "Mouse", Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8) };
@@ -222,7 +222,7 @@ namespace Automation.App
                 Padding = new Padding(8, 0, 0, 0) // the detail panel's own left padding
             };
             _btnAdd = MakeToolIcon("\uE710", "+", "Add", (s, e) => AddAction());
-            _btnUpdate = MakeToolIcon("\uE70F", "\u270E", "Update the selected action", (s, e) => UpdateAction());
+            _btnUpdate = MakeToolIcon("\uE70F", "\u270E", "Update the selected action (select exactly one)", (s, e) => UpdateAction());
             _btnDelete = MakeToolIcon("\uE74D", "\u2715", "Delete the selected actions", (s, e) => DeleteActions());
             _btnIn = MakeToolIcon("\uE72A", "\u2192", "In: move into the Loop, Wait or Image above", (s, e) => MoveIn());
             _btnOut = MakeToolIcon("\uE72B", "\u2190", "Out: move out of the container", (s, e) => MoveOut());
@@ -256,46 +256,46 @@ namespace Automation.App
             AddRow(mouseTable, "Time", _time, Help.MouseTime);
             AddRow(mouseTable, "Delay", _delay, Help.MouseDelay);
             AddRow(mouseTable, "Process", new Control[] { _processName, _pickProcessButton });
-            AddRow(mouseTable, "Title (regex)", _processTitle, Help.TitleRegex);
+            AddRow(mouseTable, "", _processTitle, Help.TitleRegex);
             AddRow(mouseTable, "Anchor", _anchor, Help.Anchor);
-            AddRow(mouseTable, "Position from", _posSource, Help.Anchor);
-            AddRow(mouseTable, "Position", new Control[] { _x, _y, Unit("px"), _pickPositionButton }, Help.Anchor);
+            AddRow(mouseTable, "Position", _posSource, Help.Anchor);
+            AddRow(mouseTable, "", new Control[] { _x, _y, Unit("px"), _pickPositionButton }, Help.Anchor);
             AddRow(mouseTable, "Expression", _posExpr, Help.ExpressionPosition);
             _mouseBox.Controls.Add(mouseTable);
 
             // Keyboard
             var kbTable = NewTable();
-            AddRow(kbTable, "Key (press it)", _kbKey);
-            AddRow(kbTable, "Text from", _kbSource);
-            AddRow(kbTable, "Text", _kbText);
-            AddRow(kbTable, "Expression", _kbTextExpr, Help.ExpressionText);
+            AddRow(kbTable, "Key", _kbKey);
+            AddRow(kbTable, "Text", _kbSource);
+            AddRow(kbTable, "", _kbText);
+            AddRow(kbTable, "", _kbTextExpr, Help.ExpressionText);
             AddRow(kbTable, "Time", _kbTime, Help.KeyTime);
             AddRow(kbTable, "Delay", _kbDelay, Help.KeyDelay);
             _keyboardBox.Controls.Add(kbTable);
 
             // Command
             var cmdTable = NewTable();
-            AddRow(cmdTable, "Path", new Control[] { _cmdValue, MakeButton("Browse...", (s, e) => BrowseCommandPath()) });
+            AddRow(cmdTable, "Path", new Control[] { _cmdValue, MakeButton("Browse", (s, e) => BrowseCommandPath()) });
             _commandBox.Controls.Add(cmdTable);
 
             // Control
             var controlTable = NewTable();
-            AddRow(controlTable, "Loop by", _loopType);
-            AddRow(controlTable, "Count", _loopCount, Help.Count);
+            AddRow(controlTable, "Type", _loopType);
+            AddRow(controlTable, "Times", _loopCount, Help.Count);
             AddRow(controlTable, "Duration", _loopDuration);
             AddRow(controlTable, "Until", _loopUntil);
             AddRow(controlTable, "Process", new Control[] { _waitProcessName, _waitPick });
-            AddRow(controlTable, "Title (regex)", _waitProcessTitle, Help.TitleRegex);
-            AddRow(controlTable, "Wait up to", _waitTime, Help.WaitTime);
-            AddRow(controlTable, "Retry", _waitRetry, Help.Retry);
+            AddRow(controlTable, "", _waitProcessTitle, Help.TitleRegex);
+            AddRow(controlTable, "Wait", _waitTime, Help.WaitTime);
+            AddRow(controlTable, "Retry", _waitRetry, Help.Retry, "Times");
             AddRow(controlTable, "ID", _imgId, Help.Id);
             AddRow(controlTable, "Process", new Control[] { _imgProcessName, _imgPickProcess });
             AddRow(controlTable, "Title (regex)", _imgProcessTitle, Help.TitleRegex);
             AddRow(controlTable, "Range anchor", _imgAnchor, Help.RangeAnchor);
             AddRow(controlTable, "Position", new Control[] { _imgX, _imgY, Unit("px") }, Help.RangeSize);
             AddRow(controlTable, "Size", new Control[] { _imgW, _imgH, Unit("px"), _imgPickRange }, Help.RangeSize);
-            AddRow(controlTable, "Picture anchor", _imgResultAnchor, Help.PictureAnchor);
             AddRow(controlTable, "Picture", new Control[] { Stack(_imgPreview, _imgInfo), Stack(_imgCapture, _imgLoad) }, null, _imgPreview);
+            AddRow(controlTable, "Picture anchor", _imgResultAnchor, Help.PictureAnchor);
             AddRow(controlTable, "Accuracy", new Control[] { _imgAccuracy, Unit("%"), _imgFind }, Help.Accuracy);
             AddRow(controlTable, "ID", _varId, Help.Id);
             AddRow(controlTable, "Value type", _varType, Help.ValueType);
@@ -312,6 +312,16 @@ namespace Automation.App
             AddRow(controlTable, "Size", new Control[] { _varW, _varH, Unit("px"), _varPickRange });
             AddRow(controlTable, "Condition", _caseExpr, Help.ExpressionCase);
             _controlBox.Controls.Add(controlTable);
+
+            // Extra space above the first row of a new group, so related rows read together.
+            const int Group = 12, Small = 6;
+            Space(_category, Small); Space(_mouseAction, Small); Space(_kbAction, Small); Space(_cmdKind, Small); Space(_controlKind, Small);
+            common.Padding = new Padding(0, 0, 0, 10); // Padding (not Margin): a docked table ignores its margin
+            Space(_time, Group); Space(_processName, Group);                     // Mouse: after Type, after Delay
+            Space(_kbTime, Group);                                               // Keyboard: before Time
+            Space(_waitTime, Group);                                             // Wait: after the Process rows
+            Space(_imgProcessName, Group); Space(_imgPreview, Group);            // Image: after ID, after Size
+            Space(_varUseExpr, Group);                                           // Variable: after Value type
 
             _tips.SetToolTip(_pickProcessButton, "Pick a running program: click any window of it");
             _tips.SetToolTip(_waitPick, "Pick a running program: click any window of it");
@@ -432,7 +442,7 @@ namespace Automation.App
             bool condition = controlKind == ControlKind.Condition;
             var loopType = (LoopType)_loopType.SelectedItem;
             SetRowVisible(_loopType, loop);
-            SetRowVisible(_loopCount, loop && loopType == LoopType.Count);
+            SetRowVisible(_loopCount, loop && loopType == LoopType.Times);
             SetRowVisible(_loopDuration, loop && loopType == LoopType.Duration);
             SetRowVisible(_loopUntil, loop && loopType == LoopType.Until);
             SetRowVisible(_waitProcessName, wait);
@@ -1920,8 +1930,9 @@ namespace Automation.App
         {
             bool any = SelectedRows().Count > 0;
             _btnAdd.Enabled = !_running;
-            foreach (var button in new[] { _btnUpdate, _btnDelete, _btnIn, _btnOut, _btnUp, _btnDown })
+            foreach (var button in new[] { _btnDelete, _btnIn, _btnOut, _btnUp, _btnDown })
                 button.Enabled = any && !_running;
+            _btnUpdate.Enabled = SingleSelectedRow() != null && !_running; // Update changes one action, so exactly one must be selected
             // Strong black when usable, pale grey when not, so the two states are easy to tell apart.
             foreach (var button in new[] { _btnAdd, _btnUpdate, _btnDelete, _btnIn, _btnOut, _btnUp, _btnDown })
                 button.ForeColor = button.Enabled ? Color.Black : Color.FromArgb(185, 185, 185);
@@ -1930,6 +1941,15 @@ namespace Automation.App
         private static TableLayoutPanel NewTable()
         {
             return new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 2 };
+        }
+
+        /// <summary>Adds vertical space above a row (identified by its first control); the space moves with the row when it is hidden or shown.</summary>
+        private void Space(Control key, int pixels)
+        {
+            if (_rowLabels.TryGetValue(key, out var label))
+                label.Padding = new Padding(label.Padding.Left, label.Padding.Top + pixels, label.Padding.Right, label.Padding.Bottom);
+            Control cell = _rowHosts.TryGetValue(key, out var host) ? host : key;
+            cell.Margin = new Padding(cell.Margin.Left, cell.Margin.Top + pixels, cell.Margin.Right, cell.Margin.Bottom);
         }
 
         /// <summary>A unit text (px, %) placed after a field.</summary>

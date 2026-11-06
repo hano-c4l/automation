@@ -127,8 +127,8 @@ of them literally put a backslash before it, for example \. or \(.
 Use the title to tell apart several windows of the same program.
 Process is the program name without .exe (use Pick program...).");
 
-        public static readonly HelpTopic Count = new HelpTopic("Count",
-@"How many times the actions inside the Loop run.
+        public static readonly HelpTopic Count = new HelpTopic("Times",
+@"How many times the actions inside the Loop run (Type = Times).
 
   0        = forever: repeat until you stop the script (F6 or Esc)
   1, 2...  repeat that many times");

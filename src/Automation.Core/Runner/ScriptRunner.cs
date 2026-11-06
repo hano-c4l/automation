@@ -293,7 +293,7 @@ namespace Automation.Core.Runner
             var settings = loop.Loop;
             switch (settings.Mode)
             {
-                case LoopType.Count:
+                case LoopType.Times:
                     for (long i = 0; settings.Count == 0 || i < settings.Count; i++)
                         Iterate(loop, token);
                     break;

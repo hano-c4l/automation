@@ -70,7 +70,7 @@ namespace Automation.Core.Model
     public enum LoopType
     {
         /// <summary>Repeat a fixed number of times.</summary>
-        Count,
+        Times,
         /// <summary>Repeat until the given time has elapsed since the loop started.</summary>
         Duration,
         /// <summary>Repeat until a local date and time is reached.</summary>
