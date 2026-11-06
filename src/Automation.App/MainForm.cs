@@ -153,6 +153,7 @@ namespace Automation.App
         private readonly GroupBox _keyboardBox = new GroupBox { Text = "Keyboard", Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8) };
         private readonly GroupBox _commandBox = new GroupBox { Text = "Command", Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8) };
         private readonly GroupBox _controlBox = new GroupBox { Text = "Control", Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8) };
+        private ToolStripButton _btnAdd, _btnUpdate, _btnDelete, _btnIn, _btnOut, _btnUp, _btnDown;
         private readonly Dictionary<Control, Label> _rowLabels = new Dictionary<Control, Label>();
         private readonly Dictionary<Control, Control> _rowHosts = new Dictionary<Control, Control>();
         private readonly ToolTip _tips = new ToolTip();
@@ -184,6 +185,7 @@ namespace Automation.App
             RefreshList();
             UpdateTitle();
             MarkSaved();
+            UpdateButtonStates();
         }
 
         // ---------------------------------------------------------------- layout
@@ -208,15 +210,17 @@ namespace Automation.App
             var statusBar = new StatusStrip { SizingGrip = false };
             statusBar.Items.Add(_status);
 
-            // Action buttons as icons (hover for the name): Add, Update, Delete, In, Out, Up, Down.
-            var buttons = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, WrapContents = false, Padding = new Padding(0, 0, 0, 4) };
-            buttons.Controls.Add(MakeIconButton("\uE710", "+", "Add", (s, e) => AddAction()));
-            buttons.Controls.Add(MakeIconButton("\uE70F", "\u270E", "Update the selected action", (s, e) => UpdateAction()));
-            buttons.Controls.Add(MakeIconButton("\uE74D", "\u2715", "Delete the selected actions", (s, e) => DeleteActions()));
-            buttons.Controls.Add(MakeIconButton("\uE72A", "\u2192", "In: move into the Loop, Wait or Image above", (s, e) => MoveIn()));
-            buttons.Controls.Add(MakeIconButton("\uE72B", "\u2190", "Out: move out of the container", (s, e) => MoveOut()));
-            buttons.Controls.Add(MakeIconButton("\uE74A", "\u2191", "Up", (s, e) => MoveUpDown(-1)));
-            buttons.Controls.Add(MakeIconButton("\uE74B", "\u2193", "Down", (s, e) => MoveUpDown(1)));
+            // Action buttons as icons on the right of the toolbar (hover for the name). Right-aligned items are laid out
+            // from the right edge, so they are added in reverse to read Add, Update, Delete, In, Out, Up, Down.
+            _btnDown = MakeToolIcon("\uE74B", "\u2193", "Down", (s, e) => MoveUpDown(1));
+            _btnUp = MakeToolIcon("\uE74A", "\u2191", "Up", (s, e) => MoveUpDown(-1));
+            _btnOut = MakeToolIcon("\uE72B", "\u2190", "Out: move out of the container", (s, e) => MoveOut());
+            _btnIn = MakeToolIcon("\uE72A", "\u2192", "In: move into the Loop, Wait or Image above", (s, e) => MoveIn());
+            _btnDelete = MakeToolIcon("\uE74D", "\u2715", "Delete the selected actions", (s, e) => DeleteActions());
+            _btnUpdate = MakeToolIcon("\uE70F", "\u270E", "Update the selected action", (s, e) => UpdateAction());
+            _btnAdd = MakeToolIcon("\uE710", "+", "Add", (s, e) => AddAction());
+            foreach (var button in new[] { _btnDown, _btnUp, _btnOut, _btnIn, _btnDelete, _btnUpdate, _btnAdd })
+                tools.Items.Add(button);
 
             // Name, Category and Action sit outside the group boxes; only the Action of the chosen category is shown.
             var common = NewTable();
@@ -234,7 +238,7 @@ namespace Automation.App
             AddRow(mouseTable, "Type", _button);
             AddRow(mouseTable, "Scroll", _notches, null, "notches");
             AddRow(mouseTable, "Time", _time, Help.MouseTime);
-            AddRow(mouseTable, "Delay", _delay, Help.MouseTime);
+            AddRow(mouseTable, "Delay", _delay, Help.MouseDelay);
             AddRow(mouseTable, "Process", _processName);
             AddRow(mouseTable, "Title (regex)", _processTitle, Help.TitleRegex);
             AddRow(mouseTable, "", _pickProcessButton);
@@ -253,7 +257,7 @@ namespace Automation.App
             AddRow(kbTable, "Text", _kbText);
             AddRow(kbTable, "Expression", _kbTextExpr, Help.ExpressionText);
             AddRow(kbTable, "Time", _kbTime, Help.KeyTime);
-            AddRow(kbTable, "Delay", _kbDelay, Help.KeyTime);
+            AddRow(kbTable, "Delay", _kbDelay, Help.KeyDelay);
             _keyboardBox.Controls.Add(kbTable);
 
             // Command
@@ -278,12 +282,12 @@ namespace Automation.App
             AddRow(controlTable, "Title (regex)", _imgProcessTitle, Help.TitleRegex);
             AddRow(controlTable, "", _imgPickProcess);
             AddRow(controlTable, "Range anchor", _imgAnchor, Help.RangeAnchor);
-            AddRow(controlTable, "Picture anchor", _imgResultAnchor, Help.PictureAnchor);
             AddRow(controlTable, "Range X", _imgX, null, "px");
             AddRow(controlTable, "Range Y", _imgY, null, "px");
             AddRow(controlTable, "Width", _imgW, Help.RangeSize, "px");
             AddRow(controlTable, "Height", _imgH, Help.RangeSize, "px");
             AddRow(controlTable, "", _imgPickRange);
+            AddRow(controlTable, "Picture anchor", _imgResultAnchor, Help.PictureAnchor);
             AddRow(controlTable, "Picture", _imgPreview);
             AddRow(controlTable, "", _imgInfo);
             AddRow(controlTable, "", _imgCapture);
@@ -317,7 +321,6 @@ namespace Automation.App
             _editArea.Controls.Add(_keyboardBox);
             _editArea.Controls.Add(_mouseBox);
             _editArea.Controls.Add(common);
-            _editArea.Controls.Add(buttons);
 
             var right = new Panel { Dock = DockStyle.Right, Width = 400, Padding = new Padding(8), AutoScroll = true };
             right.Controls.Add(_editArea);
@@ -331,7 +334,7 @@ namespace Automation.App
 
         private void WireEvents()
         {
-            _list.SelectedIndexChanged += (s, e) => { RefreshControlKinds(); LoadSelectedIntoEditor(); UpdateEditorVisibility(); };
+            _list.SelectedIndexChanged += (s, e) => { RefreshControlKinds(); LoadSelectedIntoEditor(); UpdateEditorVisibility(); UpdateButtonStates(); };
             _list.SizeChanged += (s, e) => FitDetailsColumn();
             _list.KeyDown += (s, e) =>
             {
@@ -389,6 +392,7 @@ namespace Automation.App
             bool scroll = action == MouseAction.ScrollUp || action == MouseAction.ScrollDown;
             RefreshButtonChoices(scroll);
             SetRowVisible(_notches, scroll);
+            SetRowVisible(_button, action != MouseAction.Move); // moving the cursor does not involve a button
             // Without a process the position is absolute on the desktop, so an anchor means nothing.
             _anchor.Enabled = _processName.Text.Trim().Length > 0 || _processTitle.Text.Trim().Length > 0;
             bool posFromVariable = _posSource.SelectedIndex == 1;
@@ -486,7 +490,7 @@ namespace Automation.App
                     return ActionNode.NewMouse(new MouseSettings
                     {
                         Action = (MouseAction)_mouseAction.SelectedItem,
-                        Button = (MouseButton)_button.SelectedItem,
+                        Button = (MouseAction)_mouseAction.SelectedItem == MouseAction.Move ? MouseButton.Left : (MouseButton)_button.SelectedItem,
                         TimeMs = _time.Milliseconds,
                         DelayMs = _delay.Milliseconds,
                         Process = Target(_processName, _processTitle),
@@ -1125,6 +1129,7 @@ namespace Automation.App
             }
             _list.EndUpdate();
             if (last >= 0) _list.EnsureVisible(last);
+            UpdateButtonStates();
         }
 
         private void RefreshList()
@@ -1405,39 +1410,53 @@ namespace Automation.App
             if (!process.IsEmpty && !ActivateProcess(process)) return false;
 
             Minimize();
+            ScreenCapture.GetVirtualScreen(out int vl, out int vt, out int vw, out int vh);
+            RawImage snapshot = null;
+            Bitmap frozen = null;
+            if (capture)
+            {
+                // Take one picture of the screen now and let the user select on that picture, so what is selected is
+                // exactly what is captured even when the screen changes meanwhile (animations, pop-ups closing, hover).
+                // The cursor is moved to a corner first so no control under it shows its hover look.
+                var cursor = Cursor.Position;
+                Cursor.Position = new Point(vl + vw - 1, vt + vh - 1);
+                Thread.Sleep(250);
+                try { snapshot = ScreenCapture.Capture(vl, vt, vw, vh); }
+                catch (InvalidOperationException ex)
+                {
+                    Cursor.Position = cursor;
+                    Restore();
+                    SetStatus(ex.Message);
+                    return false;
+                }
+                Cursor.Position = cursor;
+                frozen = ToBitmap(snapshot);
+            }
+
             bool ok;
-            using (var picker = new RegionPickerForm())
+            using (frozen)
+            using (var picker = new RegionPickerForm(frozen))
             {
                 ok = picker.ShowDialog() == DialogResult.OK;
                 if (ok) region = picker.SelectedRegion;
             }
-            Thread.Sleep(200); // let the overlay disappear before capturing the screen
-            if (ok && capture)
-            {
-                // The drag ends with the cursor on the picked area, where buttons show their hover look; move it away first.
-                var cursor = Cursor.Position;
-                Cursor.Position = PointOutside(region);
-                Thread.Sleep(200);
-                try { image = ScreenCapture.Capture(region.X, region.Y, region.Width, region.Height); }
-                catch (InvalidOperationException ex) { SetStatus(ex.Message); ok = false; }
-                finally { Cursor.Position = cursor; }
-            }
+            Thread.Sleep(150); // let the overlay disappear
+            if (ok && capture) image = Crop(snapshot, region.X - vl, region.Y - vt, region.Width, region.Height);
             Restore();
             return ok;
         }
 
-        /// <summary>A point on the desktop that is not inside the rectangle (just past a corner, kept on screen).</summary>
-        private static Point PointOutside(Rectangle region)
+        /// <summary>A copy of part of an image; the rectangle is clipped to the image.</summary>
+        private static RawImage Crop(RawImage source, int x, int y, int width, int height)
         {
-            var screen = SystemInformation.VirtualScreen;
-            var candidates = new[]
-            {
-                new Point(region.Right + 6, region.Bottom + 6), new Point(region.Left - 6, region.Top - 6),
-                new Point(region.Right + 6, region.Top - 6), new Point(region.Left - 6, region.Bottom + 6)
-            };
-            foreach (var c in candidates)
-                if (screen.Contains(c) && !region.Contains(c)) return c;
-            return new Point(screen.Left, screen.Top);
+            x = Math.Max(0, x);
+            y = Math.Max(0, y);
+            width = Math.Min(width, source.Width - x);
+            height = Math.Min(height, source.Height - y);
+            var bytes = new byte[width * height * 4];
+            for (int row = 0; row < height; row++)
+                Buffer.BlockCopy(source.Bgra, ((y + row) * source.Width + x) * 4, bytes, row * width * 4, width * 4);
+            return new RawImage(width, height, bytes);
         }
 
         private void PickRange()
@@ -1726,6 +1745,7 @@ namespace Automation.App
         private void SetRunning(bool running)
         {
             _running = running;
+            UpdateButtonStates();
             _editArea.Enabled = !running;
             _list.Enabled = !running;
             _startStop.Text = running ? "Stop (F6)" : "Start (F6)";
@@ -1857,26 +1877,30 @@ namespace Automation.App
             return button;
         }
 
-        /// <summary>A small square button showing an icon glyph (Segoe MDL2 Assets when installed, else a plain symbol).</summary>
-        private Button MakeIconButton(string mdl2Glyph, string fallbackGlyph, string tip, EventHandler onClick)
+        /// <summary>An icon button for the toolbar (Segoe MDL2 Assets when installed, else a plain symbol).</summary>
+        private ToolStripButton MakeToolIcon(string mdl2Glyph, string fallbackGlyph, string tip, EventHandler onClick)
         {
             bool mdl2 = FontFamily.Families.Any(f => f.Name == "Segoe MDL2 Assets");
-            var font = new Font(mdl2 ? "Segoe MDL2 Assets" : "Segoe UI Symbol", 11f);
-            string glyph = mdl2 ? mdl2Glyph : fallbackGlyph;
-            // Sized from the glyph itself, so the button still fits it at 125% / 150% display scaling.
-            var glyphSize = TextRenderer.MeasureText(glyph, font);
-            var button = new Button
+            var button = new ToolStripButton(mdl2 ? mdl2Glyph : fallbackGlyph)
             {
-                Text = glyph,
-                Font = font,
-                Size = new Size(Math.Max(38, glyphSize.Width + 20), Math.Max(32, glyphSize.Height + 12)),
-                Margin = new Padding(2),
-                TabStop = false,
-                AccessibleName = tip
+                DisplayStyle = ToolStripItemDisplayStyle.Text,
+                Font = new Font(mdl2 ? "Segoe MDL2 Assets" : "Segoe UI Symbol", 11f),
+                ToolTipText = tip,
+                AccessibleName = tip,
+                Alignment = ToolStripItemAlignment.Right,
+                Padding = new Padding(4, 2, 4, 2) // the button grows with its glyph, so it fits at any display scaling
             };
-            _tips.SetToolTip(button, tip);
             button.Click += onClick;
             return button;
+        }
+
+        /// <summary>Add needs nothing selected; every other action button needs at least one selected action, and none work while a script runs.</summary>
+        private void UpdateButtonStates()
+        {
+            bool any = SelectedRows().Count > 0;
+            _btnAdd.Enabled = !_running;
+            foreach (var button in new[] { _btnUpdate, _btnDelete, _btnIn, _btnOut, _btnUp, _btnDown })
+                button.Enabled = any && !_running;
         }
 
         private static TableLayoutPanel NewTable()

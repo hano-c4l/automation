@@ -30,6 +30,13 @@ Cập nhật lần cuối: 2026-11-05
 - Lưu ý kiểm thử: lần chạy harness cuối (sau khi sửa trình tự test) bị Application Control chặn exe mới, nên chưa chạy lại được; lần chạy ngay trước đó chỉ còn 2 lỗi do trình tự test (không phải lỗi sản phẩm).
 - Test (harness): vị trí/ẩn hiện của Action, 7 nút icon, ô ? và đơn vị có mặt, bấm ? mở đúng nội dung, Case xuất hiện/biến mất theo vùng chọn (kể cả dòng End), từ chối case trùng khi Add và Update, New/đóng cửa sổ hỏi hay không hỏi đúng các tình huống.
 
+### Chỉnh thêm (cùng nhánh feature_ui_polish)
+- [x] 7 nút icon chuyển lên thanh công cụ, góc phải, thứ tự Add, Update, Delete, In, Out, Up, Down. Add luôn bật; các nút còn lại chỉ bật khi chọn ít nhất một action (dòng End không tính); tất cả tắt khi script đang chạy.
+- [x] Giải thích ? của Time và Delay tách riêng (Mouse và Keyboard mỗi loại hai nội dung).
+- [x] Picture anchor của Image nằm dưới Height / Pick range.
+- [x] **Capture picture:** trước khi hiện lớp phủ, chương trình chụp một ảnh màn hình (đã dời con trỏ ra góc để không hiện hover) rồi cho người dùng chọn trên chính ảnh đó (hiển thị mờ, vùng chọn sáng); ảnh lấy cắt từ ảnh chụp sẵn đó. Vì vậy màn hình thay đổi trong lúc đang chọn không ảnh hưởng ảnh mẫu. Test: đổi nội dung cửa sổ ngay giữa lúc kéo, ảnh nhận được vẫn đúng từng pixel với ảnh trước khi kéo.
+- [x] **Mouse Move:** ô Type ẩn và không lưu giá trị Button vào file.
+
 ### Checklist test giao diện (feature_ui_polish)
 1. Bấm các dấu ? (Count, Title, Anchor, Expression, ID, Accuracy...): cửa sổ giải thích hiện đúng nội dung, đọc được, đóng bằng Close/Esc.
 2. New khi danh sách có dữ liệu chưa lưu: hỏi xác nhận; No thì giữ nguyên, Yes thì xóa. Mở/lưu file rồi New khi chưa sửa: không hỏi; sửa rồi New: hỏi và nêu tên file. Open và đóng chương trình cũng hỏi như vậy (ngoài yêu cầu ban đầu, có thể bỏ).
@@ -37,6 +44,9 @@ Cập nhật lần cuối: 2026-11-05
 4. Chọn Condition: ô Condition hiện case đầu; sửa rồi Update thì case đầu đổi.
 5. Nút icon rõ ràng, hover hiện tên; xem ở 125% và 150%: glyph và dấu ? không bị cắt.
 6. Action nằm ngoài group box, Control/Command ghi Action; đơn vị px, %, notches nằm sau ô nhập.
+7. Nút icon trên thanh công cụ: chưa chọn gì thì chỉ Add sáng; chọn một dòng thì các nút khác sáng; xem ở 125%/150% không bị cắt.
+8. Capture picture: bấm Capture lúc màn hình có thứ đang thay đổi (hiệu ứng, hover, popup đóng): ảnh trong Picture đúng với những gì thấy lúc khoanh.
+9. Mouse, Action = Move: không có ô Type; lưu file thì action Move không có "Button".
 
 ## Việc tiếp theo
 - [ ] Người dùng test giao diện (checklist dưới), báo lỗi nếu có.

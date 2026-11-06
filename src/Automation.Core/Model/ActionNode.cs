@@ -45,10 +45,11 @@ namespace Automation.Core.Model
             set { Action = ActionNode.Parse(value, MouseAction.Click); }
         }
 
-        [DataMember(Name = "Button", Order = 2)]
+        // Moving the cursor has no button, so nothing is written for it.
+        [DataMember(Name = "Button", Order = 2, EmitDefaultValue = false)]
         private string ButtonName
         {
-            get { return Button.ToString(); }
+            get { return Action == MouseAction.Move ? null : Button.ToString(); }
             set { Button = ActionNode.Parse(value, MouseButton.Left); }
         }
 

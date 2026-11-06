@@ -25,14 +25,21 @@ namespace Automation.App
 
         public Rectangle SelectedRegion { get; private set; }
 
-        public RegionPickerForm()
+        private readonly Bitmap _frozen;
+
+        /// <param name="frozen">
+        /// A picture of the whole virtual desktop taken before the overlay opened. When given, it is drawn (dimmed) instead
+        /// of showing the live screen through a translucent window, so the selection always matches the captured picture.
+        /// </param>
+        public RegionPickerForm(Bitmap frozen = null)
         {
+            _frozen = frozen;
             FormBorderStyle = FormBorderStyle.None;
             StartPosition = FormStartPosition.Manual;
             ShowInTaskbar = false;
             TopMost = true;
             BackColor = Color.Black;
-            Opacity = 0.3;
+            Opacity = frozen == null ? 0.3 : 1.0;
             Cursor = Cursors.Cross;
             KeyPreview = true;
             DoubleBuffered = true;
@@ -78,6 +85,22 @@ namespace Automation.App
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
+            if (_frozen != null)
+            {
+                e.Graphics.DrawImageUnscaled(_frozen, 0, 0);
+                using (var dim = new SolidBrush(Color.FromArgb(120, 0, 0, 0)))
+                    e.Graphics.FillRectangle(dim, ClientRectangle);
+                if (_dragging && _current.Width > 0)
+                {
+                    var area = new Rectangle(PointToClient(_current.Location), _current.Size);
+                    e.Graphics.SetClip(area);
+                    e.Graphics.DrawImageUnscaled(_frozen, 0, 0); // the selected part is shown undimmed
+                    e.Graphics.ResetClip();
+                    using (var pen = new Pen(Color.Red, 2))
+                        e.Graphics.DrawRectangle(pen, area);
+                }
+                return;
+            }
             if (!_dragging || _current.Width <= 0) return;
             var local = new Rectangle(PointToClient(_current.Location), _current.Size);
             using (var fill = new SolidBrush(Color.FromArgb(90, 255, 255, 255)))

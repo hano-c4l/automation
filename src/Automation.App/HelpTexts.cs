@@ -209,21 +209,34 @@ script stops with an error. When the window is ready the actions inside run.");
 @"How many more attempts are made after the first one times out.
 0 means a single attempt. Total waiting time is (Retry + 1) x Wait up to.");
 
-        public static readonly HelpTopic MouseTime = new HelpTopic("Time and Delay",
-@"Time    how long the cursor takes to glide to the position. A bigger value
-        moves more slowly; 0 jumps at once.
-Delay   how long to wait after the action, before the next one starts.
+        public static readonly HelpTopic MouseTime = new HelpTopic("Time (Mouse)",
+@"How long the cursor takes to glide from where it is to the position of this
+action. A bigger value moves more slowly; 0 jumps at once.
 
-Both can be given in milliseconds, seconds, minutes or hours.");
+Can be given in milliseconds, seconds, minutes or hours.");
 
-        public static readonly HelpTopic KeyTime = new HelpTopic("Time and Delay",
-@"Time    Key press / Combo: how long the key(s) are held down.
-        Text: the total time spent typing, spread over all characters
-        (0 types as fast as possible).
-Delay   how long to wait after the action, before the next one starts.
+        public static readonly HelpTopic MouseDelay = new HelpTopic("Delay (Mouse)",
+@"How long to wait after this action has finished (after the click, scroll or
+move), before the next action starts. Use it to give the program time to react.
+
+Can be given in milliseconds, seconds, minutes or hours.");
+
+        public static readonly HelpTopic KeyTime = new HelpTopic("Time (Keyboard)",
+@"Key press / Combo key: how long the key(s) are held down.
+Text: the total time spent typing, spread over all characters
+(0 types as fast as possible).
+Key down / Key up: not used.
 
 Keys are sent to the window that has the focus: put a Click or a Wait before
-the keyboard action when a specific program must receive them.");
+the keyboard action when a specific program must receive them.
+
+Can be given in milliseconds, seconds, minutes or hours.");
+
+        public static readonly HelpTopic KeyDelay = new HelpTopic("Delay (Keyboard)",
+@"How long to wait after this action has finished, before the next action
+starts. Use it to give the program time to react to the keys.
+
+Can be given in milliseconds, seconds, minutes or hours.");
 
         public static readonly HelpTopic ValueType = new HelpTopic("Value type",
 @"Position   a point (X, Y); pick it on screen or type it
