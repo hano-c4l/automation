@@ -46,9 +46,13 @@ namespace Automation.App
             public List<ActionNode> Siblings;  // the list that contains Node
             public int Depth;
             public bool IsEnd;                 // the "End" line of a Condition (Node is the Condition itself)
+            public bool HasChildren;           // can be collapsed / expanded
+            public bool Collapsed;             // its children are hidden
         }
 
         private readonly List<Row> _rows = new List<Row>();
+        private readonly HashSet<ActionNode> _collapsed = new HashSet<ActionNode>(); // nodes whose children are hidden in the list
+        private const string ExpandedMark = "▼ ", CollapsedMark = "▶ ", LeafMark = "    ";
 
         // Left panel: action list (indented tree, multi-select)
         private readonly ListView _list = new ListView
@@ -65,7 +69,9 @@ namespace Automation.App
         private readonly ToolStripButton _startStop = new ToolStripButton("Start (F6)") { DisplayStyle = ToolStripItemDisplayStyle.Text };
         private readonly ToolStripButton _record = new ToolStripButton("Record (F7)") { DisplayStyle = ToolStripItemDisplayStyle.Text, ToolTipText = "Record your mouse clicks, wheel and keys as actions (F7 starts and stops)" };
         private readonly ToolStripLabel _centerSpacer = new ToolStripLabel { AutoSize = false, Width = 0, Text = "" };
-        private ToolStripButton _btnNew, _btnOpen, _btnSave;
+        private ToolStripButton _btnNew, _btnOpen, _btnSave, _collapseAll, _expandAll;
+        private readonly CheckBox _allEvents = new CheckBox { Text = "All event", AutoSize = true, Margin = new Padding(4, 2, 4, 2) };
+        private ToolStripControlHost _allEventsHost;
         private readonly InputRecorder _recorder = new InputRecorder();
         private bool _recording;
         private List<Row> _recordTarget = new List<Row>();
@@ -216,11 +222,18 @@ namespace Automation.App
             tools.Items.Add(_btnSave);
             _saveAs.Click += (s, e) => SaveScript(true);
             tools.Items.Add(_saveAs);
+            tools.Items.Add(new ToolStripSeparator());
+            _collapseAll = MakeToolButton("Collapse All", (s, e) => CollapseAll(true));
+            _expandAll = MakeToolButton("Expand All", (s, e) => CollapseAll(false));
+            tools.Items.Add(_collapseAll);
+            tools.Items.Add(_expandAll);
             // Start / Stop and Record sit in the middle of the menu bar: a spacer before them is resized with the bar.
             tools.Items.Add(_centerSpacer);
             tools.Items.Add(_startStop);
             tools.Items.Add(new ToolStripSeparator());
             tools.Items.Add(_record);
+            _allEventsHost = new ToolStripControlHost(_allEvents) { ToolTipText = "Also record plain mouse moves and every other event, not only drags" };
+            tools.Items.Add(_allEventsHost);
             tools.Resize += (s, e) => CenterRunButtons(tools);
             var statusBar = new StatusStrip { SizingGrip = false };
             statusBar.Items.Add(_status);
@@ -369,9 +382,20 @@ namespace Automation.App
         {
             _list.SelectedIndexChanged += (s, e) => { RefreshControlKinds(); LoadSelectedIntoEditor(); UpdateEditorVisibility(); UpdateButtonStates(); };
             _list.SizeChanged += (s, e) => FitDetailsColumn();
+            _list.MouseDown += (s, e) => ListMouseDown(e);
             _list.KeyDown += (s, e) =>
             {
                 if (e.KeyCode == Keys.Delete) DeleteActions();
+                else if (e.KeyCode == Keys.Left || e.KeyCode == Keys.Right)
+                {
+                    // Like a tree: Left collapses, Right expands the selected action.
+                    var single = SingleSelectedRow();
+                    if (single != null && single.HasChildren)
+                    {
+                        SetCollapsed(single, e.KeyCode == Keys.Left);
+                        e.Handled = true;
+                    }
+                }
                 else if (e.Control && e.KeyCode == Keys.A)
                 {
                     foreach (ListViewItem item in _list.Items) item.Selected = true;
@@ -1135,6 +1159,7 @@ namespace Automation.App
         {
             var wanted = select == null ? new HashSet<ActionNode>() : new HashSet<ActionNode>(select);
             _rows.Clear();
+            if (wanted.Count > 0) ExpandTo(_script.Actions, wanted);
             Flatten(_script.Actions, null, 0);
 
             _list.BeginUpdate();
@@ -1164,12 +1189,71 @@ namespace Automation.App
         {
             foreach (var node in nodes)
             {
-                _rows.Add(new Row { Node = node, Parent = parent, Siblings = nodes, Depth = depth });
+                bool has = node.Children.Count > 0;
+                bool collapsed = has && _collapsed.Contains(node);
+                _rows.Add(new Row { Node = node, Parent = parent, Siblings = nodes, Depth = depth, HasChildren = has, Collapsed = collapsed });
+                if (collapsed) continue; // children (and a Condition's End line) are hidden
                 Flatten(node.Children, node, depth + 1);
                 if (node.IsKind(ControlKind.Condition))
                     _rows.Add(new Row { Node = node, Parent = parent, Siblings = nodes, Depth = depth, IsEnd = true });
             }
         }
+
+        /// <summary>Un-collapses every ancestor of the wanted nodes so they are visible. True when any wanted node is in the list.</summary>
+        private bool ExpandTo(List<ActionNode> nodes, HashSet<ActionNode> wanted)
+        {
+            bool any = false;
+            foreach (var node in nodes)
+            {
+                if (ExpandTo(node.Children, wanted)) { _collapsed.Remove(node); any = true; }
+                if (wanted.Contains(node)) any = true;
+            }
+            return any;
+        }
+
+        private void SetCollapsed(Row row, bool collapse)
+        {
+            if (row == null || row.IsEnd || !row.HasChildren || row.Collapsed == collapse) return;
+            if (collapse) _collapsed.Add(row.Node); else _collapsed.Remove(row.Node);
+            RefreshList(new[] { row.Node });
+        }
+
+        private void CollapseAll(bool collapse)
+        {
+            _collapsed.Clear();
+            if (collapse) AddBranches(_script.Actions);
+            RefreshList();
+        }
+
+        private void AddBranches(List<ActionNode> nodes)
+        {
+            foreach (var node in nodes)
+            {
+                if (node.Children.Count == 0) continue;
+                _collapsed.Add(node);
+                AddBranches(node.Children);
+            }
+        }
+
+        /// <summary>Clicking the arrow in front of a name collapses or expands that action.</summary>
+        private void ListMouseDown(MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Left) return;
+            var hit = _list.HitTest(e.Location);
+            if (hit.Item == null) return;
+            int index = hit.Item.Index;
+            if (index < 0 || index >= _rows.Count || !_rows[index].HasChildren) return;
+            var row = _rows[index];
+            var label = hit.Item.GetBounds(ItemBoundsPortion.Label);
+            var flags = TextRenderer_NoPadding;
+            string indent = new string(' ', row.Depth * 4);
+            int left = label.Left + System.Windows.Forms.TextRenderer.MeasureText(indent + "|", _list.Font, Size.Empty, flags).Width
+                - System.Windows.Forms.TextRenderer.MeasureText("|", _list.Font, Size.Empty, flags).Width;
+            int width = System.Windows.Forms.TextRenderer.MeasureText(row.Collapsed ? CollapsedMark : ExpandedMark, _list.Font, Size.Empty, flags).Width;
+            if (e.X >= left - 2 && e.X <= left + width + 2) SetCollapsed(row, !row.Collapsed);
+        }
+
+        private const TextFormatFlags TextRenderer_NoPadding = TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix;
 
         /// <summary>Gives the Details column all the width the other (short) columns leave free.</summary>
         private void FitDetailsColumn()
@@ -1280,7 +1364,8 @@ namespace Automation.App
             }
             // Name column: the user's alias, or the action type when no alias is set; indented by tree depth.
             if (name == null) name = string.IsNullOrWhiteSpace(n.Name) ? action : n.Name;
-            var item = new ListViewItem(indent + name);
+            string mark = row.IsEnd || !row.HasChildren ? LeafMark : row.Collapsed ? CollapsedMark : ExpandedMark;
+            var item = new ListViewItem(indent + mark + name);
             item.SubItems.Add(action);
             item.SubItems.Add(process);
             item.SubItems.Add(details);
@@ -1666,6 +1751,7 @@ namespace Automation.App
         {
             if (!ConfirmLoseChanges("creating a new script")) return;
             _script = new AutomationScript();
+            _collapsed.Clear();
             _currentPath = null;
             RefreshList();
             UpdateTitle();
@@ -1681,6 +1767,7 @@ namespace Automation.App
                 try
                 {
                     _script = ScriptSerializer.Load(dialog.FileName);
+                    _collapsed.Clear();
                     _currentPath = dialog.FileName;
                     RefreshList(_script.Actions.Take(1));
                     UpdateTitle();
@@ -1750,6 +1837,7 @@ namespace Automation.App
             _recordTarget = SelectedRows();
             HotKeyNative.UnregisterHotKey(Handle, HotKeyToggleId);
             HotKeyNative.UnregisterHotKey(Handle, HotKeyRecordId); // F7 is watched by the recorder itself while recording
+            _recorder.AllEvents = _allEvents.Checked;
             if (!_recorder.Start(() => BeginInvoke((Action)StopRecording)))
             {
                 SetToggleHotKey(true);
@@ -1770,7 +1858,7 @@ namespace Automation.App
             // Bring the window back first so the user sees at once that recording has stopped.
             WindowState = FormWindowState.Normal;
             WindowLocator.BringToFront(Handle);
-            var nodes = RecordConverter.Build(events);
+            var nodes = RecordConverter.Build(events, InputRecorder.CharOf);
             if (nodes.Count > 0)
             {
                 InsertNodes(nodes, _recordTarget);
@@ -1865,6 +1953,8 @@ namespace Automation.App
                 item.Enabled = !busy;
             _startStop.Enabled = !_recording;
             _record.Enabled = !_running;
+            _allEventsHost.Enabled = !busy;
+            _collapseAll.Enabled = _expandAll.Enabled = !busy;
             _startStop.Text = _running ? "Stop (F6)" : "Start (F6)";
             _record.Text = _recording ? "Stop recording (F7)" : "Record (F7)";
             _editArea.Enabled = !busy;
