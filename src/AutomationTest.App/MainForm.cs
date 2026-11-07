@@ -184,7 +184,7 @@ namespace AutomationTest.App
 
         public MainForm()
         {
-            Text = "AutomationTest";
+            Text = "Automation Test";
             Icon = AppIcon.Get() ?? Icon;
             ClientSize = new Size(1380, 600);
             MinimumSize = new Size(1150, 540);
@@ -1883,7 +1883,7 @@ namespace AutomationTest.App
         private void OpenScript()
         {
             if (!ConfirmLoseChanges("opening another script")) return;
-            using (var dialog = new OpenFileDialog { Filter = "AutomationTest script (*.json)|*.json|All files (*.*)|*.*" })
+            using (var dialog = new OpenFileDialog { Filter = "Automation Test script (*.json)|*.json|All files (*.*)|*.*" })
             {
                 if (dialog.ShowDialog(this) != DialogResult.OK) return;
                 try
@@ -1912,7 +1912,7 @@ namespace AutomationTest.App
             {
                 using (var dialog = new SaveFileDialog
                 {
-                    Filter = "AutomationTest script (*.json)|*.json",
+                    Filter = "Automation Test script (*.json)|*.json",
                     DefaultExt = "json",
                     FileName = _currentPath == null ? "script.json" : Path.GetFileName(_currentPath),
                     InitialDirectory = _currentPath == null ? null : Path.GetDirectoryName(_currentPath)
@@ -1940,7 +1940,7 @@ namespace AutomationTest.App
 
         private void UpdateTitle()
         {
-            Text = "AutomationTest - " + (_currentPath == null ? "(unsaved)" : Path.GetFileName(_currentPath));
+            Text = "Automation Test - " + (_currentPath == null ? "(unsaved)" : Path.GetFileName(_currentPath));
             _saveAs.Visible = _currentPath != null; // Save As only makes sense once there is a file to copy from
         }
 

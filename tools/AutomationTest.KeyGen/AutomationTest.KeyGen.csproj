@@ -3,6 +3,7 @@
     <OutputType>Exe</OutputType>
     <TargetFramework>net48</TargetFramework>
     <LangVersion>latest</LangVersion>
+    <GenerateSupportedRuntime>false</GenerateSupportedRuntime>
     <RootNamespace>AutomationTest.KeyGen</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
