@@ -1,4 +1,4 @@
-# Automation
+# AutomationTest
 
 Công cụ automation / autoclick cho Windows (10 1903+ và 11). Chạy trên .NET Framework 4.8 (có sẵn trong Windows), người dùng cuối không phải cài thêm gì.
 
@@ -17,11 +17,11 @@ Người dùng soạn một kịch bản gồm các action xếp thành cây, r�
 ## Cấu trúc
 
 ```
-Automation.sln
-  src/Automation.Core     (netstandard2.0)  model kịch bản, JSON, engine chuột phím, so khớp ảnh, biểu thức, runner, kiểm tra license
-  src/Automation.App      (net48 WinForms)  giao diện, overlay chọn điểm/vùng, phím nóng, ghi thao tác
-  tools/Automation.KeyGen (net48 console)   công cụ cấp license, chỉ dành cho chủ sản phẩm, không phát hành cùng chương trình
-  tools/Automation.IconGen (net48 console)   vẽ lại icon: `dotnet run --project tools/Automation.IconGen -- src/Automation.App/app.ico`
+AutomationTest.sln
+  src/AutomationTest.Core     (netstandard2.0)  model kịch bản, JSON, engine chuột phím, so khớp ảnh, biểu thức, runner, kiểm tra license
+  src/AutomationTest.App      (net48 WinForms)  giao diện, overlay chọn điểm/vùng, phím nóng, ghi thao tác
+  tools/AutomationTest.KeyGen (net48 console)   công cụ cấp license, chỉ dành cho chủ sản phẩm, không phát hành cùng chương trình
+  tools/AutomationTest.IconGen (net48 console)   vẽ lại icon: `dotnet run --project tools/AutomationTest.IconGen -- src/AutomationTest.App/app.ico`
   keys/                                      make-license.bat và khóa riêng (khóa riêng không được commit)
   docs/                                      PROJECT.md (yêu cầu và quyết định), STATUS.md (tình trạng hiện tại)
 ```
@@ -34,12 +34,12 @@ Cần .NET SDK (10.0 trở lên) để build; chạy chương trình chỉ cần
 dotnet build -c Release
 ```
 
-Chương trình nằm ở `src/Automation.App/bin/Release/net48/Automation.App.exe`. Tắt chương trình đang chạy trước khi build, nếu không file sẽ bị khóa.
+Chương trình nằm ở `src/AutomationTest.App/bin/Release/net48/AutomationTest.exe`. Tắt chương trình đang chạy trước khi build, nếu không file sẽ bị khóa.
 
 ## License
 
 1. Lần đầu chạy, chương trình hiện màn hình License với **request key**; người dùng gửi key này cho admin.
-2. Admin chạy `keys\make-license.bat`, nhập request key, ngày gửi key (UTC, `YYYYMMDD`) và ngày hết hạn (`YYYYMMDD`, để trống nếu vô thời hạn) để tạo `license.lic`. Cần build `tools/Automation.KeyGen` trước và có khóa riêng `keys\license-private.key`.
+2. Admin chạy `keys\make-license.bat`, nhập request key, ngày gửi key (UTC, `YYYYMMDD`) và ngày hết hạn (`YYYYMMDD`, để trống nếu vô thời hạn) để tạo `license.lic`. Cần build `tools/AutomationTest.KeyGen` trước và có khóa riêng `keys\license-private.key`.
 3. Người dùng dán nội dung hoặc import file `license.lic` trong màn hình License. File được lưu cạnh file exe, nên copy chương trình sang nơi khác thì phải copy cả `license.lic` (và `Setting.ini` nếu license có hạn).
 
 License có hạn cần mạng khi kích hoạt. Chi tiết xem mục License trong [docs/PROJECT.md](docs/PROJECT.md).

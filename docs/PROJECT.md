@@ -1,4 +1,4 @@
-# Automation / AutoClick – Project Overview
+# AutomationTest – Project Overview
 
 Tài liệu này ghi lại yêu cầu, quyết định kỹ thuật và kế hoạch. Tình trạng hiện tại xem `docs/STATUS.md`.
 Quy ước chung (git, ngôn ngữ, subagent) xem `CLAUDE.md` ở thư mục gốc.
@@ -36,12 +36,12 @@ Chương trình automation/autoclick cho Windows, người dùng cuối không p
 ## 3. Kiến trúc dự kiến
 
 ```
-Automation.sln
-  src/Automation.Core     (netstandard2.0)  model kịch bản, JSON, engine chuột phím (P/Invoke), so khớp ảnh,
+AutomationTest.sln
+  src/AutomationTest.Core     (netstandard2.0)  model kịch bản, JSON, engine chuột phím (P/Invoke), so khớp ảnh,
                                             biểu thức/biến, chuyển bản ghi thành action, runner,
                                             tọa độ theo cửa sổ; kiểm tra license (Licensing/)
-  src/Automation.App      (net48 WinForms)  UI cây action, overlay chọn điểm/vùng, phím nóng, hook ghi thao tác
-  tools/Automation.KeyGen (net48 console)   công cụ tạo license, KHÔNG đóng gói cùng bản phát hành
+  src/AutomationTest.App      (net48 WinForms)  UI cây action, overlay chọn điểm/vùng, phím nóng, hook ghi thao tác
+  tools/AutomationTest.KeyGen (net48 console)   công cụ tạo license, KHÔNG đóng gói cùng bản phát hành
 ```
 
 ## 4. Điểm kỹ thuật bắt buộc
