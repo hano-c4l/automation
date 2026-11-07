@@ -26,7 +26,7 @@ namespace AutomationTest.App
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = MinimizeBox = false;
             ShowInTaskbar = true;
-            StartPosition = FormStartPosition.CenterScreen;
+            StartPosition = gate ? FormStartPosition.CenterScreen : FormStartPosition.CenterParent; // over the program, like Settings; alone on screen when nothing else is open
             AutoSize = true;
             AutoSizeMode = AutoSizeMode.GrowAndShrink;
             Padding = new Padding(16);

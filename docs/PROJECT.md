@@ -51,14 +51,14 @@ AutomationTest.sln
 3. **UIPI:** chỉ điều khiển được cửa sổ admin khi chương trình cũng chạy admin. Cần tùy chọn chạy admin.
 4. **Move theo thời gian:** nội suy có easing trong thời gian đã đặt, dùng `Stopwatch` + `timeBeginPeriod(1)`; không dùng `Thread.Sleep` đơn thuần.
 5. **Nhận diện ảnh:** so khớp mẫu (ưu tiên tự viết NCC bằng C# cho nhẹ; OpenCvSharp thêm ~50–60MB nên là phương án dự phòng) với ngưỡng giống nhau, chỉ tìm trong vùng đã định nghĩa.
-6. **An toàn / phím nóng:** F6 Start/Stop và F7 Record bằng `RegisterHotKey` khi rảnh; khi script chạy hoặc đang ghi thì dùng hook bàn phím cấp thấp (bỏ qua phím do chính chương trình gửi, không nuốt phím) để F6/F7/Esc vẫn dừng được mà script gửi các phím đó cho chương trình khác không bị chặn. Tùy chọn dừng khẩn cấp khi đưa chuột vào góc màn hình: chưa làm.
+6. **An toàn / phím nóng:** các phím Start, Start Selected và Record (mặc định F3, F4, F6, đổi được trong Settings) bằng `RegisterHotKey` khi rảnh; khi script chạy hoặc đang ghi thì dùng hook bàn phím cấp thấp (bỏ qua phím do chính chương trình gửi, không nuốt phím) để phím Start, phím Start Selected hoặc Esc vẫn dừng được (phím Record dừng khi đang ghi) mà script gửi các phím đó cho chương trình khác không bị chặn. Tùy chọn dừng khẩn cấp khi đưa chuột vào góc màn hình: chưa làm.
 7. **SmartScreen/antivirus:** exe chưa ký gọi `SendInput` có thể bị cảnh báo. Người dùng chọn "More info → Run anyway" hoặc thêm Defender exclusion.
 
 ## 5. Mô hình kịch bản và file lưu
 
 **Cơ chế (thiết kế lại ở phiên bản 2, thay danh sách bước phẳng):** kịch bản là **cây action**.
 - UI: thanh công cụ (New/Open/Save/Save As, Start/Stop và Record ở giữa, các nút icon Add, Update, Delete, In, Out, Up, Down; sau này thêm nhập License); panel trái là danh sách action thụt lề theo cấp (chọn nhiều được); panel phải là cài đặt action.
-- Category: Control, Command, Mouse, Keyboard. **Đã làm:** Mouse, Keyboard (KeyPress/KeyUp/KeyDown/ComboKey/Text; không có Target, gửi tới cửa sổ đang focus), Command/Open, Control/Loop (Times/Duration/Until), Control/Wait, Control/Image (ZNCC, ảnh lưu trong file script; ID thành biến Found/Position/Size, một Anchor), Control/Variable, Control/Condition (Case/Else), biểu thức `{biến}` và Record (F7). Mọi action có Name (alias). Mouse chỉ lấy tọa độ từ nhập/picker hoặc biểu thức; Image không làm gốc tọa độ cho action con. **Chưa làm:** License.
+- Category: Control, Utilities (trước đây là Command), Mouse, Keyboard. Mỗi action có thêm State (bật/tắt, lưu dạng `Disabled`). **Đã làm:** Mouse, Keyboard (KeyPress/KeyUp/KeyDown/ComboKey/Text; không có Target, gửi tới cửa sổ đang focus), Utilities (Open, Active), Control/Loop (Times/Duration/Until), Control/Wait, Control/Image (ZNCC, ảnh lưu trong file script; ID thành biến Found/Position/Size, một Anchor), Control/Variable, Control/Condition (Case/Else), biểu thức `{biến}` và Record (F7). Mọi action có Name (alias). Mouse chỉ lấy tọa độ từ nhập/picker hoặc biểu thức; Image không làm gốc tọa độ cho action con. **Chưa làm:** License.
 - Mouse: Action (Click, MouseUp, MouseDown, Move, ScrollUp, ScrollDown; scroll bắt buộc dùng nút giữa; Move không có Type), Type (Left/Right/Middle), Time (thời gian di chuyển chuột tới vị trí; với Keyboard là thời gian giữ phím), Delay (chờ sau action), Process (tên process + regex tiêu đề), Anchor, vị trí X/Y. Process trống = tọa độ tuyệt đối trên desktop; có Process = offset so với vùng client của cửa sổ đó theo Anchor.
 - Loop: chứa các action con (Add khi đang chọn Loop, hoặc In). Type: Times (0 = vô hạn), theo khoảng thời gian, hoặc tới một thời điểm. Thời gian/thời điểm chỉ kiểm tra giữa các vòng nên vòng cuối có thể vượt mốc tối đa bằng một lượt thân loop.
 - Không còn cài đặt cấp kịch bản (start delay, lặp toàn bộ, target chung, Repeat từng bước): muốn lặp thì bọc trong Loop, muốn chờ thì dùng Delay.
@@ -86,7 +86,7 @@ AutomationTest.sln
    - **Cập nhật state** lúc khởi động và sau New, Open, Save, Save As, Stop sau Start, Stop sau Record. Nếu đang **offline** và giờ máy sớm hơn state quá 2 phút thì báo lỗi (khóa); nếu **có mạng** thì giờ mạng là chuẩn và ghi đè state (đồng hồ máy từng sai không bị phạt mãi).
    - **Thiếu `Setting.ini`, thiếu `State` hoặc state hỏng** = license không hợp lệ: chỉ cần kích hoạt lại (Import hoặc dán), chương trình tự ghi đè license.lic và Setting.ini.
    - Sau lần lấy giờ mạng đầu tiên, giờ chạy tiếp bằng đồng hồ bấm giờ trong phiên nên chỉnh giờ máy giữa chừng vô hiệu; làm mới sau 1 giờ; nếu lần lấy giờ thất bại thì 10 phút sau mới thử lại. Offline vẫn dùng giờ máy và từ chối nếu sớm hơn ngày cấp (`Issued`) quá 1 ngày.
-6. Kiểm tra lúc khởi động và lúc bấm Start (F6), Record (F7). Nút **License** trên menu bar: license có hạn thì cho xem trạng thái, request key và nhập license mới; license vô hạn thì chỉ hiện thông báo đã đăng ký vô hạn (không có request key hay phần nhập license).
+6. Kiểm tra lúc khởi động và lúc bấm Start, Start Selected, Record. Nút **License** trên menu bar: license có hạn thì cho xem trạng thái, request key và nhập license mới; license vô hạn thì chỉ hiện thông báo đã đăng ký vô hạn (không có request key hay phần nhập license).
 - Giới hạn: .NET dễ bị decompile/vá, nên cơ chế này chỉ ngăn chia sẻ thông thường. Có thể tăng độ khó bằng obfuscation, kiểm tra nhiều chỗ, hoặc kích hoạt online có server thu hồi key (để giai đoạn sau).
 - Khóa riêng không bao giờ được commit vào repo.
 
@@ -96,7 +96,7 @@ AutomationTest.sln
 2. Giao diện danh sách bước, overlay chọn điểm, lưu/mở JSON, phím nóng.
 3. Tọa độ theo cửa sổ.
 3b. Thiết kế lại thành cây action (Loop, Process/Anchor theo từng action, Scroll, Time/Delay có đơn vị) — đã xong, thay thế UI của M3.
-4. Keyboard, Command/Open, Wait, Image, Variable, Condition, biểu thức, Record — đã xong và đã vào `preview`.
+4. Keyboard, Utilities/Open, Wait, Image, Variable, Condition, biểu thức, Record — đã xong và đã vào `preview`.
 5. License theo máy và công cụ tạo key (KeyGen) — đã xong, đã vào `preview` và `main`.
 
 ## 7. Quy trình git (theo CLAUDE.md)

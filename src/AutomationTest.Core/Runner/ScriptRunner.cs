@@ -71,6 +71,7 @@ namespace AutomationTest.Core.Runner
             foreach (var node in nodes)
             {
                 token.ThrowIfCancellationRequested();
+                if (node.Disabled) continue; // a disabled action is skipped with everything inside it
                 NodeStarted?.Invoke(node);
                 Execute(node, token);
             }
@@ -86,8 +87,8 @@ namespace AutomationTest.Core.Runner
                 case ActionCategory.Keyboard:
                     ExecuteKeyboard(node, token);
                     break;
-                case ActionCategory.Command:
-                    ExecuteCommand(node);
+                case ActionCategory.Utilities:
+                    ExecuteCommand(node, token);
                     break;
                 case ActionCategory.Control:
                     switch (node.Control)
@@ -143,9 +144,15 @@ namespace AutomationTest.Core.Runner
             Wait(k.DelayMs, token);
         }
 
-        private static void ExecuteCommand(ActionNode node)
+        private void ExecuteCommand(ActionNode node, CancellationToken token)
         {
             var c = node.Command;
+            if (c.Kind == CommandKind.Active)
+            {
+                KeepAwake.Poke(_mouse);
+                Wait(c.DelayMs, token);
+                return;
+            }
             if (string.IsNullOrWhiteSpace(c.Value))
                 throw new InvalidOperationException("Open: no path is set.");
             try
@@ -156,6 +163,7 @@ namespace AutomationTest.Core.Runner
             {
                 throw new InvalidOperationException("Cannot open \"" + c.Value.Trim() + "\": " + ex.Message);
             }
+            Wait(c.DelayMs, token);
         }
 
         /// <summary>Releases keys left pressed by a KeyDown action when the run stops early.</summary>
@@ -239,6 +247,7 @@ namespace AutomationTest.Core.Runner
             foreach (var branch in node.Children)
             {
                 token.ThrowIfCancellationRequested();
+                if (branch.Disabled) continue;
                 if (branch.IsKind(ControlKind.Case))
                 {
                     bool matched;
@@ -304,7 +313,7 @@ namespace AutomationTest.Core.Runner
         /// </summary>
         private void ExecuteLoop(ActionNode loop, CancellationToken token)
         {
-            if (loop.Children.Count == 0) return;
+            if (!loop.Children.Exists(c => !c.Disabled)) return; // nothing enabled inside: nothing to repeat
 
             var settings = loop.Loop;
             switch (settings.Mode)

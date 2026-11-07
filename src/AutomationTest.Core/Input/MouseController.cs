@@ -50,6 +50,9 @@ namespace AutomationTest.Core.Input
             }
         }
 
+        /// <summary>A mouse move of zero distance: it counts as input for the inactivity timers but moves nothing.</summary>
+        public void Nudge() => Send(0, 0, NativeMethods.MOUSEEVENTF_MOVE);
+
         public void Down(MouseButton button) => Send(0, 0, DownFlag(button));
 
         public void Up(MouseButton button) => Send(0, 0, UpFlag(button));

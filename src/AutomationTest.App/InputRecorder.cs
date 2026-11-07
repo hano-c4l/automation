@@ -9,7 +9,7 @@ namespace AutomationTest.App
 {
     /// <summary>
     /// Records the user's mouse buttons, wheel and keys with low-level hooks (the input still reaches the programs).
-    /// Input on this program's own windows is ignored, and so are the hot keys F6 and F7. Must run on the UI thread.
+    /// Input on this program's own windows is ignored, and so are the program's own shortcut keys. Must run on the UI thread.
     /// </summary>
     internal sealed class InputRecorder : IDisposable
     {
@@ -19,8 +19,11 @@ namespace AutomationTest.App
         private const int WM_LBUTTONDOWN = 0x0201, WM_LBUTTONUP = 0x0202, WM_RBUTTONDOWN = 0x0204, WM_RBUTTONUP = 0x0205;
         private const int WM_MBUTTONDOWN = 0x0207, WM_MBUTTONUP = 0x0208, WM_MOUSEWHEEL = 0x020A;
         private const uint LLKHF_EXTENDED = 0x01, LLKHF_INJECTED = 0x10, LLMHF_INJECTED = 0x01;
-        public const int StartStopKey = 0x75;  // F6
-        public const int RecordKey = 0x76;     // F7
+        /// <summary>The key that ends the recording (the Record shortcut). It is never recorded.</summary>
+        public int RecordKey { get; set; } = 0x75; // F6 by default
+
+        /// <summary>Keys that are never recorded: the program's own shortcuts (Start, Start Selected, Pick).</summary>
+        public ISet<int> IgnoredKeys { get; set; } = new HashSet<int>();
 
         private delegate IntPtr HookProc(int nCode, IntPtr wParam, IntPtr lParam);
 
@@ -102,7 +105,7 @@ namespace AutomationTest.App
 
         public int Count { get { return _events.Count; } }
 
-        /// <param name="onStopKey">Called when F7 is pressed (the key itself is not recorded).</param>
+        /// <param name="onStopKey">Called when the Record key is pressed (the key itself is not recorded).</param>
         public bool Start(Action onStopKey)
         {
             if (IsRecording) return true;
@@ -110,7 +113,7 @@ namespace AutomationTest.App
             _keysDown.Clear();
             _buttonsDown = 0;
             _lastMoveMs = -MoveIntervalMs;
-            // F7 still held from the press that started recording must not count as the press that stops it.
+            // The Record key still held from the press that started recording must not count as the press that stops it.
             if ((GetAsyncKeyState(RecordKey) & 0x8000) != 0) _keysDown.Add(RecordKey);
             _onStopKey = onStopKey;
             _clock.Restart();
@@ -159,7 +162,7 @@ namespace AutomationTest.App
                         if (down && _keysDown.Add(vk)) _onStopKey?.Invoke();
                         else if (up) _keysDown.Remove(vk);
                     }
-                    else if (vk != StartStopKey && !IsOwn(GetForegroundWindow()))
+                    else if (!IgnoredKeys.Contains(vk) && !IsOwn(GetForegroundWindow()))
                     {
                         _events.Add(new RecordedEvent { Kind = down ? RecordedKind.KeyDown : RecordedKind.KeyUp, VirtualKey = vk, TimeMs = _clock.ElapsedMilliseconds });
                     }

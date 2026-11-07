@@ -22,7 +22,8 @@ namespace AutomationTest.App
         private const int HotKeyToggleId = 1;
         private const int HotKeyEscapeId = 2;
         private const int HotKeyRecordId = 3;
-        private const int HotKeyFreezeId = 4;      // F8 while a Pick waits for the picture
+        private const int HotKeyStartSelectedId = 6;
+        private const int HotKeyFreezeId = 4;      // the Pick key while a Pick waits for the picture
         private const int HotKeyFreezeCancelId = 5; // Esc while a Pick waits
         private const string UntilFormat = "yyyy-MM-dd HH:mm:ss";
         private const int DetailWidth = 475;
@@ -50,6 +51,7 @@ namespace AutomationTest.App
             public bool IsEnd;                 // the "End" line of a Condition (Node is the Condition itself)
             public bool HasChildren;           // can be collapsed / expanded
             public bool Collapsed;             // its children are hidden
+            public bool Disabled;              // this action or one of its parents is disabled (shown grey, skipped when running)
         }
 
         private readonly List<Row> _rows = new List<Row>();
@@ -68,11 +70,13 @@ namespace AutomationTest.App
         };
 
         // Toolbar
-        private ToolStripButton _startStop, _startSelected, _record;
-        private ToolStripButton _btnNew, _btnOpen, _btnSave, _collapseAll, _expandAll;
-        private readonly CheckBox _allEvents = new CheckBox { Text = "All", AutoSize = true, Margin = new Padding(4, 2, 4, 2) };
-        private ToolStripControlHost _allEventsHost, _advPickHost;
-        private readonly CheckBox _advPick = new CheckBox { Text = "Adv Pick", AutoSize = true, Margin = new Padding(4, 2, 4, 2) };
+        private IconButton _startStop, _startSelected, _record;
+        private IconButton _btnNew, _btnOpen, _btnSave, _collapseAll, _expandAll;
+        private IconButton _settingsButton;
+        private AppSettings _settings = AppSettings.Defaults();
+
+        private enum RunKind { None, All, Selected }
+        private RunKind _runKind;
         private readonly InputRecorder _recorder = new InputRecorder();
         private bool _recording;
         private List<Row> _recordTarget = new List<Row>();
@@ -80,6 +84,7 @@ namespace AutomationTest.App
 
         // Editor: common
         private readonly HintTextBox _name = new HintTextBox { Width = 200, Placeholder = "Alias Name"  };
+        private readonly ToggleSwitch _enabled = new ToggleSwitch { Checked = true, Size = new Size(40, 21) }; // as tall as a text field, so the rows are evenly spaced
         private readonly ComboBox _category = MakeCombo(typeof(ActionCategory));
 
         // Editor: mouse
@@ -101,6 +106,7 @@ namespace AutomationTest.App
         private readonly HintTextBox _kbText = new HintTextBox { Width = 200, Height = 90, Multiline = true, AcceptsReturn = true, AcceptsTab = true, ScrollBars = ScrollBars.Vertical, Placeholder = "Text Content" };
         private readonly TimeBox _kbTime = new TimeBox(500);
         private readonly TimeBox _kbDelay = new TimeBox(500);
+        private readonly TimeBox _cmdDelay = new TimeBox(0);
 
         // Editor: command
         private readonly ComboBox _cmdKind = MakeCombo(typeof(CommandKind));
@@ -162,13 +168,13 @@ namespace AutomationTest.App
         private readonly Button _pickPositionButton = new Button { Text = "Pick", AutoSize = true };
         private readonly ComboBox _kbSource = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 120, Items = { "Input", "Variable" } };
         private readonly HintTextBox _kbTextExpr = new HintTextBox { Width = 200, Placeholder = "Text Expression" };
-        private ToolStripButton _saveAs, _license;
+        private IconButton _saveAs, _license;
 
         private readonly GroupBox _mouseBox = new GroupBox { Text = "Mouse", Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8) };
         private readonly GroupBox _keyboardBox = new GroupBox { Text = "Keyboard", Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8) };
-        private readonly GroupBox _commandBox = new GroupBox { Text = "Command", Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8) };
+        private readonly GroupBox _commandBox = new GroupBox { Text = "Utilities", Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8) };
         private readonly GroupBox _controlBox = new GroupBox { Text = "Control", Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8) };
-        private ToolStripButton _btnAdd, _btnUpdate, _btnDelete, _btnIn, _btnOut, _btnUp, _btnDown;
+        private IconButton _btnAdd, _btnUpdate, _btnDelete, _btnIn, _btnOut, _btnUp, _btnTop, _btnDown, _btnEnd;
         private readonly Dictionary<Control, Label> _rowLabels = new Dictionary<Control, Label>();
         private readonly Dictionary<Control, Control> _rowHosts = new Dictionary<Control, Control>();
         private readonly ToolTip _tips = new ToolTip();
@@ -187,12 +193,13 @@ namespace AutomationTest.App
             Text = "Automation Test";
             Icon = AppIcon.Get() ?? Icon;
             ClientSize = new Size(1380, 600);
-            MinimumSize = new Size(1150, 540);
+            MinimumSize = new Size(1150, 600);
             _loopUntil.Value = DateTime.Now.AddHours(1);
             _varDateTime.Value = DateTime.Now;
             _controlKind.Items.Remove(ControlKind.Else); // the else line is created with its Condition, never added by hand
             _controlKind.Items.Remove(ControlKind.Case); // Case is offered only while a line of a Condition is selected
             _posSource.SelectedIndex = 0;
+            _category.SelectedItem = ActionCategory.Mouse; // the editor starts on Mouse
             _kbSource.SelectedIndex = 0;
             _category.SelectedItem = ActionCategory.Mouse;
             BuildLayout();
@@ -208,9 +215,9 @@ namespace AutomationTest.App
 
         private void BuildLayout()
         {
-            _list.Columns.Add("Name", 170);
+            _list.Columns.Add("Name", 100);
             _list.Columns.Add("Action", 90);
-            _list.Columns.Add("Process", 110);
+            _list.Columns.Add("Process", 80);
             _list.Columns.Add("Details", 300);
             _list.Columns.Add("Time", 65);
             _list.Columns.Add("Delay", 65);
@@ -230,20 +237,21 @@ namespace AutomationTest.App
             _expandAll = MakeToolIcon("", "▼", "Expand All", (s, e) => CollapseAll(false));
             tools.Items.Add(_collapseAll);
             tools.Items.Add(_expandAll);
-            // The run and record buttons sit at the right end of the bar, close to License but with a gap. Right-aligned items are
-            // laid out from the right edge, so they are added from the rightmost one to the leftmost one.
-            _startStop = MakeToolIcon("", "▶", "Start (F6)", (s, e) => ToggleRun());
-            _startSelected = MakeToolIcon("", "▶✓", "Start Selected: run only the selected actions", (s, e) => StartSelected());
-            _record = MakeToolIcon("", "●", "Record (F7): your mouse clicks, wheel and keys become actions", (s, e) => ToggleRecord());
-            _allEventsHost = new ToolStripControlHost(_allEvents) { ToolTipText = "All: also record plain mouse moves and every other event, not only drags" };
+            // The run and record buttons sit at the right end of this bar. Right-aligned items are laid out from the right edge,
+            // so they are added from the rightmost one to the leftmost one.
+            _startStop = MakeToolIcon("", "▶", "Start", (s, e) => ToggleRun());
+            _startSelected = MakeToolIcon("", "▶▶", "Start Selected: run only the selected actions", (s, e) => ToggleRunSelected());
+            _record = MakeToolIcon("", "●", "Record: your mouse clicks, wheel and keys become actions", (s, e) => ToggleRecord());
+            // Start, Start Selected and Record sit in the middle of this bar, between the file buttons and the action buttons on
+            // the right: a spacer in front of them is resized with the bar (CenterRunButtons).
+            tools.Items.Add(_centerSpacer);
+            tools.Items.Add(_startStop);
+            tools.Items.Add(_startSelected);
+            tools.Items.Add(_record);
+            tools.Resize += (s, e) => CenterRunButtons(tools);
+            // License and Settings sit at the far right of the whole menu row, after the action buttons (see the iconBar below).
             _license = MakeToolIcon("", "⚿", "License", (s, e) => ShowLicense());
-            var gap = new ToolStripLabel { AutoSize = false, Width = 28, Text = "" };
-            var groupSeparator = new ToolStripSeparator();
-            foreach (ToolStripItem item in new ToolStripItem[] { _license, gap, _allEventsHost, _record, groupSeparator, _startSelected, _startStop })
-            {
-                item.Alignment = ToolStripItemAlignment.Right;
-                tools.Items.Add(item);
-            }
+            _settingsButton = MakeToolIcon("", "⚙", "Settings: shortcut keys and options", (s, e) => ShowSettings());
             var statusBar = new StatusStrip { SizingGrip = false };
             statusBar.Items.Add(_status);
 
@@ -263,16 +271,19 @@ namespace AutomationTest.App
             _btnIn = MakeToolIcon("\uE72A", "\u2192", "In: move into the Loop, Wait or Image above", (s, e) => MoveIn());
             _btnOut = MakeToolIcon("\uE72B", "\u2190", "Out: move out of the container", (s, e) => MoveOut());
             _btnUp = MakeToolIcon("\uE74A", "\u2191", "Up", (s, e) => MoveUpDown(-1));
+            _btnTop = MakeToolIcon("\uE898", "\u2912", "Up to Top: move the selected actions to the start of their list", (s, e) => MoveToEdge(true));
             _btnDown = MakeToolIcon("\uE74B", "\u2193", "Down", (s, e) => MoveUpDown(1));
-            foreach (var button in new[] { _btnAdd, _btnUpdate, _btnDelete, _btnIn, _btnOut, _btnUp, _btnDown })
-                iconBar.Items.Add(button);
-            // Adv Pick (off by default): a Pick with a process then waits for F8 so the program keeps its look until the picture is taken.
-            _advPickHost = new ToolStripControlHost(_advPick)
+            _btnEnd = MakeToolIcon("\uE896", "\u2913", "Down to End: move the selected actions to the end of their list", (s, e) => MoveToEdge(false));
+            // Add, Update, Delete | In, Out | Up, Up to Top, Down, Down to End
+            foreach (ToolStripItem item in new ToolStripItem[] { _btnAdd, _btnUpdate, _btnDelete, new ToolStripSeparator(), _btnIn, _btnOut, new ToolStripSeparator(), _btnUp, _btnTop, _btnDown, _btnEnd })
+                iconBar.Items.Add(item);
+            // License and Settings at the right end of the row; right-aligned items are added from the rightmost one.
+            foreach (ToolStripItem item in new ToolStripItem[] { _settingsButton, _license })
             {
-                Alignment = ToolStripItemAlignment.Right,
-                ToolTipText = "Advanced pick: with a process, Pick waits until you press F8 (or Freeze now) to take the picture, so a program that shrinks or closes pop-ups when it loses focus can be picked in the state you set up. Off: Pick takes the picture at once."
-            };
-            iconBar.Items.Add(_advPickHost);
+                item.Alignment = ToolStripItemAlignment.Right;
+                iconBar.Items.Add(item);
+            }
+            ApplyIconColors();
 
             var topBar = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 2, RowCount = 1 };
             topBar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
@@ -286,6 +297,7 @@ namespace AutomationTest.App
             var common = NewTable();
             common.Padding = new Padding(GroupInset, 0, 0, 0);
             AddRow(common, "Name", _name);
+            AddRow(common, "State", _enabled);
             AddRow(common, "Category", _category);
             AddRow(common, "Action", _mouseAction);
             AddRow(common, "Action", _kbAction);
@@ -320,9 +332,10 @@ namespace AutomationTest.App
             AddRow(kbTable, "Delay", _kbDelay, Help.KeyDelay);
             _keyboardBox.Controls.Add(kbTable);
 
-            // Command
+            // Utilities
             var cmdTable = NewTable();
             AddRow(cmdTable, "Path", _cmdValue, null, null, MakeButton("Browse", (s, e) => BrowseCommandPath()));
+            AddRow(cmdTable, "Delay", _cmdDelay, Help.KeyDelay);
             _commandBox.Controls.Add(cmdTable);
 
             // Control
@@ -358,7 +371,7 @@ namespace AutomationTest.App
 
             // Extra space above the first row of a new group, so related rows read together.
             const int Group = 12, Small = 6;
-            Space(_category, Small); Space(_mouseAction, Small); Space(_kbAction, Small); Space(_cmdKind, Small); Space(_controlKind, Small);
+            Space(_enabled, Small); Space(_category, Small); Space(_mouseAction, Small); Space(_kbAction, Small); Space(_cmdKind, Small); Space(_controlKind, Small);
             common.Padding = new Padding(GroupInset, 0, 0, 10); // Padding (not Margin): a docked table ignores its margin
             Space(_time, Group); Space(_processName, Group);                     // Mouse: after Type, after Delay
             Space(_kbTime, Group);                                               // Keyboard: before Time
@@ -397,7 +410,10 @@ namespace AutomationTest.App
         private void WireEvents()
         {
             _list.SelectedIndexChanged += (s, e) => { RefreshControlKinds(); LoadSelectedIntoEditor(); UpdateEditorVisibility(); UpdateButtonStates(); };
-            _list.SizeChanged += (s, e) => FitDetailsColumn();
+            _list.SizeChanged += (s, e) => { if (_columnsReady) FitDetailsColumn(false); }; // only once the window is shown: opening must not touch the columns
+            // No column can be dragged narrower than the minimum, so what the user sees is what is allowed.
+            _list.ColumnWidthChanging += (s, e) => { if (e.NewWidth < MinColumnWidth) e.NewWidth = MinColumnWidth; };
+            _list.ColumnWidthChanged += (s, e) => { if (_list.Columns[e.ColumnIndex].Width < MinColumnWidth) _list.Columns[e.ColumnIndex].Width = MinColumnWidth; };
             _list.MouseDown += (s, e) => ListMouseDown(e);
             _list.KeyDown += (s, e) =>
             {
@@ -421,12 +437,13 @@ namespace AutomationTest.App
             _category.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
             _mouseAction.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
             _kbAction.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
+            _cmdKind.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
             _controlKind.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
             _loopType.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
             _processName.TextChanged += (s, e) => UpdateEditorVisibility();
             _processTitle.TextChanged += (s, e) => UpdateEditorVisibility();
 
-            // F6 is a global hot key while idle; it must not be swallowed while the user records F6 as a key.
+            // The shortcut keys are global hot keys while idle; they must not be swallowed while the user records one of them as a key.
             _waitPick.Click += (s, e) => PickProcess(_waitProcessName, _waitProcessTitle);
             _imgPickProcess.Click += (s, e) => PickProcess(_imgProcessName, _imgProcessTitle);
             _imgPickRange.Click += (s, e) => PickRange();
@@ -449,11 +466,12 @@ namespace AutomationTest.App
             var category = (ActionCategory)_category.SelectedItem;
             _mouseBox.Visible = category == ActionCategory.Mouse;
             _keyboardBox.Visible = category == ActionCategory.Keyboard;
-            _commandBox.Visible = category == ActionCategory.Command;
+            _commandBox.Visible = category == ActionCategory.Utilities;
+            SetRowVisible(_cmdValue, (_cmdKind.SelectedItem as CommandKind? ?? CommandKind.Open) == CommandKind.Open); // Active has no path; both have a Delay
             _controlBox.Visible = category == ActionCategory.Control;
             SetRowVisible(_mouseAction, category == ActionCategory.Mouse);
             SetRowVisible(_kbAction, category == ActionCategory.Keyboard);
-            SetRowVisible(_cmdKind, category == ActionCategory.Command);
+            SetRowVisible(_cmdKind, category == ActionCategory.Utilities);
             SetRowVisible(_controlKind, category == ActionCategory.Control);
 
             // Mouse
@@ -546,6 +564,7 @@ namespace AutomationTest.App
             var node = BuildNode();
             string name = _name.Text.Trim();
             node.Name = name.Length == 0 ? null : name;
+            node.Disabled = !_enabled.Checked;
             return node;
         }
 
@@ -582,11 +601,12 @@ namespace AutomationTest.App
                         DelayMs = _kbDelay.Milliseconds
                     });
 
-                case ActionCategory.Command:
+                case ActionCategory.Utilities:
                     return ActionNode.NewCommand(new CommandSettings
                     {
                         Kind = (CommandKind)_cmdKind.SelectedItem,
-                        Value = _cmdValue.Text.Trim()
+                        Value = (CommandKind)_cmdKind.SelectedItem == CommandKind.Open ? _cmdValue.Text.Trim() : "",
+                        DelayMs = _cmdDelay.Milliseconds
                     });
 
                 default:
@@ -693,6 +713,7 @@ namespace AutomationTest.App
                 return;
             }
             _name.Text = node.Name ?? "";
+            _enabled.Checked = !node.Disabled;
             _category.SelectedItem = node.Category;
             switch (node.Category)
             {
@@ -727,9 +748,10 @@ namespace AutomationTest.App
                     _kbDelay.Milliseconds = k.DelayMs;
                     break;
 
-                case ActionCategory.Command:
+                case ActionCategory.Utilities:
                     _cmdKind.SelectedItem = node.Command.Kind;
                     _cmdValue.Text = node.Command.Value;
+                    _cmdDelay.Milliseconds = node.Command.DelayMs;
                     break;
 
                 default:
@@ -1090,6 +1112,50 @@ namespace AutomationTest.App
             RefreshList(picked);
         }
 
+        /// <summary>Up to Top / Down to End: moves the selected actions (keeping their order) to the start or the end of their list. An else stays last.</summary>
+        private void MoveToEdge(bool top)
+        {
+            var selected = SelectedRows();
+            if (selected.Count == 0) return;
+            if (!SameList(selected)) { SetStatus("Select actions that are in the same list to move them."); return; }
+            if (selected.Any(r => r.Node.IsKind(ControlKind.Else))) { SetStatus("The else line always stays last."); return; }
+
+            var list = selected[0].Siblings;
+            var picked = new HashSet<ActionNode>(selected.Select(r => r.Node));
+            var moving = list.Where(picked.Contains).ToList();
+            var rest = list.Where(n => !picked.Contains(n)).ToList();
+            var last = rest.LastOrDefault(n => n.IsKind(ControlKind.Else)); // the else of a Condition stays at the end
+            if (last != null) rest.Remove(last);
+            var order = top ? moving.Concat(rest).ToList() : rest.Concat(moving).ToList();
+            if (last != null) order.Add(last);
+            list.Clear();
+            list.AddRange(order);
+            RefreshList(picked);
+        }
+
+        /// <summary>The colour of every icon in the menu rows.</summary>
+        private void ApplyIconColors()
+        {
+            var green = Color.FromArgb(22, 163, 74);
+            var blue = Color.FromArgb(37, 99, 235);
+            var indigo = Color.FromArgb(79, 70, 229);
+            _btnNew.BaseColor = blue;
+            _btnOpen.BaseColor = Color.FromArgb(217, 119, 6);
+            _btnSave.BaseColor = Color.FromArgb(13, 148, 136);
+            _saveAs.BaseColor = Color.FromArgb(14, 116, 144);
+            _collapseAll.BaseColor = _expandAll.BaseColor = Color.FromArgb(124, 58, 237);
+            _startStop.BaseColor = green;
+            _startSelected.BaseColor = Color.FromArgb(5, 150, 105);
+            _record.BaseColor = Color.FromArgb(220, 38, 38);
+            _license.BaseColor = Color.FromArgb(202, 138, 4);
+            _settingsButton.BaseColor = Color.FromArgb(71, 85, 105);
+            _btnAdd.BaseColor = green;
+            _btnUpdate.BaseColor = Color.FromArgb(234, 88, 12);
+            _btnDelete.BaseColor = Color.FromArgb(220, 38, 38);
+            _btnIn.BaseColor = _btnOut.BaseColor = blue;
+            _btnUp.BaseColor = _btnTop.BaseColor = _btnDown.BaseColor = _btnEnd.BaseColor = indigo;
+        }
+
         /// <summary>In: moves the selected actions to the end of the Loop, Wait or Image right before them.</summary>
         private void MoveIn()
         {
@@ -1176,6 +1242,7 @@ namespace AutomationTest.App
             if (wanted.Count > 0) ExpandTo(_script.Actions, wanted);
             Flatten(_script.Actions, null, 0);
 
+            int top = _list.TopItem != null ? _list.TopItem.Index : 0; // keep the scroll position: a long list must not jump back to the top
             _list.BeginUpdate();
             _list.Items.Clear();
             int last = -1;
@@ -1190,8 +1257,39 @@ namespace AutomationTest.App
                 }
             }
             _list.EndUpdate();
-            if (last >= 0) _list.EnsureVisible(last);
+            if (top > 0 && _list.Items.Count > 0) _list.TopItem = _list.Items[Math.Min(top, _list.Items.Count - 1)];
+            if (last >= 0 && !FullyVisible(last)) _list.EnsureVisible(last); // scroll only when what was selected is out of sight
             UpdateButtonStates();
+        }
+
+        private readonly ToolStripLabel _centerSpacer = new ToolStripLabel { AutoSize = false, Width = 0, Text = "" };
+
+        /// <summary>Puts Start, Start Selected and Record in the middle of the left bar, so the gap to the file buttons equals the gap to the action buttons.</summary>
+        private void CenterRunButtons(ToolStrip tools)
+        {
+            int left = 0, group = 0;
+            bool after = false;
+            foreach (ToolStripItem item in tools.Items)
+            {
+                if (item == _centerSpacer) { after = true; continue; }
+                if (!item.Available) continue; // hidden items (Save As before a file exists) take no room
+                int width = item.Width + item.Margin.Horizontal;
+                if (after) group += width; else left += width;
+            }
+            int wanted = Math.Max(0, (tools.DisplayRectangle.Width - left - group) / 2); // equal gaps: after the file buttons and before the action buttons
+            if (_centerSpacer.Width != wanted)
+            {
+                _centerSpacer.Width = wanted;
+                tools.PerformLayout();
+            }
+        }
+
+        /// <summary>Whether the list row is completely inside the visible part of the list.</summary>
+        private bool FullyVisible(int index)
+        {
+            if (index < 0 || index >= _list.Items.Count || _list.TopItem == null) return false;
+            var bounds = _list.Items[index].GetBounds(ItemBoundsPortion.Entire);
+            return bounds.Top >= _list.TopItem.Bounds.Top && bounds.Bottom <= _list.ClientRectangle.Height;
         }
 
         private void RefreshList()
@@ -1199,17 +1297,18 @@ namespace AutomationTest.App
             RefreshList(null);
         }
 
-        private void Flatten(List<ActionNode> nodes, ActionNode parent, int depth)
+        private void Flatten(List<ActionNode> nodes, ActionNode parent, int depth, bool parentDisabled = false)
         {
             foreach (var node in nodes)
             {
                 bool has = node.Children.Count > 0;
                 bool collapsed = has && _collapsed.Contains(node);
-                _rows.Add(new Row { Node = node, Parent = parent, Siblings = nodes, Depth = depth, HasChildren = has, Collapsed = collapsed });
+                bool disabled = parentDisabled || node.Disabled;
+                _rows.Add(new Row { Node = node, Parent = parent, Siblings = nodes, Depth = depth, HasChildren = has, Collapsed = collapsed, Disabled = disabled });
                 if (collapsed) continue; // children (and a Condition's End line) are hidden
-                Flatten(node.Children, node, depth + 1);
+                Flatten(node.Children, node, depth + 1, disabled);
                 if (node.IsKind(ControlKind.Condition))
-                    _rows.Add(new Row { Node = node, Parent = parent, Siblings = nodes, Depth = depth, IsEnd = true });
+                    _rows.Add(new Row { Node = node, Parent = parent, Siblings = nodes, Depth = depth, IsEnd = true, Disabled = disabled });
             }
         }
 
@@ -1269,16 +1368,44 @@ namespace AutomationTest.App
 
         private const TextFormatFlags TextRenderer_NoPadding = TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix;
 
-        /// <summary>Gives the Details column all the width the other (short) columns leave free.</summary>
-        private void FitDetailsColumn()
+        /// <summary>
+        /// Keeps the Details column in step with the width of the list when the window is resized.
+        /// Whether the list scrolled sideways just before this resize is worked out from the widths themselves (the columns against
+        /// the previous width of the list), not from events, so quick or continuous resizing cannot leave it wrong:
+        /// - it did not scroll: Details grows or shrinks (down to a minimum) so that no scroll bar appears;
+        /// - it scrolled and still would: the columns stay exactly as they are;
+        /// - it scrolled but there is room now: Details takes the free room, and from then on follows the window.
+        /// </summary>
+        private void FitDetailsColumn(bool force)
         {
-            const int Details = 3;
-            int others = 0;
-            for (int i = 0; i < _list.Columns.Count; i++)
-                if (i != Details) others += _list.Columns[i].Width;
-            int free = _list.ClientSize.Width - others;
-            _list.Columns[Details].Width = Math.Max(300, free);
+            const int MinimumDetails = MinColumnWidth;
+            int client = _list.ClientSize.Width;
+            if (client <= 0) return; // hidden or minimized: nothing to fit, and the last width is kept
+            bool scrolledBefore = ColumnsWidth() > _lastListWidth && _lastListWidth > 0;
+            _lastListWidth = client;
+            if (!force && scrolledBefore && ColumnsWidth() > client) return;
+            int others = ColumnsWidth() - _list.Columns[DetailsColumn].Width;
+            // A little room is always left over, because the list is not exactly as wide as it looks (its border and rounding); filling
+            // the list to the pixel can bring up a sideways scroll bar. (ClientSize already leaves out a vertical scroll bar.)
+            int spare = 8;
+            _list.Columns[DetailsColumn].Width = Math.Max(MinimumDetails, client - others - spare);
+            // The list may have shown its sideways scroll bar while the window was already smaller than the old column widths, and
+            // it does not take it away again by itself once the columns fit: hide it when it is not needed.
+            if (ColumnsWidth() <= client) ShowScrollBar(_list.Handle, 0 /* SB_HORZ */, false);
         }
+
+        private int ColumnsWidth()
+        {
+            int total = 0;
+            foreach (ColumnHeader column in _list.Columns) total += column.Width;
+            return total;
+        }
+
+        private int _lastListWidth;
+        private bool _columnsReady, _columnsRestored; // ready: the window has been shown; restored: the widths came from Setting.ini
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool ShowScrollBar(IntPtr hWnd, int bar, bool show);
+
 
         private static string DescribeTarget(WindowTarget target)
         {
@@ -1323,9 +1450,10 @@ namespace AutomationTest.App
                     delay = TimeBox.Format(k.DelayMs);
                     break;
 
-                case ActionCategory.Command:
+                case ActionCategory.Utilities:
                     action = n.Command.Kind.ToString();
-                    details = n.Command.Value;
+                    details = n.Command.Kind == CommandKind.Active ? "sends a harmless input event so the computer does not lock or sleep" : n.Command.Value;
+                    delay = TimeBox.Format(n.Command.DelayMs);
                     break;
 
                 default:
@@ -1372,6 +1500,9 @@ namespace AutomationTest.App
                                 case LoopType.Until: details = "until " + (n.Loop.GetUntil()?.ToString(UntilFormat) ?? "?"); break;
                                 default: details = n.Loop.Count == 0 ? "forever" : n.Loop.Count + " time(s)"; break;
                             }
+                            // The time one pass over the actions inside takes (their Time and Delay added up).
+                            long? pass = ActionTiming.PerIterationMs(n);
+                            time = !pass.HasValue ? "?" : n.Children.Exists(c => !c.Disabled) ? TimeBox.Format(pass.Value) : "";
                             break;
                     }
                     break;
@@ -1385,6 +1516,7 @@ namespace AutomationTest.App
             item.SubItems.Add(details);
             item.SubItems.Add(time);
             item.SubItems.Add(delay);
+            if (row.Disabled) item.ForeColor = SystemColors.GrayText; // disabled itself or through a parent
             return item;
         }
 
@@ -1437,7 +1569,7 @@ namespace AutomationTest.App
 
         /// <summary>
         /// Lets the user click a point on a frozen picture of the screen. Without a process it is a desktop position; with one,
-        /// the program is brought to the front, the picture is taken when the user presses F8 (so the program keeps the look
+        /// the program is brought to the front, the picture is taken when the user presses the Pick key (so the program keeps the look
         /// it has; clicking Pick takes the focus away and many programs shrink or close pop-ups then), and the point is stored
         /// as an offset from the anchor of its client area as it was when the picture was taken. Any point on the picture can be
         /// chosen, also outside the window (a pop-up, or room the window will have once it grows).
@@ -1447,13 +1579,13 @@ namespace AutomationTest.App
             x = y = 0;
             if (!process.IsEmpty && !ActivateProcess(process)) return false;
             Minimize();
-            if (!process.IsEmpty && _advPick.Checked && !WaitForFreeze("Pick a position"))
+            if (!process.IsEmpty && _settings.AdvancedPositionPicker && !WaitForFreeze("Pick a position"))
             {
                 Restore();
                 SetStatus("Pick cancelled.");
                 return false;
             }
-            if (!Freeze(process, out _, out Bitmap frozen, out ClientArea? area, out _, out _, process.IsEmpty || !_advPick.Checked))
+            if (!Freeze(process, out _, out Bitmap frozen, out ClientArea? area, out _, out _, process.IsEmpty || !_settings.AdvancedPositionPicker))
             {
                 Restore();
                 return false;
@@ -1483,16 +1615,16 @@ namespace AutomationTest.App
         }
 
         /// <summary>
-        /// Waits, with this window out of the way, until F8 is pressed or "Freeze now" is clicked (neither takes the focus away
+        /// Waits, with this window out of the way, until the Pick key is pressed or "Freeze now" is clicked (neither takes the focus away
         /// from the program being picked); Esc or Cancel gives up. False when cancelled.
         /// </summary>
         private bool WaitForFreeze(string what)
         {
             _freezeSignal = 0;
-            SetToggleHotKey(false); // F6 / F7 must not start anything meanwhile
-            bool f8 = HotKeyNative.RegisterHotKey(Handle, HotKeyFreezeId, HotKeyNative.MOD_NOREPEAT, (uint)Keys.F8);
+            SetToggleHotKey(false); // the Start, Start Selected and Record keys must not start anything meanwhile
+            bool pickKey = HotKeyNative.RegisterHotKey(Handle, HotKeyFreezeId, HotKeyNative.MOD_NOREPEAT, (uint)_settings.PickCode);
             HotKeyNative.RegisterHotKey(Handle, HotKeyFreezeCancelId, HotKeyNative.MOD_NOREPEAT, (uint)Keys.Escape);
-            var hint = new FreezeHintForm(what + ": get the program into the state you want to pick on, then press F8 to take the picture.", f8);
+            var hint = new FreezeHintForm(what + ": get the program into the state you want to pick on, then press " + _settings.Pick + " to take the picture.", pickKey, _settings.Pick);
             hint.FreezeClicked += () => _freezeSignal = 1;
             hint.CancelClicked += () => _freezeSignal = 2;
             try
@@ -1684,13 +1816,13 @@ namespace AutomationTest.App
             if (!process.IsEmpty && !ActivateProcess(process)) return false;
 
             Minimize();
-            if (!process.IsEmpty && _advPick.Checked && !WaitForFreeze(capture ? "Capture an image" : "Pick an area"))
+            if (!process.IsEmpty && _settings.AdvancedPositionPicker && !WaitForFreeze(capture ? "Capture an image" : "Pick an area"))
             {
                 Restore();
                 SetStatus("Pick cancelled.");
                 return false;
             }
-            if (!Freeze(process, out RawImage snapshot, out Bitmap frozen, out area, out int vl, out int vt, process.IsEmpty || !_advPick.Checked))
+            if (!Freeze(process, out RawImage snapshot, out Bitmap frozen, out area, out int vl, out int vt, process.IsEmpty || !_settings.AdvancedPositionPicker))
             {
                 Restore();
                 return false;
@@ -1915,6 +2047,7 @@ namespace AutomationTest.App
         {
             if (!ConfirmLoseChanges("creating a new script")) return;
             _script = new AutomationScript();
+            _category.SelectedItem = ActionCategory.Mouse; // a new script starts the editor on Mouse again
             _collapsed.Clear();
             _currentPath = null;
             RefreshList();
@@ -1985,6 +2118,7 @@ namespace AutomationTest.App
         {
             Text = "Automation Test - " + (_currentPath == null ? "(unsaved)" : Path.GetFileName(_currentPath));
             _saveAs.Visible = _currentPath != null; // Save As only makes sense once there is a file to copy from
+            if (_startStop != null && _startStop.Owner != null) CenterRunButtons(_startStop.Owner);
         }
 
         // ---------------------------------------------------------------- recording
@@ -2000,9 +2134,11 @@ namespace AutomationTest.App
         {
             // Where the recorded actions go: decided now, from the selection (none selected = the end of the list).
             _recordTarget = SelectedRows();
-            HotKeyNative.UnregisterHotKey(Handle, HotKeyToggleId);
-            HotKeyNative.UnregisterHotKey(Handle, HotKeyRecordId); // F7 is watched by the recorder itself while recording
-            _recorder.AllEvents = _allEvents.Checked;
+            SetToggleHotKey(false); // the Record key is watched by the recorder itself while recording
+            _recorder.AllEvents = _settings.RecordAllEvent;
+            _recorder.RecordKey = _settings.RecordCode;
+            // The program's own shortcut keys are not part of what is recorded.
+            _recorder.IgnoredKeys = new HashSet<int> { _settings.StartCode, _settings.StartSelectedCode, _settings.PickCode };
             if (!_recorder.Start(() => BeginInvoke((Action)StopRecording)))
             {
                 SetToggleHotKey(true);
@@ -2012,7 +2148,7 @@ namespace AutomationTest.App
             _recording = true;
             ApplyBusyState();
             HideToTray("recording"); // get out of the way of the programs being recorded
-            SetStatus("Recording... click, scroll and type in your programs; press F7 to finish (the program is hidden; double-click its icon in the notification area to show it).");
+            SetStatus("Recording... click, scroll and type in your programs; press " + _settings.Record + " to finish (the program is hidden; double-click its icon in the notification area to show it).");
         }
 
         private void StopRecording()
@@ -2088,13 +2224,21 @@ namespace AutomationTest.App
             else if (LicenseAllowsWork()) _ = StartAsync();
         }
 
+        /// <summary>The Start Selected key (and button): starts the selected actions, or stops the run that is going on.</summary>
+        private void ToggleRunSelected()
+        {
+            if (_recording) return;
+            if (_running) _cts?.Cancel();
+            else StartSelected();
+        }
+
         private async Task StartAsync()
         {
             if (_running) return;
             if (_script.Actions.Count == 0) { SetStatus("Add at least one action first."); return; }
 
             var snapshot = _script.Clone();
-            await RunAsync((runner, token) => runner.Run(snapshot, token));
+            await RunAsync((runner, token) => runner.Run(snapshot, token), RunKind.All);
         }
 
         /// <summary>
@@ -2115,19 +2259,30 @@ namespace AutomationTest.App
             Dictionary<string, object> values = null;
             if (plan.Needs.Count > 0)
             {
-                using (var form = new VariableInputForm(plan.Needs))
+                SetToggleHotKey(false); // a shortcut pressed while the dialog is open must not start anything else
+                try
                 {
-                    if (form.ShowDialog(this) != DialogResult.OK) return;
-                    values = form.Values;
+                    using (var form = new VariableInputForm(plan.Needs))
+                    {
+                        if (form.ShowDialog(this) != DialogResult.OK) return;
+                        values = form.Values;
+                    }
+                }
+                finally
+                {
+                    SetToggleHotKey(true);
                 }
             }
 
-            var nodes = plan.RunNodes.Select(n => n.Clone()).ToList();
-            await RunAsync((runner, token) => runner.Run(nodes, values, token));
+            // The actions chosen by hand run even when they are disabled (choosing them is a clear request); what is inside them
+            // keeps its own state, so a disabled action inside a chosen Loop is still skipped.
+            var chosen = new HashSet<ActionNode>(rows.Select(r => r.Node));
+            var nodes = plan.RunNodes.Select(n => { var copy = n.Clone(); if (chosen.Contains(n)) copy.Disabled = false; return copy; }).ToList();
+            await RunAsync((runner, token) => runner.Run(nodes, values, token), RunKind.Selected);
         }
 
         /// <summary>Runs something on the script runner in the background with the status messages, locking the window meanwhile.</summary>
-        private async Task RunAsync(Action<ScriptRunner, CancellationToken> run)
+        private async Task RunAsync(Action<ScriptRunner, CancellationToken> run, RunKind kind)
         {
             if (_running) return;
             _cts = new CancellationTokenSource();
@@ -2141,6 +2296,7 @@ namespace AutomationTest.App
             var notes = new List<string>();
             runner.Message += text => { lock (notes) notes.Add(text); PostStatus(text); };
 
+            _runKind = kind;
             SetRunning(true);
             try
             {
@@ -2173,16 +2329,19 @@ namespace AutomationTest.App
             bool busy = _running || _recording;
             foreach (var item in new ToolStripItem[] { _btnNew, _btnOpen, _btnSave, _saveAs })
                 item.Enabled = !busy;
-            _startStop.Enabled = !_recording;
+            bool runAll = _running && _runKind == RunKind.All, runSelected = _running && _runKind == RunKind.Selected;
+            // While a run goes on, the button that started it is the Stop button and the other one waits.
+            _startStop.Enabled = !_recording && (!_running || runAll);
             _record.Enabled = !_running;
-            _allEventsHost.Enabled = !busy;
-            _advPickHost.Enabled = !busy;
+            _settingsButton.Enabled = !busy;
             _license.Enabled = !busy;
-            // Start / Record turn red while they are going on (Start shows a square, Stop).
-            if (_running) SetIcon(_startStop, "", "■", "Stop (F6)");
-            else SetIcon(_startStop, "", "▶", "Start (F6)");
-            if (_recording) SetIcon(_record, "", "●", "Stop recording (F7)");
-            else SetIcon(_record, "", "●", "Record (F7): your mouse clicks, wheel and keys become actions");
+            // Start / Start Selected / Record turn red while they are going on (Start shows a square, Stop).
+            if (runAll) SetIcon(_startStop, "", "■", "Stop (" + _settings.Start + ")");
+            else SetIcon(_startStop, "", "▶", "Start (" + _settings.Start + ")");
+            if (runSelected) SetIcon(_startSelected, "", "■", "Stop (" + _settings.StartSelected + ")");
+            else SetIcon(_startSelected, "", "▶▶", "Start Selected (" + _settings.StartSelected + "): run only the selected actions");
+            if (_recording) SetIcon(_record, "", "●", "Stop recording (" + _settings.Record + ")");
+            else SetIcon(_record, "", "●", "Record (" + _settings.Record + "): your mouse clicks, wheel and keys become actions");
             _editArea.Enabled = !busy;
             _list.Enabled = !busy;
             UpdateButtonStates();
@@ -2195,14 +2354,15 @@ namespace AutomationTest.App
             ApplyBusyState();
             if (running)
             {
-                // While a script runs, F6 and Esc stop it through a keyboard hook that ignores keys the script sends
-                // itself (and does not swallow them), so a script can still send F6, F7 or Esc to another program.
+                // While a script runs, the Start and Start Selected keys and Esc stop it through a keyboard hook that ignores keys
+                // the script sends itself (and does not swallow them), so a script can still send those keys to another program.
                 SetToggleHotKey(false);
-                if (!_stopHook.Start(() => _cts?.Cancel()))
+                if (!_stopHook.Start(() => _cts?.Cancel(), _settings.StartCode, _settings.StartSelectedCode))
                 {
                     // Fallback if the hook cannot be installed: plain global hot keys (they also swallow the keys).
                     _hotKeyFallback = true;
-                    HotKeyNative.RegisterHotKey(Handle, HotKeyToggleId, HotKeyNative.MOD_NOREPEAT, (uint)Keys.F6);
+                    HotKeyNative.RegisterHotKey(Handle, HotKeyToggleId, HotKeyNative.MOD_NOREPEAT, (uint)_settings.StartCode);
+                    HotKeyNative.RegisterHotKey(Handle, HotKeyStartSelectedId, HotKeyNative.MOD_NOREPEAT, (uint)_settings.StartSelectedCode);
                     HotKeyNative.RegisterHotKey(Handle, HotKeyEscapeId, HotKeyNative.MOD_NOREPEAT, (uint)Keys.Escape);
                 }
                 HideToTray("running");
@@ -2214,8 +2374,11 @@ namespace AutomationTest.App
                 {
                     HotKeyNative.UnregisterHotKey(Handle, HotKeyEscapeId);
                     HotKeyNative.UnregisterHotKey(Handle, HotKeyToggleId);
+                    HotKeyNative.UnregisterHotKey(Handle, HotKeyStartSelectedId);
                     _hotKeyFallback = false;
                 }
+                _runKind = RunKind.None;
+                ApplyBusyState();
                 SetToggleHotKey(true);
                 ShowFromTray();
             }
@@ -2234,32 +2397,82 @@ namespace AutomationTest.App
         // ---------------------------------------------------------------- global hot keys
 
         /// <summary>
-        /// Registers or releases the global F6 (start/stop) and F7 (record) keys. They are released while the Key box records
-        /// a key, while a script runs (a hook watches F6/Esc then) and while recording (the recorder watches F7).
+        /// Registers or releases the global Start, Start Selected and Record keys. They are released while the Key box records
+        /// a key, while a script runs (a hook watches the Start keys and Esc then) and while recording (the recorder watches the Record key).
         /// </summary>
         /// <param name="report">Say in the status bar when a key is taken by another program (only at start-up, so it never hides a run's result).</param>
         private void SetToggleHotKey(bool enabled, bool report = false)
         {
             if (!IsHandleCreated) return;
             HotKeyNative.UnregisterHotKey(Handle, HotKeyToggleId);
+            HotKeyNative.UnregisterHotKey(Handle, HotKeyStartSelectedId);
             HotKeyNative.UnregisterHotKey(Handle, HotKeyRecordId);
             if (!enabled || _running || _recording) return;
-            if (!HotKeyNative.RegisterHotKey(Handle, HotKeyToggleId, HotKeyNative.MOD_NOREPEAT, (uint)Keys.F6) && report)
-                SetStatus("F6 is used by another program; use the Start button.");
-            if (!HotKeyNative.RegisterHotKey(Handle, HotKeyRecordId, HotKeyNative.MOD_NOREPEAT, (uint)Keys.F7) && report)
-                SetStatus("F7 is used by another program; use the Record button.");
+            var taken = new List<string>();
+            if (!HotKeyNative.RegisterHotKey(Handle, HotKeyToggleId, HotKeyNative.MOD_NOREPEAT, (uint)_settings.StartCode)) taken.Add(_settings.Start + " (Start)");
+            if (!HotKeyNative.RegisterHotKey(Handle, HotKeyStartSelectedId, HotKeyNative.MOD_NOREPEAT, (uint)_settings.StartSelectedCode)) taken.Add(_settings.StartSelected + " (Start Selected)");
+            if (!HotKeyNative.RegisterHotKey(Handle, HotKeyRecordId, HotKeyNative.MOD_NOREPEAT, (uint)_settings.RecordCode)) taken.Add(_settings.Record + " (Record)");
+            if (taken.Count > 0 && report)
+                SetStatus("Used by another program: " + string.Join(", ", taken) + ". Use the buttons, or choose other keys in Settings.");
         }
 
         protected override void OnShown(EventArgs e)
         {
             base.OnShown(e);
-            FitDetailsColumn();
+            // Without saved widths (the first run) Details takes the room that is left. With saved widths the columns stay exactly
+            // as the user left them: opening the program is not a resize, so nothing is fitted until the window is resized.
+            if (_columnsRestored) _lastListWidth = _list.ClientSize.Width;
+            else FitDetailsColumn(true);
+            _columnsReady = true;
+            if (_startStop.Owner != null) CenterRunButtons(_startStop.Owner); // item widths are known only once shown
         }
 
         protected override void OnHandleCreated(EventArgs e)
         {
             base.OnHandleCreated(e);
+            if (SettingsEnabled) LoadSettings(); // before the keys are registered
+            ApplyBusyState();                    // tooltips with the keys
             SetToggleHotKey(true, true);
+        }
+
+        // ---------------------------------------------------------------- settings (Setting.ini)
+
+        /// <summary>Reads the settings; the first time, the defaults are written to Setting.ini so they can be seen and edited.</summary>
+        private void LoadSettings()
+        {
+            var ini = IniFile.Load(IniFile.DefaultPath);
+            bool first = AppSettings.IsMissing(ini);
+            _settings = AppSettings.Load(ini);
+            if (first) SaveSettings();
+        }
+
+        /// <summary>Writes the settings into a freshly read Setting.ini, so the other entries (window, license state) stay as they are.</summary>
+        private void SaveSettings()
+        {
+            if (!SettingsEnabled) return;
+            var ini = IniFile.Load(IniFile.DefaultPath);
+            _settings.Save(ini);
+            try { ini.Save(IniFile.DefaultPath); }
+            catch (IOException) { SetStatus("The settings could not be saved next to the program; they apply until it is closed."); }
+        }
+
+        private void ShowSettings()
+        {
+            SetToggleHotKey(false); // a key pressed in the dialog must not start anything
+            try
+            {
+                using (var form = new SettingsForm(_settings))
+                {
+                    if (form.ShowDialog(this) != DialogResult.OK) return;
+                    _settings = form.Result;
+                    SaveSettings();
+                }
+            }
+            finally
+            {
+                SetToggleHotKey(true, true);
+                ApplyBusyState(); // tooltips with the new keys
+            }
         }
 
         protected override void OnHandleDestroyed(EventArgs e)
@@ -2269,6 +2482,7 @@ namespace AutomationTest.App
             _recorder.Dispose();
             HotKeyNative.UnregisterHotKey(Handle, HotKeyToggleId);
             HotKeyNative.UnregisterHotKey(Handle, HotKeyEscapeId);
+            HotKeyNative.UnregisterHotKey(Handle, HotKeyStartSelectedId);
             HotKeyNative.UnregisterHotKey(Handle, HotKeyRecordId);
             base.OnHandleDestroyed(e);
         }
@@ -2279,6 +2493,7 @@ namespace AutomationTest.App
             {
                 int id = m.WParam.ToInt32();
                 if (id == HotKeyToggleId) ToggleRun();
+                else if (id == HotKeyStartSelectedId) ToggleRunSelected();
                 else if (id == HotKeyRecordId) ToggleRecord();
                 else if (id == HotKeyEscapeId && _running) _cts?.Cancel();
                 else if (id == HotKeyFreezeId) _freezeSignal = 1;
@@ -2335,7 +2550,7 @@ namespace AutomationTest.App
 
         protected override void OnLoad(EventArgs e)
         {
-            if (SettingsEnabled) ApplyWindowSettings();
+            if (SettingsEnabled) { ApplyWindowSettings(); _columnsRestored = ApplyColumnSettings(); }
             base.OnLoad(e);
         }
 
@@ -2353,6 +2568,27 @@ namespace AutomationTest.App
             if (ini.Get("Window", "Maximized") == "1") WindowState = FormWindowState.Maximized;
         }
 
+        private const int DetailsColumn = 3;
+        private const int MinColumnWidth = 65; // the narrowest any column can be, by hand or by the automatic fit
+
+        /// <summary>
+        /// Puts the columns back at the widths the user left them at (Setting.ini, section Columns). A saved width below the minimum
+        /// becomes the minimum; any other width is used as saved. True when there were saved widths.
+        /// </summary>
+        private bool ApplyColumnSettings()
+        {
+            var ini = IniFile.Load(IniFile.DefaultPath);
+            bool any = false;
+            foreach (ColumnHeader column in _list.Columns)
+            {
+                int? width = ini.GetInt("Columns", column.Text);
+                if (!width.HasValue) continue;
+                column.Width = Math.Max(MinColumnWidth, width.Value);
+                any = true;
+            }
+            return any;
+        }
+
         private void SaveWindowSettings()
         {
             var bounds = WindowState == FormWindowState.Normal ? Bounds : RestoreBounds;
@@ -2363,6 +2599,10 @@ namespace AutomationTest.App
             ini.Set("Window", "Width", bounds.Width);
             ini.Set("Window", "Height", bounds.Height);
             ini.Set("Window", "Maximized", WindowState == FormWindowState.Maximized ? "1" : "0");
+            // The widths of the columns, as the user left them.
+            foreach (ColumnHeader column in _list.Columns)
+                ini.Set("Columns", column.Text, column.Width);
+            ini.Remove("Columns", "Layout"); // an older version kept a layout number here
             try { ini.Save(IniFile.DefaultPath); }
             catch (IOException) { } // a read-only folder just means the window is not remembered
         }
@@ -2410,20 +2650,19 @@ namespace AutomationTest.App
         }
 
         /// <summary>An icon button for the toolbar (Segoe MDL2 Assets when installed, else a plain symbol).</summary>
-        private ToolStripButton MakeToolIcon(string mdl2Glyph, string fallbackGlyph, string tip, EventHandler onClick)
+        private IconButton MakeToolIcon(string mdl2Glyph, string fallbackGlyph, string tip, EventHandler onClick)
         {
             bool mdl2 = HasMdl2;
-            var button = new ToolStripButton(mdl2 ? mdl2Glyph : fallbackGlyph)
+            var button = new IconButton(mdl2 ? mdl2Glyph : fallbackGlyph)
             {
                 DisplayStyle = ToolStripItemDisplayStyle.Text,
                 Font = new Font(mdl2 ? "Segoe MDL2 Assets" : "Segoe UI Symbol", 13f, FontStyle.Bold),
-                ForeColor = Color.Black,
                 ToolTipText = tip,
                 AccessibleName = tip,
                 Padding = new Padding(4, 2, 4, 2) // the button grows with its glyph, so it fits at any display scaling
             };
             // A ToolStrip button does not take focus, so the field being edited would keep it: move focus away first.
-            // That commits typed numbers (Validating) and ends key recording (Leave re-registers the F6 hot key).
+            // That commits typed numbers (Validating) and ends key recording (Leave re-registers the hot keys).
             button.Click += (s, e) =>
             {
                 if (!_running) _list.Focus();
@@ -2438,17 +2677,20 @@ namespace AutomationTest.App
             bool any = SelectedRows().Count > 0;
             bool busy = _running || _recording;
             _btnAdd.Enabled = !busy;
-            foreach (var button in new[] { _btnDelete, _btnIn, _btnOut, _btnUp, _btnDown })
+            foreach (var button in new[] { _btnDelete, _btnIn, _btnOut, _btnUp, _btnTop, _btnDown, _btnEnd })
                 button.Enabled = any && !busy;
             _btnUpdate.Enabled = SingleSelectedRow() != null && !busy; // Update changes one action, so exactly one must be selected
             // Collapse All / Expand All only mean something when some action has actions inside it.
-            _startSelected.Enabled = any && !busy;
+            _startSelected.Enabled = _running ? _runKind == RunKind.Selected : any && !_recording; // while its own run goes on it is the Stop button
             bool branches = HasBranches(_script.Actions);
             _collapseAll.Enabled = _expandAll.Enabled = branches && !busy;
-            // Strong black when usable, pale grey when not, so the two states are easy to tell apart.
-            foreach (var button in new[] { _btnAdd, _btnUpdate, _btnDelete, _btnIn, _btnOut, _btnUp, _btnDown,
-                                           _btnNew, _btnOpen, _btnSave, _saveAs, _collapseAll, _expandAll, _startStop, _startSelected, _record, _license })
-                button.ForeColor = !button.Enabled ? Color.FromArgb(185, 185, 185) : (button == _startStop && _running) || (button == _record && _recording) ? Color.FromArgb(220, 38, 38) : Color.Black;
+            // Each icon keeps its own colour; pale grey when it cannot be used, red when it is the Stop of what is going on.
+            foreach (var button in new[] { _btnAdd, _btnUpdate, _btnDelete, _btnIn, _btnOut, _btnUp, _btnTop, _btnDown, _btnEnd,
+                                           _btnNew, _btnOpen, _btnSave, _saveAs, _collapseAll, _expandAll, _startStop, _startSelected, _record, _license, _settingsButton })
+            {
+                button.Highlight = (button == _startStop && _running && _runKind == RunKind.All) || (button == _startSelected && _running && _runKind == RunKind.Selected) || (button == _record && _recording);
+                button.Invalidate();
+            }
         }
 
         private static bool HasBranches(List<ActionNode> nodes)

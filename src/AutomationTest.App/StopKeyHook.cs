@@ -6,8 +6,8 @@ using System.Runtime.InteropServices;
 namespace AutomationTest.App
 {
     /// <summary>
-    /// Watches F6 and Esc with a low-level keyboard hook while a script runs. Unlike RegisterHotKey it does not swallow
-    /// the keys, and it ignores keys the script itself injects, so a script can still send F6 or Esc to another program.
+    /// Watches the Start and Start Selected keys and Esc with a low-level keyboard hook while a script runs. Unlike RegisterHotKey it does not swallow
+    /// the keys, and it ignores keys the script itself injects, so a script can still send those keys to another program.
     /// Must be created and used on a thread with a message loop (the UI thread).
     /// </summary>
     internal sealed class StopKeyHook : IDisposable
@@ -18,7 +18,6 @@ namespace AutomationTest.App
         private const int WM_SYSKEYDOWN = 0x0104;
         private const int WM_SYSKEYUP = 0x0105;
         private const uint LLKHF_INJECTED = 0x10;
-        private const int VK_F6 = 0x75;
         private const int VK_ESCAPE = 0x1B;
 
         private delegate IntPtr HookProc(int nCode, IntPtr wParam, IntPtr lParam);
@@ -52,6 +51,7 @@ namespace AutomationTest.App
         private readonly HashSet<int> _down = new HashSet<int>();
         private IntPtr _hook;
         private Action _onStop;
+        private HashSet<int> _stopKeys = new HashSet<int> { VK_ESCAPE };
 
         public StopKeyHook()
         {
@@ -60,14 +60,15 @@ namespace AutomationTest.App
 
         public bool IsActive { get { return _hook != IntPtr.Zero; } }
 
-        /// <summary>Starts watching; returns false if the hook could not be installed.</summary>
-        public bool Start(Action onStop)
+        /// <summary>Starts watching for Esc and the given keys; returns false if the hook could not be installed.</summary>
+        public bool Start(Action onStop, params int[] stopKeys)
         {
             if (IsActive) return true;
             _onStop = onStop;
+            _stopKeys = new HashSet<int>(stopKeys) { VK_ESCAPE };
             _down.Clear();
             // A key still held from the press that started the script must not count as a new press.
-            foreach (int vk in new[] { VK_F6, VK_ESCAPE })
+            foreach (int vk in _stopKeys)
                 if ((GetAsyncKeyState(vk) & 0x8000) != 0) _down.Add(vk);
 
             string module = Process.GetCurrentProcess().MainModule.ModuleName;
@@ -89,7 +90,7 @@ namespace AutomationTest.App
                 var data = (KBDLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(KBDLLHOOKSTRUCT));
                 int vk = (int)data.vkCode;
                 bool injected = (data.flags & LLKHF_INJECTED) != 0;
-                if (!injected && (vk == VK_F6 || vk == VK_ESCAPE))
+                if (!injected && _stopKeys.Contains(vk))
                 {
                     int msg = wParam.ToInt32();
                     if (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN)

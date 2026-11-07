@@ -13,7 +13,7 @@ namespace AutomationTest.Core.Model
     public enum ActionCategory
     {
         Control,
-        Command,
+        Utilities,
         Mouse,
         Keyboard
     }
@@ -39,7 +39,9 @@ namespace AutomationTest.Core.Model
 
     public enum CommandKind
     {
-        Open
+        Open,
+        /// <summary>Sends a harmless input event and asks Windows to stay awake, so a long run is not taken for being idle (lock, screen off, sleep).</summary>
+        Active
     }
 
     public enum ControlKind
