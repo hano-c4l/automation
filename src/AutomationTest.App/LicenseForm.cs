@@ -21,7 +21,7 @@ namespace AutomationTest.App
 
         public LicenseForm(bool gate, LicenseResult current)
         {
-            Text = gate ? "AutomationTest - License required" : "AutomationTest - License";
+            Text = gate ? "Automation Test - License required" : "Automation Test - License";
             Icon = AppIcon.Get() ?? Icon;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = MinimizeBox = false;

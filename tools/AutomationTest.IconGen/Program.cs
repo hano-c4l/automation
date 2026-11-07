@@ -5,9 +5,11 @@ using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.IO;
 
-// Draws the AutomationTest icon (a gear with a check mark: automation plus test) at several sizes and writes app.ico.
+// Draws the Automation Test icon (circular arrows round a gear with a check mark: automation plus test) at several sizes and writes app.ico.
 internal static class Program
 {
+    // Line-art icon in a cyan -> blue -> violet -> magenta gradient: two circular arrows (an endless loop, "automation") around
+    // a gear whose hub holds a check mark ("test"). The background is transparent.
     private static Bitmap Render(int size)
     {
         var bmp = new Bitmap(size, size, PixelFormat.Format32bppArgb);
@@ -17,50 +19,76 @@ internal static class Program
             g.PixelOffsetMode = PixelOffsetMode.HighQuality;
             g.Clear(Color.Transparent);
             float s = size / 256f;
+            float thick = size <= 32 ? 1.7f : size <= 64 ? 1.25f : 1f; // small sizes need bolder lines to stay readable
 
-            // Tile: deep indigo to violet
-            float margin = 8 * s, radius = 52 * s;
-            var tile = new RectangleF(margin, margin, size - 2 * margin, size - 2 * margin);
-            using (var path = Rounded(tile, radius))
-            using (var fill = new LinearGradientBrush(tile, Color.FromArgb(255, 49, 46, 129), Color.FromArgb(255, 124, 58, 237), 55f))
-                g.FillPath(fill, path);
+            var area = new RectangleF(0, 0, size, size);
+            using (var brush = new LinearGradientBrush(area, Color.FromArgb(6, 182, 212), Color.FromArgb(217, 70, 239), 50f))
+            {
+                brush.InterpolationColors = new ColorBlend
+                {
+                    Positions = new[] { 0f, 0.38f, 0.7f, 1f },
+                    Colors = new[] { Color.FromArgb(6, 200, 220), Color.FromArgb(59, 130, 246), Color.FromArgb(139, 92, 246), Color.FromArgb(217, 70, 239) }
+                };
+                Pen Line(float width) { return new Pen(brush, Math.Max(1.2f, width * s * thick)) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round }; }
 
-            // Gear (automation): white, eight teeth, with a hole
-            float cx = 108 * s, cy = 108 * s;
-            using (var gear = Gear(cx, cy, 88 * s, 68 * s, 8, 0.36f, 30 * s))
-            using (var body = new SolidBrush(Color.White))
-                g.FillPath(body, gear);
+                float cx = size / 2f, cy = size / 2f;
 
-            // Check mark badge (test): green disc with a white tick, ringed in the tile colour so it stands out from the gear
-            float bx = 176 * s, by = 176 * s, br = 54 * s;
-            using (var ring = new SolidBrush(Color.FromArgb(255, 67, 56, 202)))
-                g.FillEllipse(ring, bx - br - 9 * s, by - br - 9 * s, 2 * (br + 9 * s), 2 * (br + 9 * s));
-            using (var green = new SolidBrush(Color.FromArgb(255, 34, 197, 94)))
-                g.FillEllipse(green, bx - br, by - br, 2 * br, 2 * br);
-            using (var tick = new Pen(Color.White, Math.Max(1.5f, 14 * s)) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round })
-                g.DrawLines(tick, new[] { new PointF(bx - 28 * s, by + 2 * s), new PointF(bx - 7 * s, by + 23 * s), new PointF(bx + 29 * s, by - 20 * s) });
+                // Two circular arrows, each ending in an arrow head that points the way round
+                using (var pen = Line(12))
+                {
+                    float r = 112 * s;
+                    DrawArrowArc(g, pen, cx, cy, r, 198, 128, 34 * s * (thick > 1 ? 0.8f : 1f));
+                    DrawArrowArc(g, pen, cx, cy, r, 18, 128, 34 * s * (thick > 1 ? 0.8f : 1f));
+                }
+
+                // Gear: rounded outline with eight teeth
+                using (var pen = Line(11))
+                using (var gear = Gear(cx, cy, 68 * s, 53 * s, 8, 0.30f))
+                    g.DrawPath(pen, gear);
+
+                // Hub with the check mark
+                using (var pen = Line(11))
+                {
+                    float hub = 31 * s;
+                    if (size > 32) g.DrawEllipse(pen, cx - hub, cy - hub, 2 * hub, 2 * hub);
+                    g.DrawLines(pen, new[] { new PointF(cx - 15 * s, cy + 1 * s), new PointF(cx - 4 * s, cy + 13 * s), new PointF(cx + 17 * s, cy - 13 * s) });
+                }
+            }
         }
         return bmp;
     }
 
-    /// <summary>A gear outline with a round hole; <paramref name="toothShare"/> is the part of each tooth pitch taken by the tooth top.</summary>
-    private static GraphicsPath Gear(float cx, float cy, float outer, float root, int teeth, float toothShare, float hole)
+    /// <summary>An arc round (cx, cy) with an arrow head at its far end (clockwise); angles in degrees, GDI style (0 = right, 90 = down).</summary>
+    private static void DrawArrowArc(Graphics g, Pen pen, float cx, float cy, float r, float startDeg, float sweepDeg, float head)
     {
-        var path = new GraphicsPath(FillMode.Alternate);
+        g.DrawArc(pen, cx - r, cy - r, 2 * r, 2 * r, startDeg, sweepDeg);
+        double end = (startDeg + sweepDeg) * Math.PI / 180.0;
+        var tip = new PointF(cx + (float)(r * Math.Cos(end)), cy + (float)(r * Math.Sin(end)));
+        double tangent = end + Math.PI / 2; // clockwise direction of travel
+        foreach (double spread in new[] { 0.72, -0.72 })
+        {
+            double back = tangent + Math.PI + spread;
+            g.DrawLine(pen, tip, new PointF(tip.X + (float)(head * Math.Cos(back)), tip.Y + (float)(head * Math.Sin(back))));
+        }
+    }
+
+    /// <summary>A gear outline: <paramref name="toothShare"/> is the part of each tooth pitch taken by the tooth top.</summary>
+    private static GraphicsPath Gear(float cx, float cy, float outer, float root, int teeth, float toothShare)
+    {
+        var path = new GraphicsPath();
         var points = new List<PointF>();
         double pitch = 2 * Math.PI / teeth;
         for (int i = 0; i < teeth; i++)
         {
-            double a = i * pitch;
-            double top = pitch * toothShare / 2;       // half width of the tooth top
-            double foot = pitch * (toothShare / 2 + 0.12); // the tooth is wider at its foot
-            points.Add(Polar(cx, cy, root, a - foot - 0.0));
+            double a = i * pitch - Math.PI / 2;
+            double top = pitch * toothShare / 2;
+            double foot = pitch * (toothShare / 2 + 0.14);
+            points.Add(Polar(cx, cy, root, a - foot));
             points.Add(Polar(cx, cy, outer, a - top));
             points.Add(Polar(cx, cy, outer, a + top));
             points.Add(Polar(cx, cy, root, a + foot));
         }
         path.AddPolygon(points.ToArray());
-        path.AddEllipse(cx - hole, cy - hole, 2 * hole, 2 * hole);
         return path;
     }
 

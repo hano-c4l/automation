@@ -1,4 +1,4 @@
-# AutomationTest – Project Overview
+# Automation Test – Project Overview
 
 Tài liệu này ghi lại yêu cầu, quyết định kỹ thuật và kế hoạch. Tình trạng hiện tại xem `docs/STATUS.md`.
 Quy ước chung (git, ngôn ngữ, subagent) xem `CLAUDE.md` ở thư mục gốc.

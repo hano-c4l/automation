@@ -64,7 +64,7 @@ namespace AutomationTest.Core.Licensing
         public static void Unpack(string text, out byte[] payload, out byte[] signature)
         {
             var lines = (text ?? "").Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-            if (lines.Length < 3 || lines[0].Trim() != Header) throw new FormatException("This is not an AutomationTest license file.");
+            if (lines.Length < 3 || lines[0].Trim() != Header) throw new FormatException("This is not an Automation Test license file.");
             // Pasted text may have been wrapped by a chat app or an e-mail: join everything after the header and ignore
             // all white space. The signature (64 bytes) is always the last 88 base64 characters.
             var body = new StringBuilder();

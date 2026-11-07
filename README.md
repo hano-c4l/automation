@@ -1,4 +1,4 @@
-# AutomationTest
+# Automation Test
 
 Công cụ automation / autoclick cho Windows (10 1903+ và 11). Chạy trên .NET Framework 4.8 (có sẵn trong Windows), người dùng cuối không phải cài thêm gì.
 

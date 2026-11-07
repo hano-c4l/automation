@@ -49,7 +49,7 @@ namespace AutomationTest.Core.Licensing
 
             byte[] payload, signature;
             try { LicenseCodec.Unpack(fileText, out payload, out signature); }
-            catch (FormatException) { return Fail(LicenseStatus.Malformed, "The license is damaged or is not an AutomationTest license."); }
+            catch (FormatException) { return Fail(LicenseStatus.Malformed, "The license is damaged or is not an Automation Test license."); }
 
             bool signedOk;
             try

@@ -14,7 +14,7 @@ namespace AutomationTest.KeyGen
     /// </summary>
     internal static class Program
     {
-        private const string Usage = @"AutomationTest KeyGen
+        private const string Usage = @"Automation Test KeyGen
 
   keygen genkey --out <private.key>
       Creates a new signing key. Prints the public key to paste into LicenseManager.PublicKey in AutomationTest.App.
