@@ -1,10 +1,12 @@
 @echo off
 setlocal
-rem Creates keys\license.lic for a user from the request key their program shows.
-rem Needs the signing key (keys\license-private.key, never commit it) and the built KeyGen tool.
-rem If KeyGen is somewhere else, update the KEYGEN path below.
+rem Creates license.lic (in this folder) for a user from the request key their program shows.
+rem Needs the signing key (license-private.key in this folder, never commit it) and the built KeyGen tool.
+rem KeyGen is looked for next to this file first (the Release\KeyGen folder), then in the build output of the source tree.
+rem If it is somewhere else, update the KEYGEN path below.
 
-set "KEYGEN=%~dp0..\tools\Automation.KeyGen\bin\Release\net48\Automation.KeyGen.exe"
+set "KEYGEN=%~dp0AutomationTest.KeyGen.exe"
+if not exist "%KEYGEN%" set "KEYGEN=%~dp0..\tools\AutomationTest.KeyGen\bin\Release\net48\AutomationTest.KeyGen.exe"
 set "PRIVATE=%~dp0license-private.key"
 set "OUT=%~dp0license.lic"
 
