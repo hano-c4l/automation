@@ -22,7 +22,7 @@ dotnet build "tools\AutomationTest.KeyGen\AutomationTest.KeyGen.csproj" -c Relea
 if errorlevel 1 goto :failed
 
 copy /y "keys\make-license.bat" "%OUT%\KeyGen\make-license.bat" >nul
-del /q "%OUT%\AutomationTest\*.pdb" "%OUT%\KeyGen\*.pdb" 2>nul
+del /q "%OUT%\AutomationTest\*.pdb" "%OUT%\KeyGen\*.pdb" "%OUT%\AutomationTest\*.deps.json" "%OUT%\KeyGen\*.deps.json" 2>nul
 
 echo.
 echo Done: %OUT%
