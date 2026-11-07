@@ -141,6 +141,9 @@ namespace AutomationTest.Core.Model
     {
         public CommandKind Kind { get; set; }
 
+        /// <summary>How long to wait after the action before the next one starts (milliseconds).</summary>
+        [DataMember(Order = 3, EmitDefaultValue = false)] public long DelayMs { get; set; }
+
         /// <summary>Open: path of the program or document to open.</summary>
         [DataMember(Order = 2)] public string Value { get; set; } = "";
 
@@ -165,6 +168,7 @@ namespace AutomationTest.Core.Model
         internal void Normalize()
         {
             if (Value == null) Value = "";
+            if (DelayMs < 0) DelayMs = 0;
         }
     }
 
@@ -449,6 +453,24 @@ namespace AutomationTest.Core.Model
         /// <summary>Optional alias shown in the action list; empty means the action type is shown.</summary>
         [DataMember(Order = 0, EmitDefaultValue = false)] public string Name { get; set; }
 
+        /// <summary>
+        /// True: this action is skipped when the script runs, together with everything inside it. The actions inside keep their own
+        /// value, so enabling the parent again brings back exactly what was enabled before. (Stored as "disabled" so that files
+        /// written before this existed load as enabled.)
+        /// </summary>
+        public bool Disabled { get; set; }
+
+        /// <summary>
+        /// "State" in the file: "Enabled" or "Disabled". It is written for every action. A file that has no State (written before it
+        /// existed) loads as Enabled, so such files keep working and gain the value the next time they are saved.
+        /// </summary>
+        [DataMember(Name = "State", Order = 12)]
+        private string StateName
+        {
+            get { return Disabled ? "Disabled" : "Enabled"; }
+            set { Disabled = string.Equals(value, "Disabled", StringComparison.OrdinalIgnoreCase); }
+        }
+
         public ActionCategory Category { get; set; }
         public ControlKind Control { get; set; }
 
@@ -485,7 +507,7 @@ namespace AutomationTest.Core.Model
 
         public static ActionNode NewCommand(CommandSettings settings)
         {
-            return new ActionNode { Category = ActionCategory.Command, Command = settings ?? new CommandSettings() };
+            return new ActionNode { Category = ActionCategory.Utilities, Command = settings ?? new CommandSettings() };
         }
 
         public static ActionNode NewLoop(LoopSettings settings)
@@ -531,7 +553,8 @@ namespace AutomationTest.Core.Model
         private string CategoryName
         {
             get { return Category.ToString(); }
-            set { Category = Parse(value, ActionCategory.Mouse); }
+            // Scripts saved while the category was still called "Command" hold the same data under the new name.
+            set { Category = string.Equals(value, "Command", StringComparison.OrdinalIgnoreCase) ? ActionCategory.Utilities : Parse(value, ActionCategory.Mouse); }
         }
 
         [DataMember(Name = "Control", Order = 2, EmitDefaultValue = false)]
@@ -599,7 +622,7 @@ namespace AutomationTest.Core.Model
 
             var mouse = Category == ActionCategory.Mouse ? (Mouse ?? new MouseSettings()) : null;
             var keyboard = Category == ActionCategory.Keyboard ? (Keyboard ?? new KeyboardSettings()) : null;
-            var command = Category == ActionCategory.Command ? (Command ?? new CommandSettings()) : null;
+            var command = Category == ActionCategory.Utilities ? (Command ?? new CommandSettings()) : null;
             var loop = Category == ActionCategory.Control && Control == ControlKind.Loop ? (Loop ?? new LoopSettings()) : null;
             var wait = Category == ActionCategory.Control && Control == ControlKind.Wait ? (Wait ?? new WaitSettings()) : null;
             var image = Category == ActionCategory.Control && Control == ControlKind.Image ? (Image ?? new ImageSettings()) : null;

@@ -130,7 +130,7 @@ Process is the program name without .exe (use the Pick button next to Process)."
         public static readonly HelpTopic Count = new HelpTopic("Times",
 @"How many times the actions inside the Loop run (Type = Times).
 
-  0        = forever: repeat until you stop the script (F6 or Esc)
+  0        = forever: repeat until you stop the script (the Start key or Esc)
   1, 2...  repeat that many times");
 
         public static readonly HelpTopic Anchor = new HelpTopic("Anchor",

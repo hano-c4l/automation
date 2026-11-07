@@ -30,7 +30,9 @@ namespace AutomationTest.Core.Runner
     /// - every selected action runs as it is, wherever it sits (an action inside a Loop or Wait runs once, without the Loop or Wait);
     /// - a selected Loop, Wait, Image or Condition runs together with everything inside it;
     /// - an action whose parent is selected too is part of the parent and is not run a second time;
-    /// - a selected Case or Else runs its actions, without testing its condition.
+    /// - a selected Case or Else runs its actions, without testing its condition;
+/// - a disabled action inside what runs is skipped as usual, but an action that is selected itself runs even if it is disabled
+///   (the caller enables the selected copies), because choosing it is an explicit request.
     /// </summary>
     public static class SelectionPlanner
     {
@@ -39,7 +41,7 @@ namespace AutomationTest.Core.Runner
             var chosen = new HashSet<ActionNode>(selected);
             var plan = new SelectionPlan();
             Collect(script.Actions, chosen, plan.RunNodes);
-            FindNeeds(script, plan);
+            FindNeeds(script, plan, chosen);
             return plan;
         }
 
@@ -61,17 +63,18 @@ namespace AutomationTest.Core.Runner
 
         // ---------------------------------------------------------------- variables
 
-        private static void FindNeeds(AutomationScript script, SelectionPlan plan)
+        private static void FindNeeds(AutomationScript script, SelectionPlan plan, HashSet<ActionNode> chosen)
         {
             var defined = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var needed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var node in plan.RunNodes) Walk(node, defined, needed, plan.Needs);
+            foreach (var node in plan.RunNodes) Walk(node, chosen.Contains(node), defined, needed, plan.Needs);
             foreach (var need in plan.Needs) Describe(script.Actions, need);
         }
 
         /// <summary>Goes through the actions in the order they run: reads come before the node's own definition.</summary>
-        private static void Walk(ActionNode node, HashSet<string> defined, HashSet<string> needed, List<VariableNeed> needs)
+        private static void Walk(ActionNode node, bool chosen, HashSet<string> defined, HashSet<string> needed, List<VariableNeed> needs)
         {
+            if (!chosen && node.Disabled) return; // a disabled action inside the selection does not run, so it reads and sets nothing
             foreach (string name in Reads(node))
             {
                 if (defined.Contains(name) || !needed.Add(name)) continue;
@@ -79,7 +82,7 @@ namespace AutomationTest.Core.Runner
             }
             string id = Defines(node);
             if (id != null) defined.Add(id);
-            foreach (var child in node.Children) Walk(child, defined, needed, needs);
+            foreach (var child in node.Children) Walk(child, false, defined, needed, needs);
         }
 
         private static IEnumerable<string> Reads(ActionNode node)
