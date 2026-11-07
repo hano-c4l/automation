@@ -77,6 +77,7 @@ namespace Automation.App
             using (var form = new Form
             {
                 Text = "Help - " + topic.Title,
+                Icon = AppIcon.Get() ?? owner?.Icon,
                 StartPosition = FormStartPosition.CenterParent,
                 ClientSize = new Size(560, 460),
                 MinimizeBox = false,

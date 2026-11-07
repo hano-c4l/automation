@@ -22,6 +22,7 @@ namespace Automation.App
         public LicenseForm(bool gate, LicenseResult current)
         {
             Text = gate ? "Automation - License required" : "Automation - License";
+            Icon = AppIcon.Get() ?? Icon;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = MinimizeBox = false;
             ShowInTaskbar = true;
@@ -35,6 +36,22 @@ namespace Automation.App
             // Sizes follow the font so the dialog looks right at any display scaling.
             int unit = Font.Height;
             int contentWidth = unit * 30;
+
+            // An unlimited license is final: nothing to request, paste or import, only the message.
+            if (current != null && current.IsValid && current.License != null && !current.License.ExpiresDate.HasValue)
+            {
+                _status.MaximumSize = new Size(contentWidth, 0);
+                _status.Text = "License registered: unlimited. " + current.Message;
+                _status.ForeColor = Color.DarkGreen;
+                var compact = new TableLayoutPanel { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, ColumnCount = 1, Dock = DockStyle.Fill };
+                _status.Margin = new Padding(0, 0, 0, 16);
+                _close.Anchor = AnchorStyles.Right;
+                compact.Controls.Add(_status);
+                compact.Controls.Add(_close);
+                Controls.Add(compact);
+                _close.Click += (s, e) => { DialogResult = DialogResult.Cancel; Close(); };
+                return;
+            }
             _status.MaximumSize = new Size(contentWidth, 0);
             _requestKey.Width = contentWidth - 70;
             _paste.Size = new Size(contentWidth, unit * 6);
