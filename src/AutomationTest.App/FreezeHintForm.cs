@@ -15,7 +15,7 @@ namespace AutomationTest.App
         public event Action FreezeClicked;
         public event Action CancelClicked;
 
-        public FreezeHintForm(string text, bool hotKeyAvailable)
+        public FreezeHintForm(string text, bool hotKeyAvailable, string keyName)
         {
             FormBorderStyle = FormBorderStyle.None;
             StartPosition = FormStartPosition.Manual;
@@ -27,7 +27,7 @@ namespace AutomationTest.App
             AutoSizeMode = AutoSizeMode.GrowAndShrink;
 
             var label = new Label { AutoSize = true, ForeColor = Color.White, Text = text, MaximumSize = new Size(Font.Height * 40, 0), Margin = new Padding(0, 4, 12, 0) };
-            var freeze = new Button { Text = hotKeyAvailable ? "Freeze now (F8)" : "Freeze now", AutoSize = true, FlatStyle = FlatStyle.System, TabStop = false };
+            var freeze = new Button { Text = hotKeyAvailable ? "Freeze now (" + keyName + ")" : "Freeze now", AutoSize = true, FlatStyle = FlatStyle.System, TabStop = false };
             var cancel = new Button { Text = "Cancel (Esc)", AutoSize = true, FlatStyle = FlatStyle.System, TabStop = false };
             freeze.Click += (s, e) => FreezeClicked?.Invoke();
             cancel.Click += (s, e) => CancelClicked?.Invoke();

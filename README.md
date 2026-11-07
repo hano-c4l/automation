@@ -2,15 +2,16 @@
 
 Công cụ automation / autoclick cho Windows (10 1903+ và 11). Chạy trên .NET Framework 4.8 (có sẵn trong Windows), người dùng cuối không phải cài thêm gì.
 
-Người dùng soạn một kịch bản gồm các action xếp thành cây, rồi chạy bằng F6 hoặc ghi lại thao tác thật bằng F7.
+Người dùng soạn một kịch bản gồm các action xếp thành cây, rồi chạy (mặc định F3) hoặc ghi lại thao tác thật (mặc định F6); phím tắt đổi được trong Settings.
 
 ## Tính năng
 
 - **Chuột:** Click, Mouse Down/Up, Move (có thời gian di chuyển), cuộn chuột; vị trí theo màn hình hoặc theo cửa sổ của chương trình đích (Process, Title, Anchor) để cửa sổ dời chỗ vẫn click đúng.
 - **Bàn phím:** một phím, tổ hợp phím, hoặc cả đoạn text (kể cả tiếng Việt).
-- **Điều khiển:** Loop (số lần, khoảng thời gian, tới thời điểm), Wait (chờ cửa sổ), Image (nhận diện ảnh trong một vùng), Variable, Condition (switch-case), biểu thức `{biến}`; Command/Open để mở file hoặc chương trình.
+- **Điều khiển:** Loop (số lần, khoảng thời gian, tới thời điểm), Wait (chờ cửa sổ), Image (nhận diện ảnh trong một vùng), Variable, Condition (switch-case), biểu thức `{biến}`; Utilities: Open để mở file hoặc chương trình, Active để máy không khóa hay tắt màn hình khi chạy lâu. Mỗi action bật/tắt được (State).
 - **Start Selected:** chạy riêng các action đang chọn để thử nhanh (hỏi giá trị cho các biến mà phần chọn cần).
-- **Record (F7):** ghi lại click, kéo thả, cuộn và phím thành action; có ô "All" để ghi cả di chuyển chuột.
+- **Record:** ghi lại click, kéo thả, cuộn và phím thành action; tùy chọn "Record all event" trong Settings để ghi cả di chuyển chuột.
+- **Settings:** phím tắt (Start F3, Start Selected F4, Record F6, Pick F8) và hai tùy chọn, lưu trong `Setting.ini`.
 - Lưu và mở kịch bản dạng JSON (ảnh mẫu nằm trong file), danh sách action thu gọn hoặc mở rộng theo nhánh.
 - **License theo máy:** chương trình chỉ chạy khi có `license.lic` hợp lệ cho máy đó (có hoặc không có hạn dùng).
 
