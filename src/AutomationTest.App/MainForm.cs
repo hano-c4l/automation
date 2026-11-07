@@ -2285,7 +2285,28 @@ namespace AutomationTest.App
                 else if (id == HotKeyFreezeCancelId) _freezeSignal = 2;
                 return;
             }
+            // The Minimize button (and Alt+Space, Minimize) hides the window to the notification-area icon instead of the taskbar.
+            if (m.Msg == WM_SYSCOMMAND && (m.WParam.ToInt64() & 0xFFF0) == SC_MINIMIZE && !_closing)
+            {
+                HideToTray("hidden");
+                return;
+            }
             base.WndProc(ref m);
+        }
+
+        private const int WM_SYSCOMMAND = 0x0112, SC_MINIMIZE = 0xF020;
+
+        /// <summary>Other ways of minimizing (Show desktop, Win+M) hide it to the notification-area icon too.</summary>
+        protected override void OnSizeChanged(EventArgs e)
+        {
+            base.OnSizeChanged(e);
+            if (WindowState != FormWindowState.Minimized || _closing || !IsHandleCreated) return;
+            BeginInvoke((Action)(() =>
+            {
+                if (WindowState != FormWindowState.Minimized || _closing) return;
+                WindowState = FormWindowState.Normal; // so showing it again later gives a normal window
+                HideToTray("hidden");
+            }));
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)
