@@ -25,6 +25,12 @@ namespace Automation.App
 
         public Rectangle SelectedRegion { get; private set; }
 
+        /// <summary>Says what the shown coordinates are measured from (for example "notepad TopLeft"); null = the screen.</summary>
+        public string CoordinateLabel { get; set; }
+
+        /// <summary>Turns a screen rectangle into the stored X, Y (its anchor corner relative to a window); null = screen coordinates.</summary>
+        public Func<Rectangle, Point> Relative { get; set; }
+
         private readonly Bitmap _frozen;
 
         /// <param name="frozen">
@@ -117,9 +123,12 @@ namespace Automation.App
         private void UpdateHint()
         {
             var p = MousePosition;
-            _hint.Text = _dragging && _current.Width > 0
-                ? "X=" + _current.X + "  Y=" + _current.Y + "  " + _current.Width + " x " + _current.Height + "   (release to confirm, Esc to cancel)"
-                : "X=" + p.X + "  Y=" + p.Y + "   (drag to select an area, Esc to cancel)";
+            bool selecting = _dragging && _current.Width > 0;
+            Rectangle shown = selecting ? _current : new Rectangle(p, Size.Empty);
+            Point at = Relative != null ? Relative(shown) : shown.Location;
+            string label = Relative != null ? CoordinateLabel + ":  " : "Screen:  ";
+            _hint.Text = label + "X=" + at.X + "  Y=" + at.Y
+                + (selecting ? "  " + _current.Width + " x " + _current.Height + "   (release to confirm, Esc to cancel)" : "   (drag to select an area, Esc to cancel)");
             var client = PointToClient(p);
             _hint.Location = new Point(client.X + 20, client.Y + 20);
         }

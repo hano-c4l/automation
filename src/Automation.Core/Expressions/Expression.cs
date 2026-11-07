@@ -70,6 +70,16 @@ namespace Automation.Core.Expressions
             throw new ExpressionException("A position has two numbers (x, y); found " + nodes.Count + ".");
         }
 
+        /// <summary>The variables an expression reads (case-insensitive names).</summary>
+        /// <param name="allowList">True for a Mouse position, which may be "x, y".</param>
+        /// <exception cref="ExpressionException">The text is not a valid expression.</exception>
+        public static ISet<string> ReferencedVariables(string text, bool allowList)
+        {
+            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var node in Parse(text, allowList)) node.Collect(names);
+            return names;
+        }
+
         public static string ToDisplay(object value)
         {
             return Format.Display(value);
@@ -88,6 +98,9 @@ namespace Automation.Core.Expressions
         private abstract class Node
         {
             public abstract object Eval(VariableStore vars);
+
+            /// <summary>Adds the names of the variables this expression reads.</summary>
+            public virtual void Collect(ISet<string> names) { }
         }
 
         private sealed class Literal : Node
@@ -108,6 +121,7 @@ namespace Automation.Core.Expressions
         {
             private readonly string _name;
             public VarRef(string name) { _name = name; }
+            public override void Collect(ISet<string> names) { names.Add(_name); }
             public override object Eval(VariableStore vars)
             {
                 if (!vars.TryGet(_name, out object value))
@@ -121,6 +135,7 @@ namespace Automation.Core.Expressions
             private readonly Node _target;
             private readonly string _name;
             public Member(Node target, string name) { _target = target; _name = name; }
+            public override void Collect(ISet<string> names) { _target.Collect(names); }
             public override object Eval(VariableStore vars) { return Ops.GetMember(_target.Eval(vars), _name); }
         }
 
@@ -129,6 +144,7 @@ namespace Automation.Core.Expressions
             private readonly char _op;
             private readonly Node _operand;
             public Unary(char op, Node operand) { _op = op; _operand = operand; }
+            public override void Collect(ISet<string> names) { _operand.Collect(names); }
             public override object Eval(VariableStore vars)
             {
                 object v = _operand.Eval(vars);
@@ -147,6 +163,7 @@ namespace Automation.Core.Expressions
             private readonly string _op;
             private readonly Node _left, _right;
             public Binary(string op, Node left, Node right) { _op = op; _left = left; _right = right; }
+            public override void Collect(ISet<string> names) { _left.Collect(names); _right.Collect(names); }
 
             public override object Eval(VariableStore vars)
             {
@@ -165,6 +182,7 @@ namespace Automation.Core.Expressions
         {
             private readonly List<Node> _items;
             public Tuple(List<Node> items) { _items = items; }
+            public override void Collect(ISet<string> names) { foreach (var item in _items) item.Collect(names); }
             public override object Eval(VariableStore vars)
             {
                 if (_items.Count == 2) return new PointValue(Ops.ToNumber(_items[0].Eval(vars)), Ops.ToNumber(_items[1].Eval(vars)));

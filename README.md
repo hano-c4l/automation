@@ -9,7 +9,8 @@ Người dùng soạn một kịch bản gồm các action xếp thành cây, r�
 - **Chuột:** Click, Mouse Down/Up, Move (có thời gian di chuyển), cuộn chuột; vị trí theo màn hình hoặc theo cửa sổ của chương trình đích (Process, Title, Anchor) để cửa sổ dời chỗ vẫn click đúng.
 - **Bàn phím:** một phím, tổ hợp phím, hoặc cả đoạn text (kể cả tiếng Việt).
 - **Điều khiển:** Loop (số lần, khoảng thời gian, tới thời điểm), Wait (chờ cửa sổ), Image (nhận diện ảnh trong một vùng), Variable, Condition (switch-case), biểu thức `{biến}`; Command/Open để mở file hoặc chương trình.
-- **Record (F7):** ghi lại click, kéo thả, cuộn và phím thành action; có tùy chọn "All event" để ghi cả di chuyển chuột.
+- **Start Selected:** chạy riêng các action đang chọn để thử nhanh (hỏi giá trị cho các biến mà phần chọn cần).
+- **Record (F7):** ghi lại click, kéo thả, cuộn và phím thành action; có ô "All" để ghi cả di chuyển chuột.
 - Lưu và mở kịch bản dạng JSON (ảnh mẫu nằm trong file), danh sách action thu gọn hoặc mở rộng theo nhánh.
 - **License theo máy:** chương trình chỉ chạy khi có `license.lic` hợp lệ cho máy đó (có hoặc không có hạn dùng).
 
@@ -20,6 +21,7 @@ Automation.sln
   src/Automation.Core     (netstandard2.0)  model kịch bản, JSON, engine chuột phím, so khớp ảnh, biểu thức, runner, kiểm tra license
   src/Automation.App      (net48 WinForms)  giao diện, overlay chọn điểm/vùng, phím nóng, ghi thao tác
   tools/Automation.KeyGen (net48 console)   công cụ cấp license, chỉ dành cho chủ sản phẩm, không phát hành cùng chương trình
+  tools/Automation.IconGen (net48 console)   vẽ lại icon: `dotnet run --project tools/Automation.IconGen -- src/Automation.App/app.ico`
   keys/                                      make-license.bat và khóa riêng (khóa riêng không được commit)
   docs/                                      PROJECT.md (yêu cầu và quyết định), STATUS.md (tình trạng hiện tại)
 ```
