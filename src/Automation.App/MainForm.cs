@@ -22,6 +22,8 @@ namespace Automation.App
         private const int HotKeyToggleId = 1;
         private const int HotKeyEscapeId = 2;
         private const int HotKeyRecordId = 3;
+        private const int HotKeyFreezeId = 4;      // F8 while a Pick waits for the picture
+        private const int HotKeyFreezeCancelId = 5; // Esc while a Pick waits
         private const string UntilFormat = "yyyy-MM-dd HH:mm:ss";
         private const int DetailWidth = 475;
         private const int FieldWidth = 200;   // every input field
@@ -66,12 +68,11 @@ namespace Automation.App
         };
 
         // Toolbar
-        private readonly ToolStripButton _startStop = new ToolStripButton("Start (F6)") { DisplayStyle = ToolStripItemDisplayStyle.Text };
-        private readonly ToolStripButton _record = new ToolStripButton("Record (F7)") { DisplayStyle = ToolStripItemDisplayStyle.Text, ToolTipText = "Record your mouse clicks, wheel and keys as actions (F7 starts and stops)" };
-        private readonly ToolStripLabel _centerSpacer = new ToolStripLabel { AutoSize = false, Width = 0, Text = "" };
+        private ToolStripButton _startStop, _startSelected, _record;
         private ToolStripButton _btnNew, _btnOpen, _btnSave, _collapseAll, _expandAll;
-        private readonly CheckBox _allEvents = new CheckBox { Text = "All event", AutoSize = true, Margin = new Padding(4, 2, 4, 2) };
-        private ToolStripControlHost _allEventsHost;
+        private readonly CheckBox _allEvents = new CheckBox { Text = "All", AutoSize = true, Margin = new Padding(4, 2, 4, 2) };
+        private ToolStripControlHost _allEventsHost, _advPickHost;
+        private readonly CheckBox _advPick = new CheckBox { Text = "Adv Pick", AutoSize = true, Margin = new Padding(4, 2, 4, 2) };
         private readonly InputRecorder _recorder = new InputRecorder();
         private bool _recording;
         private List<Row> _recordTarget = new List<Row>();
@@ -161,7 +162,7 @@ namespace Automation.App
         private readonly Button _pickPositionButton = new Button { Text = "Pick", AutoSize = true };
         private readonly ComboBox _kbSource = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 120, Items = { "Input", "Variable" } };
         private readonly HintTextBox _kbTextExpr = new HintTextBox { Width = 200, Placeholder = "Text Expression" };
-        private readonly ToolStripButton _saveAs = new ToolStripButton("Save As") { DisplayStyle = ToolStripItemDisplayStyle.Text };
+        private ToolStripButton _saveAs, _license;
 
         private readonly GroupBox _mouseBox = new GroupBox { Text = "Mouse", Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8) };
         private readonly GroupBox _keyboardBox = new GroupBox { Text = "Keyboard", Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8) };
@@ -184,6 +185,7 @@ namespace Automation.App
         public MainForm()
         {
             Text = "Automation";
+            Icon = AppIcon.Get() ?? Icon;
             ClientSize = new Size(1380, 600);
             MinimumSize = new Size(1150, 540);
             _loopUntil.Value = DateTime.Now.AddHours(1);
@@ -214,29 +216,34 @@ namespace Automation.App
             _list.Columns.Add("Delay", 65);
 
             var tools = new ToolStrip { GripStyle = ToolStripGripStyle.Hidden, Dock = DockStyle.Fill, RenderMode = ToolStripRenderMode.System };
-            _btnNew = MakeToolButton("New", (s, e) => NewScript());
-            _btnOpen = MakeToolButton("Open", (s, e) => OpenScript());
-            _btnSave = MakeToolButton("Save", (s, e) => { if (SaveScript(false)) LicenseAllowsWork(); });
+            // The menu bar uses the same icon buttons as the action buttons (hover for the name).
+            _btnNew = MakeToolIcon("", "N", "New script", (s, e) => NewScript());
+            _btnOpen = MakeToolIcon("", "O", "Open a script", (s, e) => OpenScript());
+            _btnSave = MakeToolIcon("", "S", "Save", (s, e) => { if (SaveScript(false)) LicenseAllowsWork(); });
+            _saveAs = MakeToolIcon("", "S+", "Save As", (s, e) => { if (SaveScript(true)) LicenseAllowsWork(); });
             tools.Items.Add(_btnNew);
             tools.Items.Add(_btnOpen);
             tools.Items.Add(_btnSave);
-            _saveAs.Click += (s, e) => { if (SaveScript(true)) LicenseAllowsWork(); };
             tools.Items.Add(_saveAs);
             tools.Items.Add(new ToolStripSeparator());
-            _collapseAll = MakeToolButton("Collapse All", (s, e) => CollapseAll(true));
-            _expandAll = MakeToolButton("Expand All", (s, e) => CollapseAll(false));
+            _collapseAll = MakeToolIcon("", "▲", "Collapse All", (s, e) => CollapseAll(true));
+            _expandAll = MakeToolIcon("", "▼", "Expand All", (s, e) => CollapseAll(false));
             tools.Items.Add(_collapseAll);
             tools.Items.Add(_expandAll);
-            tools.Items.Add(new ToolStripSeparator());
-            tools.Items.Add(MakeToolButton("License", (s, e) => ShowLicense()));
-            // Start / Stop and Record sit in the middle of the menu bar: a spacer before them is resized with the bar.
-            tools.Items.Add(_centerSpacer);
-            tools.Items.Add(_startStop);
-            tools.Items.Add(new ToolStripSeparator());
-            tools.Items.Add(_record);
-            _allEventsHost = new ToolStripControlHost(_allEvents) { ToolTipText = "Also record plain mouse moves and every other event, not only drags" };
-            tools.Items.Add(_allEventsHost);
-            tools.Resize += (s, e) => CenterRunButtons(tools);
+            // The run and record buttons sit at the right end of the bar, close to License but with a gap. Right-aligned items are
+            // laid out from the right edge, so they are added from the rightmost one to the leftmost one.
+            _startStop = MakeToolIcon("", "▶", "Start (F6)", (s, e) => ToggleRun());
+            _startSelected = MakeToolIcon("", "▶✓", "Start Selected: run only the selected actions", (s, e) => StartSelected());
+            _record = MakeToolIcon("", "●", "Record (F7): your mouse clicks, wheel and keys become actions", (s, e) => ToggleRecord());
+            _allEventsHost = new ToolStripControlHost(_allEvents) { ToolTipText = "All: also record plain mouse moves and every other event, not only drags" };
+            _license = MakeToolIcon("", "⚿", "License", (s, e) => ShowLicense());
+            var gap = new ToolStripLabel { AutoSize = false, Width = 28, Text = "" };
+            var groupSeparator = new ToolStripSeparator();
+            foreach (ToolStripItem item in new ToolStripItem[] { _license, gap, _allEventsHost, _record, groupSeparator, _startSelected, _startStop })
+            {
+                item.Alignment = ToolStripItemAlignment.Right;
+                tools.Items.Add(item);
+            }
             var statusBar = new StatusStrip { SizingGrip = false };
             statusBar.Items.Add(_status);
 
@@ -259,6 +266,13 @@ namespace Automation.App
             _btnDown = MakeToolIcon("\uE74B", "\u2193", "Down", (s, e) => MoveUpDown(1));
             foreach (var button in new[] { _btnAdd, _btnUpdate, _btnDelete, _btnIn, _btnOut, _btnUp, _btnDown })
                 iconBar.Items.Add(button);
+            // Adv Pick (off by default): a Pick with a process then waits for F8 so the program keeps its look until the picture is taken.
+            _advPickHost = new ToolStripControlHost(_advPick)
+            {
+                Alignment = ToolStripItemAlignment.Right,
+                ToolTipText = "Advanced pick: with a process, Pick waits until you press F8 (or Freeze now) to take the picture, so a program that shrinks or closes pop-ups when it loses focus can be picked in the state you set up. Off: Pick takes the picture at once."
+            };
+            iconBar.Items.Add(_advPickHost);
 
             var topBar = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 2, RowCount = 1 };
             topBar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
@@ -281,7 +295,7 @@ namespace Automation.App
             // Every field is FieldWidth wide; a unit text and a Pick button go in a second fixed column and the "?" in a
             // third, so the right edges and the "?" icons line up from row to row.
             // Mouse
-            _pickProcessButton.Click += (s, e) => PickProcess(_processName);
+            _pickProcessButton.Click += (s, e) => PickProcess(_processName, _processTitle);
             _pickPositionButton.Click += (s, e) => PickPosition();
             var mouseTable = NewTable();
             AddRow(mouseTable, "Type", _button);
@@ -404,8 +418,6 @@ namespace Automation.App
                     e.SuppressKeyPress = true;
                 }
             };
-            _startStop.Click += (s, e) => ToggleRun();
-            _record.Click += (s, e) => ToggleRecord();
             _category.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
             _mouseAction.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
             _kbAction.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
@@ -415,8 +427,8 @@ namespace Automation.App
             _processTitle.TextChanged += (s, e) => UpdateEditorVisibility();
 
             // F6 is a global hot key while idle; it must not be swallowed while the user records F6 as a key.
-            _waitPick.Click += (s, e) => PickProcess(_waitProcessName);
-            _imgPickProcess.Click += (s, e) => PickProcess(_imgProcessName);
+            _waitPick.Click += (s, e) => PickProcess(_waitProcessName, _waitProcessTitle);
+            _imgPickProcess.Click += (s, e) => PickProcess(_imgProcessName, _imgProcessTitle);
             _imgPickRange.Click += (s, e) => PickRange();
             _imgCapture.Click += (s, e) => CaptureImage();
             _imgLoad.Click += (s, e) => LoadImageFile();
@@ -1425,46 +1437,145 @@ namespace Automation.App
         }
 
         /// <summary>
-        /// Lets the user click a point. Without a process it is a desktop position; with one, the program is brought to the
-        /// front first and the point is stored as an offset from the anchor of its client area.
+        /// Lets the user click a point on a frozen picture of the screen. Without a process it is a desktop position; with one,
+        /// the program is brought to the front, the picture is taken when the user presses F8 (so the program keeps the look
+        /// it has; clicking Pick takes the focus away and many programs shrink or close pop-ups then), and the point is stored
+        /// as an offset from the anchor of its client area as it was when the picture was taken. Any point on the picture can be
+        /// chosen, also outside the window (a pop-up, or room the window will have once it grows).
         /// </summary>
         private bool PickPoint(WindowTarget process, WindowAnchor anchor, out int x, out int y)
         {
             x = y = 0;
             if (!process.IsEmpty && !ActivateProcess(process)) return false;
-            if (!RunOverlay(out Point p, out WindowInfo? clicked)) return false;
+            Minimize();
+            if (!process.IsEmpty && _advPick.Checked && !WaitForFreeze("Pick a position"))
+            {
+                Restore();
+                SetStatus("Pick cancelled.");
+                return false;
+            }
+            if (!Freeze(process, out _, out Bitmap frozen, out ClientArea? area, out _, out _, process.IsEmpty || !_advPick.Checked))
+            {
+                Restore();
+                return false;
+            }
 
-            x = p.X;
-            y = p.Y;
+            Point? picked = null;
+            using (frozen)
+            using (var picker = new PointPickerForm(frozen))
+            {
+                if (area.HasValue)
+                {
+                    var a = area.Value;
+                    picker.AcceptArea = new Rectangle(a.Left, a.Top, a.Width, a.Height);
+                    picker.CoordinateLabel = TargetLabel(process) + " " + anchor;
+                    picker.Relative = p => { WindowLocator.FromScreen(a, anchor, p.X, p.Y, out int rx, out int ry); return new Point(rx, ry); };
+                }
+                if (picker.ShowDialog() == DialogResult.OK) picked = picker.SelectedPoint;
+            }
+            Thread.Sleep(150); // let the overlay disappear
+            Restore();
+            if (!picked.HasValue) return false;
+
+            x = picked.Value.X;
+            y = picked.Value.Y;
+            if (area.HasValue) WindowLocator.FromScreen(area.Value, anchor, x, y, out x, out y);
+            return true;
+        }
+
+        /// <summary>
+        /// Waits, with this window out of the way, until F8 is pressed or "Freeze now" is clicked (neither takes the focus away
+        /// from the program being picked); Esc or Cancel gives up. False when cancelled.
+        /// </summary>
+        private bool WaitForFreeze(string what)
+        {
+            _freezeSignal = 0;
+            SetToggleHotKey(false); // F6 / F7 must not start anything meanwhile
+            bool f8 = HotKeyNative.RegisterHotKey(Handle, HotKeyFreezeId, HotKeyNative.MOD_NOREPEAT, (uint)Keys.F8);
+            HotKeyNative.RegisterHotKey(Handle, HotKeyFreezeCancelId, HotKeyNative.MOD_NOREPEAT, (uint)Keys.Escape);
+            var hint = new FreezeHintForm(what + ": get the program into the state you want to pick on, then press F8 to take the picture.", f8);
+            hint.FreezeClicked += () => _freezeSignal = 1;
+            hint.CancelClicked += () => _freezeSignal = 2;
+            try
+            {
+                hint.ShowAtTop();
+                while (_freezeSignal == 0 && !IsDisposed)
+                {
+                    Application.DoEvents();
+                    Thread.Sleep(15);
+                }
+            }
+            finally
+            {
+                HotKeyNative.UnregisterHotKey(Handle, HotKeyFreezeId);
+                HotKeyNative.UnregisterHotKey(Handle, HotKeyFreezeCancelId);
+                hint.Dispose();
+                SetToggleHotKey(true);
+            }
+            Application.DoEvents();
+            Thread.Sleep(120); // let the bar disappear so it is not in the picture
+            return _freezeSignal == 1;
+        }
+
+        private int _freezeSignal;
+
+        private static string TargetLabel(WindowTarget process)
+        {
+            return string.IsNullOrWhiteSpace(process.ProcessName) ? "window" : process.ProcessName.Trim();
+        }
+
+        /// <summary>
+        /// Takes one picture of the whole screen now (this window must already be minimized) and, when a process is given,
+        /// notes where its window's client area is at that very moment. Selecting on the picture then matches what was
+        /// captured even when the screen changes afterwards (pop-ups closing, a window shrinking when it loses focus).
+        /// </summary>
+        /// <param name="settle">Move the cursor to a corner first (so no control under it shows its hover look) and wait a moment.
+        /// Not wanted when the program was set up by hand: moving the mouse could change it.</param>
+        private bool Freeze(WindowTarget process, out RawImage snapshot, out Bitmap frozen, out ClientArea? area, out int left, out int top, bool settle = true)
+        {
+            snapshot = null;
+            frozen = null;
+            area = null;
+            ScreenCapture.GetVirtualScreen(out left, out top, out int width, out int height);
+
+            IntPtr hwnd = IntPtr.Zero;
             if (!process.IsEmpty)
             {
-                // Refuse a point that is not inside the chosen program's client area.
-                bool matches;
-                try { matches = clicked.HasValue && WindowLocator.Matches(clicked.Value.Handle, process); }
+                try { hwnd = WindowLocator.Find(process); }
                 catch (ArgumentException ex) { SetStatus(ex.Message); return false; }
-                if (!matches)
-                {
-                    SetStatus("That point is not inside a window matching Process / Title.");
-                    return false;
-                }
-                var area = WindowLocator.GetClientArea(clicked.Value.Handle);
-                if (x < area.Left || y < area.Top || x >= area.Left + area.Width || y >= area.Top + area.Height)
-                {
-                    SetStatus("That point is outside the program's client area (title bar or border).");
-                    return false;
-                }
-                WindowLocator.FromScreen(area, anchor, x, y, out x, out y);
+                if (hwnd == IntPtr.Zero) { SetStatus("The program is no longer available."); return false; }
             }
+
+            var cursor = Cursor.Position;
+            if (settle)
+            {
+                Cursor.Position = new Point(left + width - 1, top + height - 1);
+                Thread.Sleep(250);
+            }
+            try
+            {
+                if (hwnd != IntPtr.Zero) area = WindowLocator.GetClientArea(hwnd); // read right before the picture, so both agree
+                snapshot = ScreenCapture.Capture(left, top, width, height);
+            }
+            catch (InvalidOperationException ex)
+            {
+                if (settle) Cursor.Position = cursor;
+                SetStatus(ex.Message);
+                return false;
+            }
+            if (settle) Cursor.Position = cursor;
+            frozen = ToBitmap(snapshot);
             return true;
         }
 
         /// <summary>Lets the user click any window to fill in a process name box.</summary>
-        private void PickProcess(TextBox nameBox)
+        private void PickProcess(TextBox nameBox, TextBox titleBox)
         {
             if (!RunOverlay(out Point p, out WindowInfo? info, true) || !info.HasValue) return;
             if (WindowLocator.IsDesktopSurface(info.Value.Handle))
             {
                 nameBox.Text = "";
+                titleBox.Text = "";
                 SetStatus("Full desktop (no process): the desktop, taskbar and Start menu are not a program, so Process is left empty.");
                 return;
             }
@@ -1474,7 +1585,11 @@ namespace Automation.App
                 return;
             }
             nameBox.Text = info.Value.ProcessName;
-            SetStatus("Process: " + info.Value.ProcessName + "  title: \"" + info.Value.Title + "\" (use Title to tell windows of the same program apart)");
+            // The window's own title is kept too, so a program with several windows (or a dialog of it) is told apart. It is
+            // an exact-match pattern; loosen it (for example "Notepad$") when the title changes, such as a file name.
+            string title = (info.Value.Title ?? "").Trim();
+            titleBox.Text = title.Length == 0 ? "" : "^" + System.Text.RegularExpressions.Regex.Escape(title) + "$";
+            SetStatus("Process: " + info.Value.ProcessName + (title.Length == 0 ? "" : "  title: \"" + title + "\" (saved as an exact pattern in Title; edit it if the title changes)"));
         }
 
         private void BrowseCommandPath()
@@ -1517,40 +1632,38 @@ namespace Automation.App
         }
 
         /// <summary>Lets the user drag a rectangle on screen; Process (if set) is activated first.</summary>
-        private bool PickRegion(WindowTarget process, bool capture, out Rectangle region, out RawImage image)
+        /// <param name="anchor">With a process, the coordinates shown while selecting are measured from this anchor of the window (null: no coordinates relative to the window).</param>
+        private bool PickRegion(WindowTarget process, bool capture, WindowAnchor? anchor, out Rectangle region, out RawImage image, out ClientArea? area)
         {
             region = Rectangle.Empty;
             image = null;
+            area = null;
             if (!process.IsEmpty && !ActivateProcess(process)) return false;
 
             Minimize();
-            ScreenCapture.GetVirtualScreen(out int vl, out int vt, out int vw, out int vh);
-            RawImage snapshot = null;
-            Bitmap frozen = null;
-            if (capture)
+            if (!process.IsEmpty && _advPick.Checked && !WaitForFreeze(capture ? "Capture an image" : "Pick an area"))
             {
-                // Take one picture of the screen now and let the user select on that picture, so what is selected is
-                // exactly what is captured even when the screen changes meanwhile (animations, pop-ups closing, hover).
-                // The cursor is moved to a corner first so no control under it shows its hover look.
-                var cursor = Cursor.Position;
-                Cursor.Position = new Point(vl + vw - 1, vt + vh - 1);
-                Thread.Sleep(250);
-                try { snapshot = ScreenCapture.Capture(vl, vt, vw, vh); }
-                catch (InvalidOperationException ex)
-                {
-                    Cursor.Position = cursor;
-                    Restore();
-                    SetStatus(ex.Message);
-                    return false;
-                }
-                Cursor.Position = cursor;
-                frozen = ToBitmap(snapshot);
+                Restore();
+                SetStatus("Pick cancelled.");
+                return false;
+            }
+            if (!Freeze(process, out RawImage snapshot, out Bitmap frozen, out area, out int vl, out int vt, process.IsEmpty || !_advPick.Checked))
+            {
+                Restore();
+                return false;
             }
 
             bool ok;
             using (frozen)
             using (var picker = new RegionPickerForm(frozen))
             {
+                if (area.HasValue && anchor.HasValue)
+                {
+                    var a = area.Value;
+                    var corner = anchor.Value;
+                    picker.CoordinateLabel = TargetLabel(process) + " " + corner;
+                    picker.Relative = r => RegionToWindow(a, corner, r);
+                }
                 ok = picker.ShowDialog() == DialogResult.OK;
                 if (ok) region = picker.SelectedRegion;
             }
@@ -1558,6 +1671,15 @@ namespace Automation.App
             if (ok && capture) image = Crop(snapshot, region.X - vl, region.Y - vt, region.Width, region.Height);
             Restore();
             return ok;
+        }
+
+        /// <summary>The anchor corner (centre for Center) of a screen rectangle, measured from the same anchor point of the window's client area.</summary>
+        private static Point RegionToWindow(ClientArea window, WindowAnchor anchor, Rectangle screenRegion)
+        {
+            var regionArea = new ClientArea { Left = screenRegion.X, Top = screenRegion.Y, Width = screenRegion.Width, Height = screenRegion.Height };
+            WindowLocator.ToScreen(regionArea, anchor, 0, 0, out int cornerX, out int cornerY);
+            WindowLocator.FromScreen(window, anchor, cornerX, cornerY, out int x, out int y);
+            return new Point(x, y);
         }
 
         /// <summary>A copy of part of an image; the rectangle is clipped to the image.</summary>
@@ -1595,29 +1717,26 @@ namespace Automation.App
         private bool PickRangeFor(WindowTarget process, WindowAnchor anchor, out int x, out int y, out int w, out int h)
         {
             x = y = w = h = 0;
-            if (!PickRegion(process, false, out Rectangle region, out _)) return false;
+            if (!PickRegion(process, false, anchor, out Rectangle region, out _, out ClientArea? snapshotArea)) return false;
 
             x = region.X;
             y = region.Y;
             w = region.Width;
             h = region.Height;
-            if (!process.IsEmpty)
+            if (snapshotArea.HasValue)
             {
-                IntPtr hwnd;
-                try { hwnd = WindowLocator.Find(process); }
-                catch (ArgumentException ex) { SetStatus(ex.Message); return false; }
-                if (hwnd == IntPtr.Zero) { SetStatus("The program is no longer available."); return false; }
-                // The range's anchor corner (centre for Center) measured from the same anchor point of the window.
-                var regionArea = new ClientArea { Left = region.X, Top = region.Y, Width = region.Width, Height = region.Height };
-                WindowLocator.ToScreen(regionArea, anchor, 0, 0, out int cornerX, out int cornerY);
-                WindowLocator.FromScreen(WindowLocator.GetClientArea(hwnd), anchor, cornerX, cornerY, out x, out y);
+                // The range's anchor corner (centre for Center) measured from the same anchor point of the window, as it was
+                // when the picture was taken.
+                var corner = RegionToWindow(snapshotArea.Value, anchor, region);
+                x = corner.X;
+                y = corner.Y;
             }
             return true;
         }
 
         private void CaptureImage()
         {
-            if (!PickRegion(Target(_imgProcessName, _imgProcessTitle), true, out Rectangle region, out RawImage image)) return;
+            if (!PickRegion(Target(_imgProcessName, _imgProcessTitle), true, null, out Rectangle region, out RawImage image, out _)) return;
             AcceptImage(image);
         }
 
@@ -1823,7 +1942,6 @@ namespace Automation.App
         {
             Text = "Automation - " + (_currentPath == null ? "(unsaved)" : Path.GetFileName(_currentPath));
             _saveAs.Visible = _currentPath != null; // Save As only makes sense once there is a file to copy from
-            if (_startStop.Owner != null) CenterRunButtons(_startStop.Owner);
         }
 
         // ---------------------------------------------------------------- recording
@@ -1924,7 +2042,7 @@ namespace Automation.App
         private void ToggleRun()
         {
             if (_recording) return;
-            if (_running) _cts.Cancel();
+            if (_running) _cts?.Cancel();
             else if (LicenseAllowsWork()) _ = StartAsync();
         }
 
@@ -1934,6 +2052,42 @@ namespace Automation.App
             if (_script.Actions.Count == 0) { SetStatus("Add at least one action first."); return; }
 
             var snapshot = _script.Clone();
+            await RunAsync((runner, token) => runner.Run(snapshot, token));
+        }
+
+        /// <summary>
+        /// Start Selected: runs only the selected actions, to try them out quickly. An action inside a Loop or Wait runs on its
+        /// own, once; a selected Loop, Wait, Image or Condition runs with everything inside it. When the selected actions read
+        /// variables that nothing in the selection sets, a dialog asks for their values first.
+        /// </summary>
+        private async void StartSelected()
+        {
+            if (_running || _recording) return;
+            if (!LicenseAllowsWork()) return;
+            var rows = SelectedRows();
+            if (rows.Count == 0) { SetStatus("Select at least one action first."); return; }
+
+            var plan = SelectionPlanner.Build(_script, rows.Select(r => r.Node));
+            if (plan.RunNodes.Count == 0) { SetStatus("The selected actions have nothing to run."); return; }
+
+            Dictionary<string, object> values = null;
+            if (plan.Needs.Count > 0)
+            {
+                using (var form = new VariableInputForm(plan.Needs))
+                {
+                    if (form.ShowDialog(this) != DialogResult.OK) return;
+                    values = form.Values;
+                }
+            }
+
+            var nodes = plan.RunNodes.Select(n => n.Clone()).ToList();
+            await RunAsync((runner, token) => runner.Run(nodes, values, token));
+        }
+
+        /// <summary>Runs something on the script runner in the background with the status messages, locking the window meanwhile.</summary>
+        private async Task RunAsync(Action<ScriptRunner, CancellationToken> run)
+        {
+            if (_running) return;
             _cts = new CancellationTokenSource();
             var token = _cts.Token;
             var runner = new ScriptRunner(_mouse, _keyboard);
@@ -1948,7 +2102,7 @@ namespace Automation.App
             SetRunning(true);
             try
             {
-                await Task.Run(() => runner.Run(snapshot, token));
+                await Task.Run(() => run(runner, token));
                 string extra;
                 lock (notes) extra = notes.Count == 0 ? "" : "  " + string.Join(" ", notes);
                 SetStatus("Finished." + extra);
@@ -1980,38 +2134,18 @@ namespace Automation.App
             _startStop.Enabled = !_recording;
             _record.Enabled = !_running;
             _allEventsHost.Enabled = !busy;
-            _collapseAll.Enabled = _expandAll.Enabled = !busy;
-            _startStop.Text = _running ? "Stop (F6)" : "Start (F6)";
-            _record.Text = _recording ? "Stop recording (F7)" : "Record (F7)";
+            _advPickHost.Enabled = !busy;
+            _license.Enabled = !busy;
+            // Start / Record turn red while they are going on (Start shows a square, Stop).
+            if (_running) SetIcon(_startStop, "", "■", "Stop (F6)");
+            else SetIcon(_startStop, "", "▶", "Start (F6)");
+            if (_recording) SetIcon(_record, "", "●", "Stop recording (F7)");
+            else SetIcon(_record, "", "●", "Record (F7): your mouse clicks, wheel and keys become actions");
             _editArea.Enabled = !busy;
             _list.Enabled = !busy;
             UpdateButtonStates();
-            if (_startStop.Owner != null) CenterRunButtons(_startStop.Owner); // the texts changed width
         }
 
-        /// <summary>Puts Start / Stop and Record in the middle of the menu bar.</summary>
-        private void CenterRunButtons(ToolStrip tools)
-        {
-            int left = 0;
-            foreach (ToolStripItem item in tools.Items)
-            {
-                if (item == _centerSpacer) break;
-                if (item.Available) left += item.Width + item.Margin.Horizontal; // hidden items (Save As before a file exists) take no room
-            }
-            int center = 0;
-            bool after = false;
-            foreach (ToolStripItem item in tools.Items)
-            {
-                if (item == _centerSpacer) { after = true; continue; }
-                if (after && item.Available) center += item.Width + item.Margin.Horizontal;
-            }
-            int wanted = Math.Max(0, (tools.DisplayRectangle.Width - center) / 2 - left);
-            if (_centerSpacer.Width != wanted)
-            {
-                _centerSpacer.Width = wanted;
-                tools.PerformLayout();
-            }
-        }
 
         private void SetRunning(bool running)
         {
@@ -2079,7 +2213,6 @@ namespace Automation.App
         {
             base.OnShown(e);
             FitDetailsColumn();
-            if (_startStop.Owner != null) CenterRunButtons(_startStop.Owner); // item widths are known only once shown
         }
 
         protected override void OnHandleCreated(EventArgs e)
@@ -2105,7 +2238,9 @@ namespace Automation.App
                 int id = m.WParam.ToInt32();
                 if (id == HotKeyToggleId) ToggleRun();
                 else if (id == HotKeyRecordId) ToggleRecord();
-                else if (id == HotKeyEscapeId && _running) _cts.Cancel();
+                else if (id == HotKeyEscapeId && _running) _cts?.Cancel();
+                else if (id == HotKeyFreezeId) _freezeSignal = 1;
+                else if (id == HotKeyFreezeCancelId) _freezeSignal = 2;
                 return;
             }
             base.WndProc(ref m);
@@ -2123,7 +2258,7 @@ namespace Automation.App
                 e.Cancel = true;
                 return;
             }
-            if (_running) _cts.Cancel();
+            _cts?.Cancel();
             if (SettingsEnabled) SaveWindowSettings();
             base.OnFormClosing(e);
         }
@@ -2201,17 +2336,20 @@ namespace Automation.App
             return button;
         }
 
-        private static ToolStripButton MakeToolButton(string text, EventHandler onClick)
+        private static readonly bool HasMdl2 = FontFamily.Families.Any(f => f.Name == "Segoe MDL2 Assets");
+
+        /// <summary>Shows another icon (and tip) on a toolbar button made by <see cref="MakeToolIcon"/>.</summary>
+        private static void SetIcon(ToolStripButton button, string mdl2Glyph, string fallbackGlyph, string tip)
         {
-            var button = new ToolStripButton(text) { DisplayStyle = ToolStripItemDisplayStyle.Text };
-            button.Click += onClick;
-            return button;
+            button.Text = HasMdl2 ? mdl2Glyph : fallbackGlyph;
+            button.ToolTipText = tip;
+            button.AccessibleName = tip;
         }
 
         /// <summary>An icon button for the toolbar (Segoe MDL2 Assets when installed, else a plain symbol).</summary>
         private ToolStripButton MakeToolIcon(string mdl2Glyph, string fallbackGlyph, string tip, EventHandler onClick)
         {
-            bool mdl2 = FontFamily.Families.Any(f => f.Name == "Segoe MDL2 Assets");
+            bool mdl2 = HasMdl2;
             var button = new ToolStripButton(mdl2 ? mdl2Glyph : fallbackGlyph)
             {
                 DisplayStyle = ToolStripItemDisplayStyle.Text,
@@ -2240,9 +2378,19 @@ namespace Automation.App
             foreach (var button in new[] { _btnDelete, _btnIn, _btnOut, _btnUp, _btnDown })
                 button.Enabled = any && !busy;
             _btnUpdate.Enabled = SingleSelectedRow() != null && !busy; // Update changes one action, so exactly one must be selected
+            // Collapse All / Expand All only mean something when some action has actions inside it.
+            _startSelected.Enabled = any && !busy;
+            bool branches = HasBranches(_script.Actions);
+            _collapseAll.Enabled = _expandAll.Enabled = branches && !busy;
             // Strong black when usable, pale grey when not, so the two states are easy to tell apart.
-            foreach (var button in new[] { _btnAdd, _btnUpdate, _btnDelete, _btnIn, _btnOut, _btnUp, _btnDown })
-                button.ForeColor = button.Enabled ? Color.Black : Color.FromArgb(185, 185, 185);
+            foreach (var button in new[] { _btnAdd, _btnUpdate, _btnDelete, _btnIn, _btnOut, _btnUp, _btnDown,
+                                           _btnNew, _btnOpen, _btnSave, _saveAs, _collapseAll, _expandAll, _startStop, _startSelected, _record, _license })
+                button.ForeColor = !button.Enabled ? Color.FromArgb(185, 185, 185) : (button == _startStop && _running) || (button == _record && _recording) ? Color.FromArgb(220, 38, 38) : Color.Black;
+        }
+
+        private static bool HasBranches(List<ActionNode> nodes)
+        {
+            return nodes.Any(n => n.Children.Count > 0);
         }
 
         private static TableLayoutPanel NewTable()

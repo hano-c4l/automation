@@ -86,7 +86,7 @@ Automation.sln
    - **Cập nhật state** lúc khởi động và sau New, Open, Save, Save As, Stop sau Start, Stop sau Record. Nếu đang **offline** và giờ máy sớm hơn state quá 2 phút thì báo lỗi (khóa); nếu **có mạng** thì giờ mạng là chuẩn và ghi đè state (đồng hồ máy từng sai không bị phạt mãi).
    - **Thiếu `Setting.ini`, thiếu `State` hoặc state hỏng** = license không hợp lệ: chỉ cần kích hoạt lại (Import hoặc dán), chương trình tự ghi đè license.lic và Setting.ini.
    - Sau lần lấy giờ mạng đầu tiên, giờ chạy tiếp bằng đồng hồ bấm giờ trong phiên nên chỉnh giờ máy giữa chừng vô hiệu; làm mới sau 1 giờ; nếu lần lấy giờ thất bại thì 10 phút sau mới thử lại. Offline vẫn dùng giờ máy và từ chối nếu sớm hơn ngày cấp (`Issued`) quá 1 ngày.
-6. Kiểm tra lúc khởi động và lúc bấm Start (F6), Record (F7). Nút **License** trên menu bar cho xem trạng thái, request key và nhập license mới.
+6. Kiểm tra lúc khởi động và lúc bấm Start (F6), Record (F7). Nút **License** trên menu bar: license có hạn thì cho xem trạng thái, request key và nhập license mới; license vô hạn thì chỉ hiện thông báo đã đăng ký vô hạn (không có request key hay phần nhập license).
 - Giới hạn: .NET dễ bị decompile/vá, nên cơ chế này chỉ ngăn chia sẻ thông thường. Có thể tăng độ khó bằng obfuscation, kiểm tra nhiều chỗ, hoặc kích hoạt online có server thu hồi key (để giai đoạn sau).
 - Khóa riêng không bao giờ được commit vào repo.
 
@@ -97,7 +97,7 @@ Automation.sln
 3. Tọa độ theo cửa sổ.
 3b. Thiết kế lại thành cây action (Loop, Process/Anchor theo từng action, Scroll, Time/Delay có đơn vị) — đã xong, thay thế UI của M3.
 4. Keyboard, Command/Open, Wait, Image, Variable, Condition, biểu thức, Record — đã xong và đã vào `preview`.
-5. License theo máy và công cụ tạo key (KeyGen) — đã xong, vào `preview` qua nhánh `feature_license`.
+5. License theo máy và công cụ tạo key (KeyGen) — đã xong, đã vào `preview` và `main`.
 
 ## 7. Quy trình git (theo CLAUDE.md)
 

@@ -40,13 +40,23 @@ namespace Automation.Core.Runner
         public void Run(AutomationScript script, CancellationToken token)
         {
             if (script == null) throw new ArgumentNullException(nameof(script));
+            Run(script.Actions, null, token);
+        }
+
+        /// <summary>Runs just these actions (for trying part of a script), starting with the given variable values.</summary>
+        /// <exception cref="OperationCanceledException">The token was cancelled.</exception>
+        public void Run(List<ActionNode> actions, IDictionary<string, object> variables, CancellationToken token)
+        {
+            if (actions == null) throw new ArgumentNullException(nameof(actions));
             _windowCache.Clear();
             _vars.Clear();
+            if (variables != null)
+                foreach (var pair in variables) _vars.Set(pair.Key, pair.Value);
             // 1 ms timer resolution so short delays and the per-iteration yield are not rounded up to ~15 ms.
             NativeMethods.timeBeginPeriod(1);
             try
             {
-                ExecuteList(script.Actions, token);
+                ExecuteList(actions, token);
             }
             finally
             {

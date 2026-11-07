@@ -81,14 +81,28 @@ namespace Automation.App
             base.OnFormClosed(e);
         }
 
-        public PointPickerForm()
+        private readonly Bitmap _frozen;
+
+        /// <summary>A rectangle (screen pixels) drawn on the frozen picture to show where a point is accepted, e.g. the program's client area.</summary>
+        public Rectangle? AcceptArea { get; set; }
+
+        /// <summary>Says what the shown coordinates are measured from (for example "notepad TopLeft"); null = the screen.</summary>
+        public string CoordinateLabel { get; set; }
+
+        /// <summary>Turns a screen point into the coordinates shown and stored (relative to a window); null = screen coordinates.</summary>
+        public Func<Point, Point> Relative { get; set; }
+
+        /// <param name="frozen">A picture of the whole virtual desktop taken before the overlay opened; when given it is shown instead of the live screen, so nothing changes under the pointer (pop-ups closing, windows shrinking when they lose focus).</param>
+        public PointPickerForm(Bitmap frozen = null)
         {
             FormBorderStyle = FormBorderStyle.None;
             StartPosition = FormStartPosition.Manual;
             ShowInTaskbar = false;
             TopMost = true;
             BackColor = Color.Black;
-            Opacity = 0.25;
+            _frozen = frozen;
+            Opacity = frozen == null ? 0.25 : 1.0;
+            DoubleBuffered = true;
             Cursor = Cursors.Cross;
             KeyPreview = true;
             Bounds = SystemInformation.VirtualScreen;
@@ -115,10 +129,38 @@ namespace Automation.App
             UpdateHint();
         }
 
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            if (_frozen == null) return;
+            e.Graphics.DrawImageUnscaled(_frozen, 0, 0);
+            if (!AcceptArea.HasValue) return;
+            // Dim everything outside the accepted area a little and frame the area, so it is clear where a click counts.
+            var area = new Rectangle(PointToClient(AcceptArea.Value.Location), AcceptArea.Value.Size);
+            using (var dim = new SolidBrush(Color.FromArgb(70, 0, 0, 0)))
+            {
+                var clip = e.Graphics.Save();
+                e.Graphics.SetClip(area, System.Drawing.Drawing2D.CombineMode.Exclude);
+                e.Graphics.FillRectangle(dim, ClientRectangle);
+                e.Graphics.Restore(clip);
+            }
+            using (var pen = new Pen(Color.Red, 2) { DashStyle = System.Drawing.Drawing2D.DashStyle.Dash })
+                e.Graphics.DrawRectangle(pen, area);
+        }
+
         private void UpdateHint()
         {
             var p = MousePosition;
-            _hint.Text = "X=" + p.X + "  Y=" + p.Y + "   (click to pick, Esc to cancel)";
+            if (Relative != null)
+            {
+                var r = Relative(p);
+                bool outside = AcceptArea.HasValue && !AcceptArea.Value.Contains(p);
+                _hint.Text = CoordinateLabel + ":  X=" + r.X + "  Y=" + r.Y + (outside ? "  (outside the window)" : "") + "   (click to pick, Esc to cancel)";
+            }
+            else
+            {
+                _hint.Text = "Screen:  X=" + p.X + "  Y=" + p.Y + "   (click to pick, Esc to cancel)";
+            }
             UpdateOutline(p);
             var client = PointToClient(p);
             _hint.Location = new Point(client.X + 20, client.Y + 20);
