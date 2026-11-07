@@ -1404,8 +1404,7 @@ namespace AutomationTest.App
         /// <summary>Minimizes this window, lets the user click one point on screen and returns it with the window under it.</summary>
         private bool RunOverlay(out Point point, out WindowInfo? window, bool highlightWindows = false)
         {
-            var previous = WindowState;
-            WindowState = FormWindowState.Minimized;
+            HideToTray("picking");
             Application.DoEvents();
             Thread.Sleep(250); // let the minimize animation finish so the overlay is not captured behind it
             Point? picked = null;
@@ -1416,7 +1415,7 @@ namespace AutomationTest.App
             Thread.Sleep(150); // let the overlay disappear so WindowFromPoint sees the window underneath
             // Resolve the clicked window now, before this form is restored on top of it.
             window = picked.HasValue ? WindowLocator.WindowAt(picked.Value.X, picked.Value.Y) : null;
-            WindowState = previous;
+            ShowFromTray();
             Activate();
             point = picked ?? Point.Empty;
             return picked.HasValue;
@@ -1600,19 +1599,63 @@ namespace AutomationTest.App
             }
         }
 
+        // ---------------------------------------------------------------- tray icon
+
+        private NotifyIcon _tray;
+
+        /// <summary>
+        /// While a script runs, input is recorded or a point is picked, this window is not shown (no taskbar button either); an
+        /// icon in the notification area stands for it. Double-clicking that icon brings the window back, and so does the end of
+        /// whatever was going on.
+        /// </summary>
+        private void HideToTray(string what)
+        {
+            EnsureTray();
+            _tray.Text = "Automation Test - " + what;
+            _tray.Visible = true;
+            Hide();
+        }
+
+        private void ShowFromTray()
+        {
+            if (_tray != null) _tray.Visible = false;
+            if (!Visible) Show();
+            if (WindowState == FormWindowState.Minimized) WindowState = FormWindowState.Normal;
+            WindowLocator.BringToFront(Handle);
+            Activate();
+        }
+
+        private void EnsureTray()
+        {
+            if (_tray != null) return;
+            var menu = new ContextMenuStrip();
+            var show = new ToolStripMenuItem("Show Automation Test");
+            var stop = new ToolStripMenuItem("Stop");
+            show.Click += (s, e) => ShowFromTray();
+            stop.Click += (s, e) =>
+            {
+                if (_running) _cts?.Cancel();
+                else if (_recording) StopRecording();
+            };
+            menu.Items.Add(show);
+            menu.Items.Add(stop);
+            menu.Opening += (s, e) => stop.Enabled = _running || _recording;
+            _tray = new NotifyIcon { Icon = AppIcon.Get() ?? SystemIcons.Application, ContextMenuStrip = menu, Text = "Automation Test" };
+            _tray.DoubleClick += (s, e) => ShowFromTray();
+        }
+
         // ---------------------------------------------------------------- image
 
         private void Minimize()
         {
-            WindowState = FormWindowState.Minimized;
+            HideToTray("picking");
             Application.DoEvents();
             Thread.Sleep(250);
         }
 
         private void Restore()
         {
-            WindowState = FormWindowState.Normal;
-            Activate();
+            ShowFromTray();
         }
 
         /// <summary>Brings the program's window to the front while this window is still in front; false (with a status message) if it is missing.</summary>
@@ -1968,8 +2011,8 @@ namespace AutomationTest.App
             }
             _recording = true;
             ApplyBusyState();
-            WindowState = FormWindowState.Minimized; // get out of the way of the programs being recorded
-            SetStatus("Recording... click, scroll and type in your programs; press F7 to finish (the program is minimized).");
+            HideToTray("recording"); // get out of the way of the programs being recorded
+            SetStatus("Recording... click, scroll and type in your programs; press F7 to finish (the program is hidden; double-click its icon in the notification area to show it).");
         }
 
         private void StopRecording()
@@ -1978,8 +2021,7 @@ namespace AutomationTest.App
             var events = _recorder.Stop();
             _recording = false;
             // Bring the window back first so the user sees at once that recording has stopped.
-            WindowState = FormWindowState.Normal;
-            WindowLocator.BringToFront(Handle);
+            ShowFromTray();
             var nodes = RecordConverter.Build(events, InputRecorder.CharOf);
             if (nodes.Count > 0)
             {
@@ -2163,7 +2205,7 @@ namespace AutomationTest.App
                     HotKeyNative.RegisterHotKey(Handle, HotKeyToggleId, HotKeyNative.MOD_NOREPEAT, (uint)Keys.F6);
                     HotKeyNative.RegisterHotKey(Handle, HotKeyEscapeId, HotKeyNative.MOD_NOREPEAT, (uint)Keys.Escape);
                 }
-                WindowState = FormWindowState.Minimized;
+                HideToTray("running");
             }
             else
             {
@@ -2175,8 +2217,7 @@ namespace AutomationTest.App
                     _hotKeyFallback = false;
                 }
                 SetToggleHotKey(true);
-                WindowState = FormWindowState.Normal;
-                WindowLocator.BringToFront(Handle);
+                ShowFromTray();
             }
         }
 
@@ -2224,6 +2265,7 @@ namespace AutomationTest.App
         protected override void OnHandleDestroyed(EventArgs e)
         {
             _stopHook.Stop();
+            if (_tray != null) { _tray.Visible = false; _tray.Dispose(); _tray = null; }
             _recorder.Dispose();
             HotKeyNative.UnregisterHotKey(Handle, HotKeyToggleId);
             HotKeyNative.UnregisterHotKey(Handle, HotKeyEscapeId);
