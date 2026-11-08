@@ -2059,9 +2059,14 @@ namespace AutomationTest.App
         private void OpenScript()
         {
             if (!ConfirmLoseChanges("opening another script")) return;
-            using (var dialog = new OpenFileDialog { Filter = "Automation Test script (*.json)|*.json|All files (*.*)|*.*" })
+            using (var dialog = new OpenFileDialog
+            {
+                Filter = "Automation Test script (*.json)|*.json|All files (*.*)|*.*",
+                InitialDirectory = GetScriptFolder()
+            })
             {
                 if (dialog.ShowDialog(this) != DialogResult.OK) return;
+                RememberScriptFolder(dialog.FileName);
                 try
                 {
                     _script = ScriptSerializer.Load(dialog.FileName);
@@ -2080,6 +2085,28 @@ namespace AutomationTest.App
             }
         }
 
+        /// <summary>Folder for the Open/Save dialogs: the one last used (Setting.ini [Files] ScriptFolder), else the program's own folder.</summary>
+        private static string GetScriptFolder()
+        {
+            string folder = IniFile.Load(IniFile.DefaultPath).Get("Files", "ScriptFolder");
+            if (!string.IsNullOrEmpty(folder) && Directory.Exists(folder)) return folder;
+            return Path.GetDirectoryName(Application.ExecutablePath);
+        }
+
+        /// <summary>Stores the folder of the file the user just picked, keeping the other Setting.ini entries.</summary>
+        private void RememberScriptFolder(string filePath)
+        {
+            try
+            {
+                string folder = Path.GetDirectoryName(filePath);
+                if (string.IsNullOrEmpty(folder) || !SettingsEnabled) return;
+                var ini = IniFile.Load(IniFile.DefaultPath);
+                ini.Set("Files", "ScriptFolder", folder);
+                ini.Save(IniFile.DefaultPath);
+            }
+            catch (Exception ex) when (ex is IOException || ex is ArgumentException) { /* not remembering the folder is harmless */ }
+        }
+
         /// <summary>Save writes to the current file when there is one; Save As (or a new script) asks for a path.</summary>
         private bool SaveScript(bool saveAs)
         {
@@ -2091,11 +2118,12 @@ namespace AutomationTest.App
                     Filter = "Automation Test script (*.json)|*.json",
                     DefaultExt = "json",
                     FileName = _currentPath == null ? "script.json" : Path.GetFileName(_currentPath),
-                    InitialDirectory = _currentPath == null ? null : Path.GetDirectoryName(_currentPath)
+                    InitialDirectory = GetScriptFolder()
                 })
                 {
                     if (dialog.ShowDialog(this) != DialogResult.OK) return false;
                     path = dialog.FileName;
+                    RememberScriptFolder(path);
                 }
             }
             try
