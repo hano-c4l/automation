@@ -68,6 +68,7 @@ Cập nhật lần cuối: 2026-11-08
 12. State: bỏ tích Enabled rồi Update một Loop có con: Loop và các con chuyển xám, Start bỏ qua cả nhánh; bật lại Loop thì các con (đã tắt riêng) vẫn tắt; Start Selected trên action tắt vẫn chạy.
 13. Utilities: Open vẫn mở file; Active trong Loop dài: máy không khóa hoặc tắt màn hình trong lúc chạy (đo bằng chính sách khóa thật của máy).
 14. Danh sách dài (hàng trăm dòng): cuộn giữa danh sách rồi Add/Update/Delete/Expand All, danh sách không nhảy về đầu; cột Time của Loop bằng tổng Time + Delay của các con đang bật.
+15. Thư mục Open/Save: lần đầu Open/Save mở ở thư mục exe; chọn file ở thư mục X rồi Open hoặc Save As lại thì mở ở X; `Setting.ini` có `[Files] ScriptFolder=X` và không mất `[Window]`, `[App]`, `[Hotkeys]`, `[Columns]`; đóng mở lại app vẫn nhớ X; xóa X thì quay về thư mục exe; thử đường dẫn có tiếng Việt.
 
 ## Ghi chú kỹ thuật
 - Pick position và Pick range (Image) chụp đóng băng màn hình rồi mới cho chọn trên ảnh (giống Capture) và ghi lại vùng client của cửa sổ đích đúng lúc chụp: chương trình đích tự co lại khi mất focus (hoặc pop-up tự đóng) vẫn chọn được điểm ở vùng đã mở rộng. Vùng được chấp nhận (client area lúc chụp) có viền đỏ đứt nét; điểm ngoài vùng bị từ chối. Pick process điền cả Title của cửa sổ được chỉ vào dạng khớp chính xác `^tiêu đề$` để phân biệt nhiều cửa sổ hoặc dialog cùng process (sửa lại thành regex lỏng hơn nếu tiêu đề đổi, ví dụ tên file).
