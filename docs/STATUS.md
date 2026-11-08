@@ -86,6 +86,7 @@ Cập nhật lần cuối: 2026-11-08
 
 ## Ghi chú môi trường
 - PowerShell của Claude nạp DLL vừa build bị Application Control chặn (0x800711C7), và đôi khi chính exe test mới cũng bị chặn tạm thời; chạy lại sau ít phút thì được. Dùng harness `dotnet run`, không tìm cách lách chính sách. Người dùng chạy exe trực tiếp thì bình thường; cần thử trên máy sạch trước khi phát hành.
+- Smart App Control (Windows 11) chặn `AutomationTest.exe` chưa ký (Event Viewer → CodeIntegrity → Operational: "did not meet the Enterprise signing level"). Ngoại lệ Defender không giúp; chứng chỉ tự ký đã import vào Root và Trusted Publisher cũng không giúp (đã thử, đã gỡ). Máy dev đã tắt SAC. Muốn chạy trên máy bật SAC cần ký bằng chứng chỉ từ CA tin cậy (chưa làm).
 - Build lỗi "file is being used" khi exe đang chạy: tắt app trước khi build (hoặc build ra thư mục khác bằng `-p:OutDir=`).
 - Lỗi cú pháp heredoc nhiều dòng trong Bash tool: tạo file bằng công cụ Write.
 
