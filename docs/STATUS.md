@@ -97,3 +97,5 @@ Cập nhật lần cuối: 2026-11-09
 - Ký số chưa quyết định; kích hoạt license online để giai đoạn sau.
 - Overlay chọn điểm chưa thử trên cấu hình nhiều màn hình có DPI khác nhau.
 - Chưa có công cụ chuyển đổi file cũ khi đổi ngữ nghĩa Anchor của Image (vùng tìm của Image có Process, anchor khác TopLeft và có đặt vùng sẽ dịch chỗ) hoặc file version 1.
+
+- Esc huỷ Pick (điểm, vùng, process) kể cả khi overlay không nhận được focus bàn phím: ngoài sự kiện KeyDown còn kiểm tra trạng thái phím Esc mỗi 20 ms (`GetAsyncKeyState`).
