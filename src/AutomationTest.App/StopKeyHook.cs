@@ -6,7 +6,7 @@ using System.Runtime.InteropServices;
 namespace AutomationTest.App
 {
     /// <summary>
-    /// Watches the Start and Start Selected keys and Esc with a low-level keyboard hook while a script runs. Unlike RegisterHotKey it does not swallow
+    /// Watches exactly the given keys (Esc is not one of them unless it is given) with a low-level keyboard hook while a script runs. Unlike RegisterHotKey it does not swallow
     /// the keys, and it ignores keys the script itself injects, so a script can still send those keys to another program.
     /// Must be created and used on a thread with a message loop (the UI thread).
     /// </summary>
@@ -18,7 +18,6 @@ namespace AutomationTest.App
         private const int WM_SYSKEYDOWN = 0x0104;
         private const int WM_SYSKEYUP = 0x0105;
         private const uint LLKHF_INJECTED = 0x10;
-        private const int VK_ESCAPE = 0x1B;
 
         private delegate IntPtr HookProc(int nCode, IntPtr wParam, IntPtr lParam);
 
@@ -51,7 +50,7 @@ namespace AutomationTest.App
         private readonly HashSet<int> _down = new HashSet<int>();
         private IntPtr _hook;
         private Action _onStop;
-        private HashSet<int> _stopKeys = new HashSet<int> { VK_ESCAPE };
+        private HashSet<int> _stopKeys = new HashSet<int>();
 
         public StopKeyHook()
         {
@@ -65,7 +64,7 @@ namespace AutomationTest.App
         {
             if (IsActive) return true;
             _onStop = onStop;
-            _stopKeys = new HashSet<int>(stopKeys) { VK_ESCAPE };
+            _stopKeys = new HashSet<int>(stopKeys);
             _down.Clear();
             // A key still held from the press that started the script must not count as a new press.
             foreach (int vk in _stopKeys)

@@ -11,7 +11,7 @@ Người dùng soạn một kịch bản gồm các action xếp thành cây, r�
 - **Điều khiển:** Loop (số lần, khoảng thời gian, tới thời điểm), Wait (chờ cửa sổ khớp, có Timeout, Retry và thời gian Wait để không nhầm splash), Image (nhận diện ảnh trong một vùng), Variable, Condition (switch-case), biểu thức `{biến}`; Utilities: Open để mở file hoặc chương trình, Active để máy không khóa hay tắt màn hình khi chạy lâu. Mỗi action bật/tắt được (State).
 - **Start Selected:** chạy riêng các action đang chọn để thử nhanh (hỏi giá trị cho các biến mà phần chọn cần).
 - **Record:** ghi lại click, kéo thả, cuộn và phím thành action; tùy chọn "Record all event" trong Settings để ghi cả di chuyển chuột.
-- **Settings:** phím tắt (Start F3, Start Selected F4, Record F6, Pick F8) và hai tùy chọn, lưu trong `Setting.ini`.
+- **Settings:** phím tắt (Start F3, Start Selected F4, Record F6, Pick F8) và hai tùy chọn, lưu trong `Setting.ini`. Khi đang chạy chỉ phím đã bắt đầu lần chạy mới dừng được (F3 cho chạy cả script, F4 cho chạy phần chọn); Esc chỉ hủy Pick.
 - Lưu và mở kịch bản dạng JSON (ảnh mẫu nằm trong file), danh sách action thu gọn hoặc mở rộng theo nhánh.
 - **License theo máy:** chương trình chỉ chạy khi có `license.lic` hợp lệ cho máy đó (có hoặc không có hạn dùng).
 
