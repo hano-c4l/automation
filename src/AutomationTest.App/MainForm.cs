@@ -121,6 +121,7 @@ namespace AutomationTest.App
         private readonly HintTextBox _waitProcessName = new HintTextBox { Width = 200, Placeholder = "Process Name" };
         private readonly HintTextBox _waitProcessTitle = new HintTextBox { Width = 200, Placeholder = "Process Title (Regex)" };
         private readonly TimeBox _waitTime = new TimeBox(10000);
+        private readonly TimeBox _waitSettle = new TimeBox(500);
         private readonly NumericUpDown _waitRetry = MakeNumber(0, 1000, 0);
         private readonly Button _waitPick = new Button { Text = "Pick", AutoSize = true };
 
@@ -346,7 +347,8 @@ namespace AutomationTest.App
             AddRow(controlTable, "Until", _loopUntil);
             AddRow(controlTable, "Process", _waitProcessName, null, null, _waitPick);
             AddRow(controlTable, "", _waitProcessTitle, Help.TitleRegex);
-            AddRow(controlTable, "Wait", _waitTime, Help.WaitTime);
+            AddRow(controlTable, "Timeout", _waitTime, Help.WaitTime);
+            AddRow(controlTable, "Wait", _waitSettle, Help.WaitSettle);
             AddRow(controlTable, "Retry (times)", _waitRetry, Help.Retry);
             AddRow(controlTable, "ID", _imgId, Help.Id);
             AddRow(controlTable, "Process", _imgProcessName, null, null, _imgPickProcess);
@@ -515,6 +517,7 @@ namespace AutomationTest.App
             SetRowVisible(_waitProcessName, wait);
             SetRowVisible(_waitProcessTitle, wait);
             SetRowVisible(_waitTime, wait);
+            SetRowVisible(_waitSettle, wait);
             SetRowVisible(_waitRetry, wait);
             SetRowVisible(_waitPick, wait);
             foreach (var c in new Control[] { _imgId, _imgProcessName, _imgProcessTitle, _imgPickProcess, _imgAnchor, _imgX, _imgY, _imgW, _imgH,
@@ -627,6 +630,7 @@ namespace AutomationTest.App
                             {
                                 Process = Target(_waitProcessName, _waitProcessTitle),
                                 TimeMs = _waitTime.Milliseconds,
+                                WaitMs = _waitSettle.Milliseconds,
                                 Retry = (int)_waitRetry.Value
                             });
                     }
@@ -775,6 +779,7 @@ namespace AutomationTest.App
                             _waitProcessName.Text = w.Process.ProcessName ?? "";
                             _waitProcessTitle.Text = w.Process.TitlePattern ?? "";
                             _waitTime.Milliseconds = w.TimeMs;
+                            _waitSettle.Milliseconds = w.WaitMs;
                             _waitRetry.Value = Clamp(_waitRetry, w.Retry);
                             break;
                         case ControlKind.Loop:

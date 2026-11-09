@@ -296,8 +296,15 @@ namespace AutomationTest.Core.Runner
                     IntPtr hwnd = WindowLocator.Find(w.Process);
                     if (hwnd != IntPtr.Zero && TryActivate(hwnd, token))
                     {
-                        ExecuteList(node.Children, token);
-                        return;
+                        // A program may show a splash screen (Excel: "Opening - Excel") that matches the same title for a moment
+                        // before its real window appears. Go on only when the same window is still the match after WaitMs;
+                        // otherwise keep waiting for the one that stays.
+                        Wait(w.WaitMs, token);
+                        if (WindowLocator.Find(w.Process) == hwnd && WindowLocator.IsActive(hwnd) && !WindowLocator.IsMinimized(hwnd))
+                        {
+                            ExecuteList(node.Children, token);
+                            return;
+                        }
                     }
                     Wait(200, token);
                 } while (watch.ElapsedMilliseconds < w.TimeMs);
