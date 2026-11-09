@@ -1,6 +1,6 @@
 # Status
 
-Cập nhật lần cuối: 2026-11-09
+Cập nhật lần cuối: 2026-11-10
 
 ## Hiện tại
 - Tất cả tính năng đã chốt đều đã code và vào `preview` và `main`, gồm License (M5), icon app, thanh menu dạng icon, Start Selected, Pick có đóng băng màn hình và Adv Pick (F8). Chương trình chạy được đầy đủ: Mouse, Keyboard, Command/Open, Loop, Wait, Image, Variable, Condition, biểu thức, Record, lưu/mở file, License theo máy.
