@@ -1,9 +1,11 @@
 # Status
 
-Cập nhật lần cuối: 2026-11-08
+Cập nhật lần cuối: 2026-11-09
 
 ## Hiện tại
 - Tất cả tính năng đã chốt đều đã code và vào `preview` và `main`, gồm License (M5), icon app, thanh menu dạng icon, Start Selected, Pick có đóng băng màn hình và Adv Pick (F8). Chương trình chạy được đầy đủ: Mouse, Keyboard, Command/Open, Loop, Wait, Image, Variable, Condition, biểu thức, Record, lưu/mở file, License theo máy.
+- **Wait có hai thời gian:** Timeout (chờ tối đa một lần) và Wait (`WaitMs`, mặc định 500 ms, chờ sau khi thấy cửa sổ khớp rồi kiểm tra lại) để không nhầm splash của chương trình đích (Excel). Xem mục Control/Wait.
+- **Bản viết lại bằng Rust** (cùng tính năng, cùng định dạng file kịch bản, license và `Setting.ini`) nằm ở `D:WorkingAutomationRust`, repo `hano-c4l/automation_rust`; xem README ở đó.
 - Nhánh làm việc: tách `feature_xxx` từ `preview` cho mỗi việc mới (các nhánh cũ đã xóa).
 - **Tên chương trình là Automation Test** (tiêu đề cửa sổ viết rời; tên project, namespace và file chạy viết liền là AutomationTest; đổi từ Automation): solution `AutomationTest.sln`, project `AutomationTest.Core`, `AutomationTest.App` (file chạy `AutomationTest.exe`), `AutomationTest.KeyGen`, `AutomationTest.IconGen`, namespace và tiêu đề cửa sổ cũng đổi theo. Thư mục gốc `D:\Working\Automation` và tên repo giữ nguyên. **Giữ nguyên có chủ ý** các định danh nằm trong định dạng license: `LicenseData.ProductName = "Automation"`, header `AUTOMATION-LICENSE-1`, muối `"Automation/"` của Machine ID và các chuỗi mã hóa; đổi chúng sẽ làm mọi license đã cấp và Machine ID hiện có mất hiệu lực. Lớp `AutomationScript` (mô hình kịch bản) cũng giữ tên.
 - **Thư mục `Release/`** (không commit, bị `.gitignore`; không có file `.exe.config` vì đã tắt `GenerateSupportedRuntime`, chương trình không cần nó) chứa bản build sạch cho người dùng: `Release\AutomationTest\` (app) và `Release\KeyGen\` (công cụ cấp license kèm `make-license.bat`, cần tự đặt `license-private.key` cạnh đó). Tạo lại bằng `build-release.bat` ở thư mục gốc.
