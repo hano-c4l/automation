@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System;
 using System.Drawing;
 using System.Windows.Forms;
@@ -80,9 +81,32 @@ namespace AutomationTest.App
             };
         }
 
+        [DllImport("user32.dll")] private static extern short GetAsyncKeyState(int vKey);
+
+        // Esc must cancel even when this overlay did not get the keyboard focus (Windows may refuse the focus to a program whose window
+        // is hidden), so the key state is polled as well as handled in KeyDown.
+        private Timer _escPoll;
+        private bool _escWasDown;
+
+        protected override void OnFormClosed(FormClosedEventArgs e)
+        {
+            if (_escPoll != null) { _escPoll.Stop(); _escPoll.Dispose(); _escPoll = null; }
+            base.OnFormClosed(e);
+        }
+
         protected override void OnShown(EventArgs e)
         {
             base.OnShown(e);
+            _escWasDown = (GetAsyncKeyState(0x1B) & 0x8000) != 0;
+            _escPoll = new Timer { Interval = 20 };
+            _escPoll.Tick += (s, ev) =>
+            {
+                short state = GetAsyncKeyState(0x1B);
+                bool down = (state & 0x8000) != 0, tapped = (state & 1) != 0;
+                if ((down && !_escWasDown) || tapped) DialogResult = DialogResult.Cancel;
+                _escWasDown = down;
+            };
+            _escPoll.Start();
             Bounds = SystemInformation.VirtualScreen;
             Activate();
             UpdateHint();

@@ -20,7 +20,6 @@ namespace AutomationTest.App
     public sealed class MainForm : Form
     {
         private const int HotKeyToggleId = 1;
-        private const int HotKeyEscapeId = 2;
         private const int HotKeyRecordId = 3;
         private const int HotKeyStartSelectedId = 6;
         private const int HotKeyFreezeId = 4;      // the Pick key while a Pick waits for the picture
@@ -2387,16 +2386,17 @@ namespace AutomationTest.App
             ApplyBusyState();
             if (running)
             {
-                // While a script runs, the Start and Start Selected keys and Esc stop it through a keyboard hook that ignores keys
-                // the script sends itself (and does not swallow them), so a script can still send those keys to another program.
+                // While a script runs, only the key that started it stops it (Start for a full run, Start Selected for a selected run),
+                // through a keyboard hook that ignores keys the script sends itself (and does not swallow them), so a script can still
+                // send those keys to another program. Esc stops nothing here: it only cancels a Pick.
                 SetToggleHotKey(false);
-                if (!_stopHook.Start(() => _cts?.Cancel(), _settings.StartCode, _settings.StartSelectedCode))
+                bool selectedRun = _runKind == RunKind.Selected;
+                int stopKey = selectedRun ? _settings.StartSelectedCode : _settings.StartCode;
+                if (!_stopHook.Start(() => _cts?.Cancel(), stopKey))
                 {
-                    // Fallback if the hook cannot be installed: plain global hot keys (they also swallow the keys).
+                    // Fallback if the hook cannot be installed: a plain global hot key (it also swallows the key).
                     _hotKeyFallback = true;
-                    HotKeyNative.RegisterHotKey(Handle, HotKeyToggleId, HotKeyNative.MOD_NOREPEAT, (uint)_settings.StartCode);
-                    HotKeyNative.RegisterHotKey(Handle, HotKeyStartSelectedId, HotKeyNative.MOD_NOREPEAT, (uint)_settings.StartSelectedCode);
-                    HotKeyNative.RegisterHotKey(Handle, HotKeyEscapeId, HotKeyNative.MOD_NOREPEAT, (uint)Keys.Escape);
+                    HotKeyNative.RegisterHotKey(Handle, selectedRun ? HotKeyStartSelectedId : HotKeyToggleId, HotKeyNative.MOD_NOREPEAT, (uint)stopKey);
                 }
                 HideToTray("running");
             }
@@ -2405,7 +2405,6 @@ namespace AutomationTest.App
                 _stopHook.Stop();
                 if (_hotKeyFallback)
                 {
-                    HotKeyNative.UnregisterHotKey(Handle, HotKeyEscapeId);
                     HotKeyNative.UnregisterHotKey(Handle, HotKeyToggleId);
                     HotKeyNative.UnregisterHotKey(Handle, HotKeyStartSelectedId);
                     _hotKeyFallback = false;
@@ -2514,7 +2513,6 @@ namespace AutomationTest.App
             if (_tray != null) { _tray.Visible = false; _tray.Dispose(); _tray = null; }
             _recorder.Dispose();
             HotKeyNative.UnregisterHotKey(Handle, HotKeyToggleId);
-            HotKeyNative.UnregisterHotKey(Handle, HotKeyEscapeId);
             HotKeyNative.UnregisterHotKey(Handle, HotKeyStartSelectedId);
             HotKeyNative.UnregisterHotKey(Handle, HotKeyRecordId);
             base.OnHandleDestroyed(e);
@@ -2528,7 +2526,6 @@ namespace AutomationTest.App
                 if (id == HotKeyToggleId) ToggleRun();
                 else if (id == HotKeyStartSelectedId) ToggleRunSelected();
                 else if (id == HotKeyRecordId) ToggleRecord();
-                else if (id == HotKeyEscapeId && _running) _cts?.Cancel();
                 else if (id == HotKeyFreezeId) _freezeSignal = 1;
                 else if (id == HotKeyFreezeCancelId) _freezeSignal = 2;
                 return;
