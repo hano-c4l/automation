@@ -238,11 +238,15 @@ namespace AutomationTest.Core.Model
         /// <summary>Extra attempts after the first one times out.</summary>
         [DataMember(Order = 3)] public int Retry { get; set; }
 
+        /// <summary>Wait after a matching window is found, before it is accepted: it must still be the match then (a splash screen may match first). Files without it get 500.</summary>
+        [DataMember(Order = 4)] public long WaitMs { get; set; } = 500;
+
         [OnDeserializing]
         private void SetDefaults(StreamingContext context)
         {
             Process = new WindowTarget();
             TimeMs = 10000;
+            WaitMs = 500;
         }
 
         public WaitSettings Clone()
@@ -257,6 +261,7 @@ namespace AutomationTest.Core.Model
             if (Process == null) Process = new WindowTarget();
             if (TimeMs < 0) TimeMs = 0;
             if (Retry < 0) Retry = 0;
+            if (WaitMs < 0) WaitMs = 0;
         }
     }
 
