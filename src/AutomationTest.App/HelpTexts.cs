@@ -207,14 +207,21 @@ with a different colour or without its text does not.
 screen, then set a value a little below it. Too low finds look-alikes; too high
 misses small changes. It does not help when the picture is partly covered.");
 
-        public static readonly HelpTopic WaitTime = new HelpTopic("Wait",
+        public static readonly HelpTopic WaitSettle = new HelpTopic("Wait",
+@"How long to wait after a matching window is found, before it is accepted.
+The window must still be the match after this time. A program may show a splash
+screen whose title matches too (Excel shows ""Opening - Excel"" for a moment before
+its real window); a longer Wait makes sure the real window is the one used.
+Default 500 ms. Scripts saved before this setting existed use 500 ms too.");
+
+        public static readonly HelpTopic WaitTime = new HelpTopic("Timeout",
 @"How long one attempt waits for the window to appear and come to the front.
 If it does not, the attempt is repeated (see Retry). When all attempts fail the
 script stops with an error. When the window is ready the actions inside run.");
 
         public static readonly HelpTopic Retry = new HelpTopic("Retry",
 @"How many more attempts are made after the first one times out.
-0 means a single attempt. Total waiting time is (Retry + 1) x Wait.");
+0 means a single attempt. Total waiting time is (Retry + 1) x Timeout.");
 
         public static readonly HelpTopic MouseTime = new HelpTopic("Time (Mouse)",
 @"How long the cursor takes to glide from where it is to the position of this
