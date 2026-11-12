@@ -17,3 +17,5 @@ Setting.ini
 
 # Clean build for users (made by build-release.bat)
 /Release/
+# Agent Office live state
+.office/
