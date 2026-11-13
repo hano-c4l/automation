@@ -4,7 +4,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Net.WebSockets;
-using System.Runtime.Serialization.Json;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -19,8 +18,6 @@ namespace AutomationTest.Core.Web
     public sealed class BrowserBridge : IDisposable
     {
         public const int DefaultPort = 47615;
-
-        private static readonly DataContractJsonSerializerSettings JsonSettings = new DataContractJsonSerializerSettings { UseSimpleDictionaryFormat = true };
 
         private readonly HttpListener _listener = new HttpListener();
         private readonly ConcurrentDictionary<long, TaskCompletionSource<Dictionary<string, object>>> _pending =
@@ -182,26 +179,13 @@ namespace AutomationTest.Core.Web
 
         private static string ToJson(Dictionary<string, object> value)
         {
-            var serializer = new DataContractJsonSerializer(typeof(Dictionary<string, object>), JsonSettings);
-            using (var ms = new MemoryStream())
-            {
-                serializer.WriteObject(ms, value);
-                return Encoding.UTF8.GetString(ms.ToArray());
-            }
+            return MiniJson.Write(value);
         }
 
         private static Dictionary<string, object> FromJson(string text)
         {
-            try
-            {
-                var serializer = new DataContractJsonSerializer(typeof(Dictionary<string, object>), JsonSettings);
-                using (var ms = new MemoryStream(Encoding.UTF8.GetBytes(text)))
-                    return (Dictionary<string, object>)serializer.ReadObject(ms);
-            }
-            catch (Exception)
-            {
-                return null;
-            }
+            try { return MiniJson.Parse(text) as Dictionary<string, object>; }
+            catch (FormatException) { return null; }
         }
 
         public void Dispose()
