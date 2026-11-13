@@ -118,6 +118,7 @@ namespace AutomationTest.App
         private readonly ComboBox _webBrowser = MakeCombo(typeof(BrowserKind));
         private readonly HintTextBox _webUrl = new HintTextBox { Width = 200, Placeholder = "https://..." };
         private readonly HintTextBox _webTitle = new HintTextBox { Width = 200, Placeholder = "Title (regular expression)" };
+        private readonly HintTextBox _webUrlPattern = new HintTextBox { Width = 200, Placeholder = "URL (regular expression)" };
         private readonly NumberBox _webIndex = new NumberBox { Width = 200, Minimum = 0, Maximum = 1000, Placeholder = "Index (1 = first)" };
         private readonly HintTextBox _webSelector = new HintTextBox { Width = 200, Placeholder = "CSS selector or text=Label" };
         private readonly HintTextBox _webFrame = new HintTextBox { Width = 200, Placeholder = "Frame (iframe selector)" };
@@ -367,6 +368,7 @@ namespace AutomationTest.App
             AddRow(webTable, "Browser", _webBrowser, Help.WebBrowser);
             AddRow(webTable, "URL", _webUrl, Help.WebUrl);
             AddRow(webTable, "Title", _webTitle, Help.WebTitle);
+            AddRow(webTable, "URL", _webUrlPattern, Help.WebUrlPattern);
             AddRow(webTable, "Index", _webIndex, Help.WebIndex);
             _webPick = MakeButton("Pick", (s, e) => PickWebElement());
             AddRow(webTable, "Selector", _webSelector, Help.WebSelector, null, _webPick);
@@ -524,6 +526,7 @@ namespace AutomationTest.App
             SetRowVisible(_webBrowser, category == ActionCategory.Web);
             SetRowVisible(_webUrl, web == WebKind.NewTab);
             SetRowVisible(_webTitle, web == WebKind.SwitchTab);
+            SetRowVisible(_webUrlPattern, web == WebKind.SwitchTab);
             SetRowVisible(_webIndex, web == WebKind.SwitchTab);
             SetRowVisible(_webSelector, webSelects);
             SetRowVisible(_webAccept, web == WebKind.Dialog);
@@ -681,7 +684,7 @@ namespace AutomationTest.App
                     {
                         Kind = (WebKind)_webKind.SelectedItem,
                         Browser = (BrowserKind)_webBrowser.SelectedItem,
-                        Url = _webUrl.Text.Trim(),
+                        Url = ((WebKind)_webKind.SelectedItem == WebKind.SwitchTab ? _webUrlPattern.Text : _webUrl.Text).Trim(),
                         Title = _webTitle.Text.Trim(),
                         Index = (int)_webIndex.Value,
                         Selector = _webSelector.Text.Trim(),
@@ -841,6 +844,7 @@ namespace AutomationTest.App
                     _webKind.SelectedItem = web.Kind;
                     _webBrowser.SelectedItem = web.Browser;
                     _webUrl.Text = web.Url;
+                    _webUrlPattern.Text = web.Url;
                     _webTitle.Text = web.Title;
                     _webIndex.Text = web.Index > 0 ? web.Index.ToString() : "";
                     _webBrowser.Enabled = !web.BrowserInherited; // inside a New Tab or Switch Tab the browser is theirs
@@ -1080,11 +1084,13 @@ namespace AutomationTest.App
                         var web = node.Web;
                         if (web.Kind == WebKind.SwitchTab)
                         {
-                            if (web.Title.Trim().Length == 0 && web.Index <= 0) return "Enter a Title (regular expression), an Index, or both.";
-                            if (web.Title.Trim().Length > 0)
+                            if (web.Title.Trim().Length == 0 && web.Url.Trim().Length == 0 && web.Index <= 0)
+                                return "Enter a Title, a URL (regular expressions), an Index, or a combination.";
+                            foreach (var pattern in new[] { new[] { "Title", web.Title }, new[] { "URL", web.Url } })
                             {
-                                try { new System.Text.RegularExpressions.Regex(web.Title); }
-                                catch (ArgumentException ex) { return "The Title is not a valid regular expression: " + ex.Message; }
+                                if (pattern[1].Trim().Length == 0) continue;
+                                try { new System.Text.RegularExpressions.Regex(pattern[1]); }
+                                catch (ArgumentException ex) { return "The " + pattern[0] + " is not a valid regular expression: " + ex.Message; }
                             }
                         }
                         if (web.Kind == WebKind.GetText && !Expression.IsValidId(web.Id))
@@ -1590,7 +1596,12 @@ namespace AutomationTest.App
                         case WebKind.Dialog: details = (wb.Accept ? "OK" : "Cancel") + (wb.Accept && wb.Text.Length > 0 ? " \"" + wb.Text + "\"" : ""); break;
                         case WebKind.GetText: details = wb.Selector + " -> " + wb.Id + (wb.Required ? "" : " (optional)"); break;
                         case WebKind.SwitchTab:
-                            details = (wb.Title.Length > 0 ? "title /" + wb.Title + "/" : "") + (wb.Title.Length > 0 && wb.Index > 0 ? ", " : "") + (wb.Index > 0 ? "tab #" + wb.Index : "");
+                            details = string.Join(", ", new[]
+                            {
+                                wb.Title.Length > 0 ? "title /" + wb.Title + "/" : null,
+                                wb.Url.Length > 0 ? "address /" + wb.Url + "/" : null,
+                                wb.Index > 0 ? "tab #" + wb.Index : null
+                            }.Where(x => x != null));
                             break;
                         default: details = wb.Selector; break;
                     }

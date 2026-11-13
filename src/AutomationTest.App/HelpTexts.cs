@@ -328,22 +328,37 @@ Inbox            titles that contain Inbox
 ^Orders \(\d+\)  Orders (3), Orders (12)...
 (Report|Summary) Report or Summary anywhere in the title
 
+Title, URL and Index are three ways to find the tab: give at least
+one. With both a Title and a URL, the tab has to match both.
+
 Tabs are counted in this order: the window you used last first,
 then the other windows; in each window from left to right.
-Only a Title: the first tab that matches (the action waits up to
-Timeout for one). With an Index too: the Index-th tab that matches;
-if there are fewer, the last one.");
+Title and/or URL only: the first tab that matches (the action waits
+up to Timeout for one). With an Index too: the Index-th tab that
+matches; if there are fewer, the last one.");
+
+        public static readonly HelpTopic WebUrlPattern = new HelpTopic("URL (Switch Tab)",
+@"A regular expression for the address of the tab, not case sensitive.
+Use it when the title changes but the address does not:
+
+mail\.example\.com       tabs of that site
+/orders/\d+              an order page
+^https://shop\.          any page of shop.
+
+Remember that . means any character; write \. for a real dot.
+See Title for how the tab is chosen when Title, URL and Index are
+combined.");
 
         public static readonly HelpTopic WebIndex = new HelpTopic("Index (Switch Tab)",
 @"The position of the tab, 1 for the first one.
 
-Without a Title: the Index-th tab of the window you used last
+Without a Title or URL: the Index-th tab of the window you used last
 (a number beyond the last tab chooses the last tab).
-With a Title: chooses among the tabs that match the Title (a number
+With a Title and/or URL: chooses among the tabs that match (a number
 beyond the last match chooses the last match).
 
-Leave empty when only the Title is used. Title or Index (or both)
-must be given.");
+Leave empty when only the Title and/or URL is used. Title, URL or
+Index (or a combination) must be given.");
 
         public static readonly HelpTopic WebText = new HelpTopic("Text (Web)",
 @"Input   the text typed into the element; what was in it is replaced.

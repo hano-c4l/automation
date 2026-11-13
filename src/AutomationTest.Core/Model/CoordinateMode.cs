@@ -24,6 +24,8 @@ namespace AutomationTest.Core.Model
     {
         /// <summary>Opens the address in a new tab; starts the browser first when it is not running. Actions inside it use that browser.</summary>
         NewTab,
+        /// <summary>Makes another open tab (by title pattern, address pattern and/or position) the one the script uses. Actions inside it use that browser.</summary>
+        SwitchTab,
         /// <summary>Waits until an element is on the page.</summary>
         WaitElement,
         /// <summary>Types text into an element.</summary>
@@ -33,9 +35,7 @@ namespace AutomationTest.Core.Model
         /// <summary>Answers a JavaScript alert, confirm or prompt box.</summary>
         Dialog,
         /// <summary>Reads the text (or value) of an element into a variable.</summary>
-        GetText,
-        /// <summary>Makes another open tab (by title pattern and/or position) the one the script uses. Actions inside it use that browser.</summary>
-        SwitchTab
+        GetText
     }
 
     public enum BrowserKind

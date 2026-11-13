@@ -414,15 +414,15 @@ namespace AutomationTest.Core.Web
 
         private void SwitchTab(WebSettings w, CancellationToken token)
         {
-            bool hasTitle = !string.IsNullOrWhiteSpace(w.Title);
-            if (!hasTitle && w.Index <= 0) throw new InvalidOperationException("Switch Tab: enter a Title, an Index, or both.");
+            bool hasPattern = !string.IsNullOrWhiteSpace(w.Title) || !string.IsNullOrWhiteSpace(w.Url);
+            if (!hasPattern && w.Index <= 0) throw new InvalidOperationException("Switch Tab: enter a Title, a URL, an Index, or a combination.");
             EnsureConnected(w.Browser, token);
             var watch = Stopwatch.StartNew();
             while (true)
             {
                 token.ThrowIfCancellationRequested();
                 TabInfo chosen;
-                try { chosen = TabSelector.Choose(ListTabs(w.Browser, token, out int lastWindow), lastWindow, w.Title, w.Index); }
+                try { chosen = TabSelector.Choose(ListTabs(w.Browser, token, out int lastWindow), lastWindow, w.Title, w.Url, w.Index); }
                 catch (ArgumentException ex) { throw new InvalidOperationException("Switch Tab: " + ex.Message); }
                 if (chosen != null)
                 {
@@ -430,9 +430,12 @@ namespace AutomationTest.Core.Web
                     lock (_tabs) _tabs[w.Browser] = chosen.Id;
                     return;
                 }
-                // Index only: there is no tab at all. With a Title: nothing matches (yet), so wait for it up to the timeout.
-                if (!hasTitle || watch.ElapsedMilliseconds >= w.TimeMs)
-                    throw new InvalidOperationException("Switch Tab: no " + w.Browser + " tab " + (hasTitle ? "with a title matching \"" + w.Title + "\" within " + w.TimeMs + " ms." : "found."));
+                // Index only: there is no tab at all. With patterns: nothing matches (yet), so wait for it up to the timeout.
+                if (!hasPattern || watch.ElapsedMilliseconds >= w.TimeMs)
+                {
+                    string what = (string.IsNullOrWhiteSpace(w.Title) ? "" : " title /" + w.Title + "/") + (string.IsNullOrWhiteSpace(w.Url) ? "" : " address /" + w.Url + "/");
+                    throw new InvalidOperationException("Switch Tab: no " + w.Browser + " tab" + (hasPattern ? " with" + what + " within " + w.TimeMs + " ms." : " found."));
+                }
                 Thread.Sleep(200);
             }
         }
