@@ -61,6 +61,10 @@ namespace AutomationTest.Core.Runner
             {
                 ExecuteList(actions, token);
             }
+            catch (ShutdownIssuedException)
+            {
+                // The computer is shutting down: the run ends here so nothing else is clicked or typed and a Loop cannot ask again.
+            }
             finally
             {
                 ReleaseHeldButtons();
@@ -147,6 +151,8 @@ namespace AutomationTest.Core.Runner
             Wait(k.DelayMs, token);
         }
 
+        private sealed class ShutdownIssuedException : Exception { }
+
         private void ExecuteCommand(ActionNode node, CancellationToken token)
         {
             var c = node.Command;
@@ -155,7 +161,7 @@ namespace AutomationTest.Core.Runner
                 Wait(c.TimeMs, token); // stoppable: the Stop key cancels the countdown
                 token.ThrowIfCancellationRequested();
                 Shutdown.Shutdown(c.Force);
-                return;
+                throw new ShutdownIssuedException();
             }
             if (c.Kind == CommandKind.Active)
             {

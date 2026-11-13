@@ -22,7 +22,11 @@ namespace AutomationTest.Core.Runner
                     UseShellExecute = false,
                     CreateNoWindow = true
                 };
-                Process.Start(info);
+                using (var process = Process.Start(info))
+                {
+                    if (process != null && process.WaitForExit(10000) && process.ExitCode != 0)
+                        throw new InvalidOperationException("Cannot shut down the computer: shutdown.exe returned code " + process.ExitCode + ".");
+                }
             }
             catch (Exception ex) when (ex is System.ComponentModel.Win32Exception || ex is InvalidOperationException)
             {

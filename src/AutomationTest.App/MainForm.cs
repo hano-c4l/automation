@@ -338,7 +338,7 @@ namespace AutomationTest.App
             var cmdTable = NewTable();
             AddRow(cmdTable, "Path", _cmdValue, null, null, MakeButton("Browse", (s, e) => BrowseCommandPath()));
             AddRow(cmdTable, "Time", _cmdTime, Help.ShutdownTime);
-            AddRow(cmdTable, "Force Shutdown", _cmdForce, Help.ShutdownForce);
+            AddRow(cmdTable, "Force", _cmdForce, Help.ShutdownForce);
             AddRow(cmdTable, "Delay", _cmdDelay, Help.KeyDelay);
             _commandBox.Controls.Add(cmdTable);
 
