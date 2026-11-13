@@ -38,6 +38,23 @@ async function ensureAttached(tabId) {
   if (attached.has(tabId)) return;
   await chrome.debugger.attach({ tabId }, "1.3");
   attached.add(tabId);
+  // Page events make JavaScript dialogs (alert, confirm, prompt) answerable.
+  await chrome.debugger.sendCommand({ tabId }, "Page.enable", {});
+}
+
+// Resolves when the tab has finished loading (or after the timeout, so a slow page does not block the script forever).
+function waitComplete(tabId, timeoutMs) {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = () => { if (done) return; done = true; chrome.tabs.onUpdated.removeListener(listener); resolve(); };
+    const listener = (id, info) => { if (id === tabId && info.status === "complete") finish(); };
+    chrome.tabs.onUpdated.addListener(listener);
+    setTimeout(finish, timeoutMs);
+    // The navigation may have finished already, or not started yet: give it a moment before trusting "complete".
+    setTimeout(async () => {
+      try { const t = await chrome.tabs.get(tabId); if (t.status === "complete") finish(); } catch (e) { finish(); }
+    }, 400);
+  });
 }
 
 async function run(cmd, args) {
@@ -53,7 +70,16 @@ async function run(cmd, args) {
       let tab;
       if (args.newTab || args.tabId == null) tab = await chrome.tabs.create({ url: args.url, active: true });
       else tab = await chrome.tabs.update(args.tabId, { url: args.url, active: true });
+      await waitComplete(tab.id, args.timeoutMs || 15000);
       return { tabId: tab.id };
+    }
+    case "activeTab": {
+      const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+      if (tabs.length === 0) throw new Error("There is no active tab.");
+      return { tabId: tabs[0].id };
+    }
+    case "tabExists": {
+      try { await chrome.tabs.get(args.tabId); return { exists: true }; } catch (e) { return { exists: false }; }
     }
     case "cdp": {
       // args: { tabId, method, params }

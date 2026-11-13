@@ -10,6 +10,12 @@ using System.Threading.Tasks;
 
 namespace AutomationTest.Core.Web
 {
+    /// <summary>The browser did not answer a command in time (a page may be blocked by a JavaScript dialog).</summary>
+    public sealed class BridgeTimeoutException : InvalidOperationException
+    {
+        public BridgeTimeoutException(string message) : base(message) { }
+    }
+
     /// <summary>
     /// Local WebSocket server the browser extension connects to (127.0.0.1 only). The app sends commands (open a tab, or any
     /// Chrome DevTools Protocol call on a tab) and gets the extension's reply. Only a browser extension may connect: web pages
@@ -83,7 +89,7 @@ namespace AutomationTest.Core.Web
                 while (!tcs.Task.IsCompleted)
                 {
                     token.ThrowIfCancellationRequested();
-                    if (DateTime.UtcNow >= until) throw new InvalidOperationException("The browser did not answer in time (" + cmd + ").");
+                    if (DateTime.UtcNow >= until) throw new BridgeTimeoutException("The browser did not answer in time (" + cmd + ").");
                     tcs.Task.Wait(50);
                 }
                 var reply = tcs.Task.Result;

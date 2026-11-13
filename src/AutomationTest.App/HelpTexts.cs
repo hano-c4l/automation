@@ -260,6 +260,46 @@ Can be given in milliseconds, seconds, minutes or hours.");
 ON    other programs are closed even if they have unsaved work;
       that work is lost");
 
+        public static readonly HelpTopic WebSelector = new HelpTopic("Selector (Web)",
+@"Which element to use on the page.
+
+A CSS selector:   #email    .btn-primary    input[name=q]    form button
+text=Label        the element whose visible text contains Label
+                  (not case sensitive), for example text=Sign in
+
+The action waits for the element to appear (see Timeout) and
+scrolls it into view.");
+
+        public static readonly HelpTopic WebNewTab = new HelpTopic("New tab",
+@"ON    the address opens in a new tab
+OFF   the address opens in the tab the script is using (the tab
+      that is in front when the script first needs one)");
+
+        public static readonly HelpTopic WebText = new HelpTopic("Text (Web)",
+@"Input   the text typed into the element; what was in it is replaced.
+        Vietnamese and other Unicode text is typed as is.
+Dialog  the answer typed into a prompt box (when accepting).");
+
+        public static readonly HelpTopic WebDialog = new HelpTopic("Accept (Dialog)",
+@"Answers a JavaScript alert, confirm or prompt box that the page has
+opened (for example right after a Click).
+
+ON    OK
+OFF   Cancel
+
+Page boxes that look like a dialog (HTML) are normal elements: use
+Click. Boxes of the browser itself (permissions, downloads) cannot
+be reached from here: use Image and Mouse.");
+
+        public static readonly HelpTopic WebTimeout = new HelpTopic("Timeout (Web)",
+@"How long to wait before the action fails:
+Open Browser   for the browser extension to connect
+Open URL       for the page to finish loading
+Wait, Input, Click   for the element to appear
+Dialog         for a dialog to appear
+
+Can be given in milliseconds, seconds, minutes or hours.");
+
         public static readonly HelpTopic KeyDelay = new HelpTopic("Delay (Keyboard)",
 @"How long to wait after this action has finished, before the next action
 starts. Use it to give the program time to react to the keys.

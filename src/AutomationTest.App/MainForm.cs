@@ -113,6 +113,19 @@ namespace AutomationTest.App
         private readonly ComboBox _cmdKind = MakeCombo(typeof(CommandKind));
         private readonly HintTextBox _cmdValue = new HintTextBox { Width = 200, Placeholder = "Process Path" };
 
+        // Editor: web
+        private readonly ComboBox _webKind = MakeCombo(typeof(WebKind));
+        private readonly ComboBox _webBrowser = MakeCombo(typeof(BrowserKind));
+        private readonly HintTextBox _webUrl = new HintTextBox { Width = 200, Placeholder = "https://..." };
+        private readonly ToggleSwitch _webNewTab = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
+        private readonly HintTextBox _webSelector = new HintTextBox { Width = 200, Placeholder = "CSS selector or text=Label" };
+        private readonly HintTextBox _webText = new HintTextBox { Width = 200, Placeholder = "Text" };
+        private readonly ToggleSwitch _webTextExpr = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
+        private readonly ToggleSwitch _webAccept = new ToggleSwitch { Checked = true, Size = new Size(40, 21) };
+        private readonly TimeBox _webTime = new TimeBox(10000);
+        private readonly TimeBox _webDelay = new TimeBox(0);
+        private readonly GroupBox _webBox = new GroupBox { Text = "Web", Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8) };
+
         // Editor: control (loop, wait)
         private readonly ComboBox _controlKind = MakeCombo(typeof(ControlKind));
         private readonly ComboBox _loopType = MakeCombo(typeof(LoopType));
@@ -304,6 +317,7 @@ namespace AutomationTest.App
             AddRow(common, "Action", _mouseAction);
             AddRow(common, "Action", _kbAction);
             AddRow(common, "Action", _cmdKind);
+            AddRow(common, "Action", _webKind);
             AddRow(common, "Action", _controlKind);
 
             // Every field is FieldWidth wide; a unit text and a Pick button go in a second fixed column and the "?" in a
@@ -341,6 +355,19 @@ namespace AutomationTest.App
             AddRow(cmdTable, "Force", _cmdForce, Help.ShutdownForce);
             AddRow(cmdTable, "Delay", _cmdDelay, Help.KeyDelay);
             _commandBox.Controls.Add(cmdTable);
+
+            // Web
+            var webTable = NewTable();
+            AddRow(webTable, "Browser", _webBrowser);
+            AddRow(webTable, "URL", _webUrl);
+            AddRow(webTable, "New tab", _webNewTab, Help.WebNewTab);
+            AddRow(webTable, "Selector", _webSelector, Help.WebSelector);
+            AddRow(webTable, "Accept", _webAccept, Help.WebDialog);
+            AddRow(webTable, "Text", _webText, Help.WebText);
+            AddRow(webTable, "Expression", _webTextExpr, Help.ExpressionText);
+            AddRow(webTable, "Timeout", _webTime, Help.WebTimeout);
+            AddRow(webTable, "Delay", _webDelay, Help.KeyDelay);
+            _webBox.Controls.Add(webTable);
 
             // Control
             var controlTable = NewTable();
@@ -397,6 +424,7 @@ namespace AutomationTest.App
 
             // Docked top-to-bottom: the control added last is docked first.
             _editArea.Controls.Add(_controlBox);
+            _editArea.Controls.Add(_webBox);
             _editArea.Controls.Add(_commandBox);
             _editArea.Controls.Add(_keyboardBox);
             _editArea.Controls.Add(_mouseBox);
@@ -443,6 +471,7 @@ namespace AutomationTest.App
             _mouseAction.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
             _kbAction.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
             _cmdKind.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
+            _webKind.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
             _controlKind.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
             _loopType.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
             _processName.TextChanged += (s, e) => UpdateEditorVisibility();
@@ -478,6 +507,17 @@ namespace AutomationTest.App
             SetRowVisible(_cmdForce, cmdKind == CommandKind.Shutdown);
             SetRowVisible(_cmdDelay, cmdKind != CommandKind.Shutdown); // Shutdown has no "after" delay: the machine is gone
             _controlBox.Visible = category == ActionCategory.Control;
+            _webBox.Visible = category == ActionCategory.Web;
+            var web = _webKind.SelectedItem as WebKind? ?? WebKind.OpenBrowser;
+            bool webSelects = web == WebKind.WaitElement || web == WebKind.Input || web == WebKind.Click;
+            SetRowVisible(_webKind, category == ActionCategory.Web);
+            SetRowVisible(_webBrowser, web == WebKind.OpenBrowser);
+            SetRowVisible(_webUrl, web == WebKind.OpenUrl);
+            SetRowVisible(_webNewTab, web == WebKind.OpenUrl);
+            SetRowVisible(_webSelector, webSelects);
+            SetRowVisible(_webAccept, web == WebKind.Dialog);
+            SetRowVisible(_webText, web == WebKind.Input || web == WebKind.Dialog);
+            SetRowVisible(_webTextExpr, web == WebKind.Input || web == WebKind.Dialog);
             SetRowVisible(_mouseAction, category == ActionCategory.Mouse);
             SetRowVisible(_kbAction, category == ActionCategory.Keyboard);
             SetRowVisible(_cmdKind, category == ActionCategory.Utilities);
@@ -621,6 +661,21 @@ namespace AutomationTest.App
                         Force = (CommandKind)_cmdKind.SelectedItem == CommandKind.Shutdown && _cmdForce.Checked
                     });
 
+                case ActionCategory.Web:
+                    return ActionNode.NewWeb(new WebSettings
+                    {
+                        Kind = (WebKind)_webKind.SelectedItem,
+                        Browser = (BrowserKind)_webBrowser.SelectedItem,
+                        Url = _webUrl.Text.Trim(),
+                        NewTab = _webNewTab.Checked,
+                        Selector = _webSelector.Text.Trim(),
+                        Text = _webText.Text,
+                        TextIsExpression = _webTextExpr.Checked,
+                        Accept = _webAccept.Checked,
+                        TimeMs = _webTime.Milliseconds,
+                        DelayMs = _webDelay.Milliseconds
+                    });
+
                 default:
                     switch ((ControlKind)_controlKind.SelectedItem)
                     {
@@ -759,6 +814,20 @@ namespace AutomationTest.App
                     else _kbKey.Value = k.Value;
                     _kbTime.Milliseconds = k.TimeMs;
                     _kbDelay.Milliseconds = k.DelayMs;
+                    break;
+
+                case ActionCategory.Web:
+                    var web = node.Web;
+                    _webKind.SelectedItem = web.Kind;
+                    _webBrowser.SelectedItem = web.Browser;
+                    _webUrl.Text = web.Url;
+                    _webNewTab.Checked = web.NewTab;
+                    _webSelector.Text = web.Selector;
+                    _webText.Text = web.Text;
+                    _webTextExpr.Checked = web.TextIsExpression;
+                    _webAccept.Checked = web.Accept;
+                    _webTime.Milliseconds = web.TimeMs;
+                    _webDelay.Milliseconds = web.DelayMs;
                     break;
 
                 case ActionCategory.Utilities:
@@ -980,6 +1049,14 @@ namespace AutomationTest.App
                         else if (k.Action != KeyboardAction.Text) KeyCodes.ParseKey(k.Value);
                         else if (k.ValueIsExpression) Expression.CheckSyntax(k.Value);
                         else if (k.Value.Length == 0) return "Type the text to send first.";
+                        break;
+
+                    case ActionCategory.Web:
+                        var web = node.Web;
+                        if (web.Kind == WebKind.OpenUrl && web.Url.Length == 0) return "Enter the address to open.";
+                        if ((web.Kind == WebKind.WaitElement || web.Kind == WebKind.Input || web.Kind == WebKind.Click) && web.Selector.Length == 0)
+                            return "Enter a CSS selector (for example #email), or text=Label to find an element by its text.";
+                        if ((web.Kind == WebKind.Input || web.Kind == WebKind.Dialog) && web.TextIsExpression) Expression.CheckSyntax(web.Text);
                         break;
 
                     case ActionCategory.Control:
@@ -1464,6 +1541,21 @@ namespace AutomationTest.App
                     if (k.Action == KeyboardAction.KeyPress || k.Action == KeyboardAction.ComboKey || k.Action == KeyboardAction.Text)
                         time = TimeBox.Format(k.TimeMs);
                     delay = TimeBox.Format(k.DelayMs);
+                    break;
+
+                case ActionCategory.Web:
+                    var wb = n.Web;
+                    action = wb.Kind.ToString();
+                    switch (wb.Kind)
+                    {
+                        case WebKind.OpenBrowser: details = "start " + wb.Browser + " (or use the one that is open)"; break;
+                        case WebKind.OpenUrl: details = wb.Url + (wb.NewTab ? " (new tab)" : ""); break;
+                        case WebKind.Input: details = wb.Selector + " <- " + (wb.TextIsExpression ? wb.Text : "\"" + wb.Text + "\""); break;
+                        case WebKind.Dialog: details = (wb.Accept ? "OK" : "Cancel") + (wb.Accept && wb.Text.Length > 0 ? " \"" + wb.Text + "\"" : ""); break;
+                        default: details = wb.Selector; break;
+                    }
+                    time = TimeBox.Format(wb.TimeMs);
+                    delay = TimeBox.Format(wb.DelayMs);
                     break;
 
                 case ActionCategory.Utilities:

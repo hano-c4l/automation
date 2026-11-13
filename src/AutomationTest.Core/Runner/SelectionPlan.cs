@@ -97,6 +97,9 @@ namespace AutomationTest.Core.Runner
                 case ActionCategory.Keyboard:
                     if (node.Keyboard.Action == KeyboardAction.Text && node.Keyboard.ValueIsExpression) text = node.Keyboard.Value;
                     break;
+                case ActionCategory.Web:
+                    if ((node.Web.Kind == WebKind.Input || node.Web.Kind == WebKind.Dialog) && node.Web.TextIsExpression) text = node.Web.Text;
+                    break;
                 case ActionCategory.Control:
                     if (node.IsKind(ControlKind.Variable) && node.Variable.UseExpression) text = node.Variable.Expression;
                     else if (node.IsKind(ControlKind.Case)) text = node.Case.Expression;
