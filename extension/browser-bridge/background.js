@@ -78,6 +78,11 @@ async function run(cmd, args) {
       if (tabs.length === 0) throw new Error("There is no active tab.");
       return { tabId: tabs[0].id };
     }
+    case "activateTab": {
+      const tab = await chrome.tabs.update(args.tabId, { active: true });
+      await chrome.windows.update(tab.windowId, { focused: true });
+      return {};
+    }
     case "tabExists": {
       try { await chrome.tabs.get(args.tabId); return { exists: true }; } catch (e) { return { exists: false }; }
     }

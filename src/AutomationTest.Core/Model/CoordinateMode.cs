@@ -32,7 +32,11 @@ namespace AutomationTest.Core.Model
         /// <summary>Clicks an element.</summary>
         Click,
         /// <summary>Answers a JavaScript alert, confirm or prompt box.</summary>
-        Dialog
+        Dialog,
+        /// <summary>Reads the text (or value) of an element into a variable.</summary>
+        GetText,
+        /// <summary>Makes the tab whose title or address contains the given text the one the script uses.</summary>
+        SwitchTab
     }
 
     public enum BrowserKind

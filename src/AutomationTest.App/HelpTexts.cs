@@ -270,6 +270,24 @@ text=Label        the element whose visible text contains Label
 The action waits for the element to appear (see Timeout) and
 scrolls it into view.");
 
+        public static readonly HelpTopic WebFrame = new HelpTopic("Frame",
+@"Leave empty when the element is on the page itself.
+
+When it is inside an iframe, enter the CSS selector of that iframe,
+for example  iframe#editor . For frames inside frames, separate the
+selectors with >>> , outermost first:  iframe.outer >>> iframe.inner
+
+Only frames from the same site can be entered. A frame from another
+site (an embedded payment form, for example) is refused with a
+message.");
+
+        public static readonly HelpTopic WebId = new HelpTopic("ID (Get Text)",
+@"The variable that receives the text of the element: the value of an
+input field, otherwise the visible text. Use it later as {id} in
+expressions (Variable, Condition, Input, Keyboard text...).
+
+Letters, digits and _, not starting with a digit.");
+
         public static readonly HelpTopic WebNewTab = new HelpTopic("New tab",
 @"ON    the address opens in a new tab
 OFF   the address opens in the tab the script is using (the tab
@@ -278,7 +296,9 @@ OFF   the address opens in the tab the script is using (the tab
         public static readonly HelpTopic WebText = new HelpTopic("Text (Web)",
 @"Input   the text typed into the element; what was in it is replaced.
         Vietnamese and other Unicode text is typed as is.
-Dialog  the answer typed into a prompt box (when accepting).");
+Dialog  the answer typed into a prompt box (when accepting).
+Switch Tab  a word from the title or the address of the tab to use;
+        not case sensitive. If several tabs match, the newest one.");
 
         public static readonly HelpTopic WebDialog = new HelpTopic("Accept (Dialog)",
 @"Answers a JavaScript alert, confirm or prompt box that the page has
@@ -295,7 +315,8 @@ be reached from here: use Image and Mouse.");
 @"How long to wait before the action fails:
 Open Browser   for the browser extension to connect
 Open URL       for the page to finish loading
-Wait, Input, Click   for the element to appear
+Wait, Input, Click, Get Text   for the element to appear
+Switch Tab     for a matching tab to exist
 Dialog         for a dialog to appear
 
 Can be given in milliseconds, seconds, minutes or hours.");

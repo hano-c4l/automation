@@ -112,6 +112,8 @@ namespace AutomationTest.Core.Runner
 
         private static string Defines(ActionNode node)
         {
+            if (node.Category == ActionCategory.Web)
+                return node.Web.Kind == WebKind.GetText && !string.IsNullOrWhiteSpace(node.Web.Id) ? node.Web.Id.Trim() : null;
             if (node.Category != ActionCategory.Control) return null;
             string id = node.IsKind(ControlKind.Variable) ? node.Variable.Id : node.IsKind(ControlKind.Image) ? node.Image.Id : null;
             return string.IsNullOrWhiteSpace(id) ? null : id.Trim();

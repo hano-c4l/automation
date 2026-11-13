@@ -200,6 +200,12 @@ namespace AutomationTest.Core.Model
 
         [DataMember(Order = 7, EmitDefaultValue = false)] public bool TextIsExpression { get; set; }
 
+        /// <summary>WaitElement, Input, Click, GetText: CSS selector of the iframe the element is in (nested frames separated by " &gt;&gt;&gt; "). Empty = the page itself.</summary>
+        [DataMember(Order = 11)] public string Frame { get; set; } = "";
+
+        /// <summary>GetText: the variable that receives the text.</summary>
+        [DataMember(Order = 12)] public string Id { get; set; } = "";
+
         /// <summary>Dialog: OK (true) or Cancel (false).</summary>
         [DataMember(Order = 8)] public bool Accept { get; set; } = true;
 
@@ -229,6 +235,8 @@ namespace AutomationTest.Core.Model
             Url = "";
             Selector = "";
             Text = "";
+            Frame = "";
+            Id = "";
             Accept = true;
             TimeMs = 10000;
         }
@@ -243,6 +251,8 @@ namespace AutomationTest.Core.Model
             if (Url == null) Url = "";
             if (Selector == null) Selector = "";
             if (Text == null) Text = "";
+            if (Frame == null) Frame = "";
+            if (Id == null) Id = "";
             if (TimeMs < 0) TimeMs = 0;
             if (DelayMs < 0) DelayMs = 0;
         }

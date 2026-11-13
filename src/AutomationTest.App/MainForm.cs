@@ -119,6 +119,8 @@ namespace AutomationTest.App
         private readonly HintTextBox _webUrl = new HintTextBox { Width = 200, Placeholder = "https://..." };
         private readonly ToggleSwitch _webNewTab = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
         private readonly HintTextBox _webSelector = new HintTextBox { Width = 200, Placeholder = "CSS selector or text=Label" };
+        private readonly HintTextBox _webFrame = new HintTextBox { Width = 200, Placeholder = "Frame (iframe selector)" };
+        private readonly HintTextBox _webId = new HintTextBox { Width = 200, Placeholder = "Variable ID" };
         private readonly HintTextBox _webText = new HintTextBox { Width = 200, Placeholder = "Text" };
         private readonly ToggleSwitch _webTextExpr = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
         private readonly ToggleSwitch _webAccept = new ToggleSwitch { Checked = true, Size = new Size(40, 21) };
@@ -362,6 +364,8 @@ namespace AutomationTest.App
             AddRow(webTable, "URL", _webUrl);
             AddRow(webTable, "New tab", _webNewTab, Help.WebNewTab);
             AddRow(webTable, "Selector", _webSelector, Help.WebSelector);
+            AddRow(webTable, "Frame", _webFrame, Help.WebFrame);
+            AddRow(webTable, "ID", _webId, Help.WebId);
             AddRow(webTable, "Accept", _webAccept, Help.WebDialog);
             AddRow(webTable, "Text", _webText, Help.WebText);
             AddRow(webTable, "Expression", _webTextExpr, Help.ExpressionText);
@@ -509,14 +513,17 @@ namespace AutomationTest.App
             _controlBox.Visible = category == ActionCategory.Control;
             _webBox.Visible = category == ActionCategory.Web;
             var web = _webKind.SelectedItem as WebKind? ?? WebKind.OpenBrowser;
-            bool webSelects = web == WebKind.WaitElement || web == WebKind.Input || web == WebKind.Click;
+            bool webSelects = web == WebKind.WaitElement || web == WebKind.Input || web == WebKind.Click || web == WebKind.GetText;
             SetRowVisible(_webKind, category == ActionCategory.Web);
             SetRowVisible(_webBrowser, web == WebKind.OpenBrowser);
             SetRowVisible(_webUrl, web == WebKind.OpenUrl);
             SetRowVisible(_webNewTab, web == WebKind.OpenUrl);
             SetRowVisible(_webSelector, webSelects);
             SetRowVisible(_webAccept, web == WebKind.Dialog);
-            SetRowVisible(_webText, web == WebKind.Input || web == WebKind.Dialog);
+            SetRowVisible(_webFrame, webSelects);
+            SetRowVisible(_webId, web == WebKind.GetText);
+            _webText.Placeholder = web == WebKind.SwitchTab ? "Title or address contains" : web == WebKind.Dialog ? "Answer of a prompt box" : "Text";
+            SetRowVisible(_webText, web == WebKind.Input || web == WebKind.Dialog || web == WebKind.SwitchTab);
             SetRowVisible(_webTextExpr, web == WebKind.Input || web == WebKind.Dialog);
             SetRowVisible(_mouseAction, category == ActionCategory.Mouse);
             SetRowVisible(_kbAction, category == ActionCategory.Keyboard);
@@ -669,6 +676,8 @@ namespace AutomationTest.App
                         Url = _webUrl.Text.Trim(),
                         NewTab = _webNewTab.Checked,
                         Selector = _webSelector.Text.Trim(),
+                        Frame = _webFrame.Text.Trim(),
+                        Id = _webId.Text.Trim(),
                         Text = _webText.Text,
                         TextIsExpression = _webTextExpr.Checked,
                         Accept = _webAccept.Checked,
@@ -823,6 +832,8 @@ namespace AutomationTest.App
                     _webUrl.Text = web.Url;
                     _webNewTab.Checked = web.NewTab;
                     _webSelector.Text = web.Selector;
+                    _webFrame.Text = web.Frame;
+                    _webId.Text = web.Id;
                     _webText.Text = web.Text;
                     _webTextExpr.Checked = web.TextIsExpression;
                     _webAccept.Checked = web.Accept;
@@ -1054,7 +1065,10 @@ namespace AutomationTest.App
                     case ActionCategory.Web:
                         var web = node.Web;
                         if (web.Kind == WebKind.OpenUrl && web.Url.Length == 0) return "Enter the address to open.";
-                        if ((web.Kind == WebKind.WaitElement || web.Kind == WebKind.Input || web.Kind == WebKind.Click) && web.Selector.Length == 0)
+                        if (web.Kind == WebKind.SwitchTab && web.Text.Trim().Length == 0) return "Enter a word from the title or address of the tab.";
+                        if (web.Kind == WebKind.GetText && !Expression.IsValidId(web.Id))
+                            return "Enter an ID with letters, digits and _, not starting with a digit (and not true, false, now, today).";
+                        if ((web.Kind == WebKind.WaitElement || web.Kind == WebKind.Input || web.Kind == WebKind.Click || web.Kind == WebKind.GetText) && web.Selector.Length == 0)
                             return "Enter a CSS selector (for example #email), or text=Label to find an element by its text.";
                         if ((web.Kind == WebKind.Input || web.Kind == WebKind.Dialog) && web.TextIsExpression) Expression.CheckSyntax(web.Text);
                         break;
@@ -1552,8 +1566,11 @@ namespace AutomationTest.App
                         case WebKind.OpenUrl: details = wb.Url + (wb.NewTab ? " (new tab)" : ""); break;
                         case WebKind.Input: details = wb.Selector + " <- " + (wb.TextIsExpression ? wb.Text : "\"" + wb.Text + "\""); break;
                         case WebKind.Dialog: details = (wb.Accept ? "OK" : "Cancel") + (wb.Accept && wb.Text.Length > 0 ? " \"" + wb.Text + "\"" : ""); break;
+                        case WebKind.GetText: details = wb.Selector + " -> " + wb.Id; break;
+                        case WebKind.SwitchTab: details = "tab with \"" + wb.Text + "\""; break;
                         default: details = wb.Selector; break;
                     }
+                    if (wb.Frame.Length > 0 && wb.Kind != WebKind.OpenUrl) details = "[" + wb.Frame + "] " + details;
                     time = TimeBox.Format(wb.TimeMs);
                     delay = TimeBox.Format(wb.DelayMs);
                     break;

@@ -163,7 +163,10 @@ namespace AutomationTest.Core.Runner
             string text = w.Kind == WebKind.Input || w.Kind == WebKind.Dialog
                 ? (w.TextIsExpression ? EvalString(w.Text) : w.Text)
                 : null;
-            (WebSession ?? AutomationTest.Core.Web.WebSession.Shared).Execute(w, text, token);
+            if (w.Kind == WebKind.GetText && !Expression.IsValidId((w.Id ?? "").Trim()))
+                throw new InvalidOperationException("Get Text: \"" + w.Id + "\" is not a valid ID.");
+            string result = (WebSession ?? AutomationTest.Core.Web.WebSession.Shared).Execute(w, text, token);
+            if (w.Kind == WebKind.GetText) _vars.Set(w.Id.Trim(), result ?? "");
             Wait(w.DelayMs, token);
         }
 
