@@ -297,6 +297,8 @@ namespace AutomationTest.Core.Web
             // The tab the user is looking at, not the one a script used before; the script's own tab is left alone.
             EnsureConnected(token);
             int tab = Convert.ToInt32(((Dictionary<string, object>)Call("activeTab", null, token))["tabId"]);
+            // Windows only lets the program in front hand the foreground on: allow the browser to take it.
+            AutomationTest.Core.Native.NativeMethods.AllowSetForegroundWindow(-1);
             Call("activateTab", new Dictionary<string, object> { { "tabId", tab } }, token);
             Cdp(tab, "Runtime.evaluate", new Dictionary<string, object> { { "expression", PickScript.Install }, { "returnByValue", true } }, token);
             var watch = Stopwatch.StartNew();
