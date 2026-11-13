@@ -119,7 +119,10 @@ namespace AutomationTest.App
         private readonly HintTextBox _webUrl = new HintTextBox { Width = 200, Placeholder = "https://..." };
         private readonly HintTextBox _webTitle = new HintTextBox { Width = 200, Placeholder = "Title (regular expression)" };
         private readonly HintTextBox _webUrlPattern = new HintTextBox { Width = 200, Placeholder = "URL (regular expression)" };
-        private readonly NumberBox _webIndex = new NumberBox { Width = 200, Minimum = 0, Maximum = 1000, Placeholder = "Index (1 = first)" };
+        private readonly NumberBox _webIndex = new NumberBox { Width = 200, Minimum = 0, Maximum = 100000, Placeholder = "Index (1 = first)", Text = "1" };
+        private readonly ComboBox _webGet = MakeCombo(typeof(WebGetKind));
+        private readonly HintTextBox _webAttribute = new HintTextBox { Width = 200, Placeholder = "Attribute name (href, src...)" };
+        private readonly HintTextBox _webScript = new HintTextBox { Width = 200, Height = 120, Multiline = true, AcceptsReturn = true, AcceptsTab = true, ScrollBars = ScrollBars.Vertical, Placeholder = "JavaScript" };
         private readonly HintTextBox _webSelector = new HintTextBox { Width = 200, Placeholder = "CSS selector or text=Label" };
         private readonly HintTextBox _webFrame = new HintTextBox { Width = 200, Placeholder = "Frame (iframe selector)" };
         private Button _webPick;
@@ -366,14 +369,17 @@ namespace AutomationTest.App
             var webTable = NewTable();
             AddRow(webTable, "ID", _webId, Help.WebId); // an ID is always the first field of its group
             AddRow(webTable, "Browser", _webBrowser, Help.WebBrowser);
+            AddRow(webTable, "Get", _webGet, Help.WebGet);
             AddRow(webTable, "URL", _webUrl, Help.WebUrl);
             AddRow(webTable, "Title", _webTitle, Help.WebTitle);
             AddRow(webTable, "URL", _webUrlPattern, Help.WebUrlPattern);
-            AddRow(webTable, "Index", _webIndex, Help.WebIndex);
             _webPick = MakeButton("Pick", (s, e) => PickWebElement());
             AddRow(webTable, "Selector", _webSelector, Help.WebSelector, null, _webPick);
             AddRow(webTable, "Frame", _webFrame, Help.WebFrame);
+            AddRow(webTable, "Index", _webIndex, Help.WebIndex);
+            AddRow(webTable, "Attribute", _webAttribute, Help.WebAttribute);
             AddRow(webTable, "Required", _webRequired, Help.WebRequired);
+            AddRow(webTable, "Script", _webScript, Help.WebScript);
             AddRow(webTable, "Accept", _webAccept, Help.WebDialog);
             AddRow(webTable, "Text", _webText, Help.WebText);
             AddRow(webTable, "Expression", _webTextExpr, Help.ExpressionText);
@@ -484,6 +490,7 @@ namespace AutomationTest.App
             _kbAction.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
             _cmdKind.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
             _webKind.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
+            _webGet.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
             _controlKind.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
             _loopType.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
             _processName.TextChanged += (s, e) => UpdateEditorVisibility();
@@ -521,21 +528,27 @@ namespace AutomationTest.App
             _controlBox.Visible = category == ActionCategory.Control;
             _webBox.Visible = category == ActionCategory.Web;
             var web = _webKind.SelectedItem as WebKind? ?? WebKind.NewTab;
-            bool webSelects = web == WebKind.WaitElement || web == WebKind.Input || web == WebKind.Click || web == WebKind.GetText;
+            var get = _webGet.SelectedItem as WebGetKind? ?? WebGetKind.Text;
+            bool pageGet = web == WebKind.GetText && (get == WebGetKind.PageUrl || get == WebGetKind.PageTitle);
+            bool webSelects = web == WebKind.WaitElement || web == WebKind.Input || web == WebKind.Click || (web == WebKind.GetText && !pageGet);
             SetRowVisible(_webKind, category == ActionCategory.Web);
             SetRowVisible(_webBrowser, category == ActionCategory.Web);
             SetRowVisible(_webUrl, web == WebKind.NewTab);
             SetRowVisible(_webTitle, web == WebKind.SwitchTab);
             SetRowVisible(_webUrlPattern, web == WebKind.SwitchTab);
-            SetRowVisible(_webIndex, web == WebKind.SwitchTab);
+            SetRowVisible(_webGet, web == WebKind.GetText);
             SetRowVisible(_webSelector, webSelects);
-            SetRowVisible(_webAccept, web == WebKind.Dialog);
             SetRowVisible(_webFrame, webSelects);
-            SetRowVisible(_webId, web == WebKind.GetText);
-            SetRowVisible(_webRequired, web == WebKind.GetText);
+            SetRowVisible(_webIndex, (webSelects && !(web == WebKind.GetText && get == WebGetKind.Count)) || web == WebKind.SwitchTab);
+            SetRowVisible(_webAttribute, web == WebKind.GetText && get == WebGetKind.Attribute);
+            SetRowVisible(_webAccept, web == WebKind.Dialog);
+            SetRowVisible(_webId, web == WebKind.GetText || web == WebKind.Script);
+            _webId.Placeholder = web == WebKind.Script ? "Variable ID (optional)" : "Variable ID";
+            SetRowVisible(_webRequired, web == WebKind.GetText && !pageGet && get != WebGetKind.Count);
+            SetRowVisible(_webScript, web == WebKind.Script);
             _webText.Placeholder = web == WebKind.Dialog ? "Answer of a prompt box" : "Text";
             SetRowVisible(_webText, web == WebKind.Input || web == WebKind.Dialog);
-            SetRowVisible(_webTextExpr, web == WebKind.Input || web == WebKind.Dialog);
+            SetRowVisible(_webTextExpr, web == WebKind.Input || web == WebKind.Dialog || web == WebKind.Script);
             SetRowVisible(_mouseAction, category == ActionCategory.Mouse);
             SetRowVisible(_kbAction, category == ActionCategory.Keyboard);
             SetRowVisible(_cmdKind, category == ActionCategory.Utilities);
@@ -687,6 +700,9 @@ namespace AutomationTest.App
                         Url = ((WebKind)_webKind.SelectedItem == WebKind.SwitchTab ? _webUrlPattern.Text : _webUrl.Text).Trim(),
                         Title = _webTitle.Text.Trim(),
                         Index = (int)_webIndex.Value,
+                        Get = (WebGetKind)_webGet.SelectedItem,
+                        Attribute = _webAttribute.Text.Trim(),
+                        Script = _webScript.Text,
                         Selector = _webSelector.Text.Trim(),
                         Frame = _webFrame.Text.Trim(),
                         Id = _webId.Text.Trim(),
@@ -846,7 +862,10 @@ namespace AutomationTest.App
                     _webUrl.Text = web.Url;
                     _webUrlPattern.Text = web.Url;
                     _webTitle.Text = web.Title;
-                    _webIndex.Text = web.Index > 0 ? web.Index.ToString() : "";
+                    _webIndex.Text = web.Index > 0 ? web.Index.ToString() : "1";
+                    _webGet.SelectedItem = web.Get;
+                    _webAttribute.Text = web.Attribute;
+                    _webScript.Text = web.Script;
                     _webBrowser.Enabled = !web.BrowserInherited; // inside a New Tab or Switch Tab the browser is theirs
                     _webSelector.Text = web.Selector;
                     _webFrame.Text = web.Frame;
@@ -1084,8 +1103,6 @@ namespace AutomationTest.App
                         var web = node.Web;
                         if (web.Kind == WebKind.SwitchTab)
                         {
-                            if (web.Title.Trim().Length == 0 && web.Url.Trim().Length == 0 && web.Index <= 0)
-                                return "Enter a Title, a URL (regular expressions), an Index, or a combination.";
                             foreach (var pattern in new[] { new[] { "Title", web.Title }, new[] { "URL", web.Url } })
                             {
                                 if (pattern[1].Trim().Length == 0) continue;
@@ -1095,7 +1112,16 @@ namespace AutomationTest.App
                         }
                         if (web.Kind == WebKind.GetText && !Expression.IsValidId(web.Id))
                             return "Enter an ID with letters, digits and _, not starting with a digit (and not true, false, now, today).";
-                        if ((web.Kind == WebKind.WaitElement || web.Kind == WebKind.Input || web.Kind == WebKind.Click || web.Kind == WebKind.GetText) && web.Selector.Length == 0)
+                        if (web.Kind == WebKind.Script)
+                        {
+                            if (web.Script.Trim().Length == 0) return "Enter the JavaScript to run.";
+                            if (web.Id.Length > 0 && !Expression.IsValidId(web.Id))
+                                return "The ID may have letters, digits and _, not starting with a digit (and not true, false, now, today); or leave it empty.";
+                            if (web.TextIsExpression) Expression.CheckSyntax(web.Script);
+                        }
+                        if (web.Kind == WebKind.GetText && web.Get == WebGetKind.Attribute && web.Attribute.Length == 0) return "Enter the name of the attribute to read (href, src, data-id...).";
+                        bool pageGet = web.Kind == WebKind.GetText && (web.Get == WebGetKind.PageUrl || web.Get == WebGetKind.PageTitle);
+                        if ((web.Kind == WebKind.WaitElement || web.Kind == WebKind.Input || web.Kind == WebKind.Click || (web.Kind == WebKind.GetText && !pageGet)) && web.Selector.Length == 0)
                             return "Enter a CSS selector (for example #email), or text=Label to find an element by its text.";
                         if ((web.Kind == WebKind.Input || web.Kind == WebKind.Dialog) && web.TextIsExpression) Expression.CheckSyntax(web.Text);
                         break;
@@ -1594,18 +1620,25 @@ namespace AutomationTest.App
                         case WebKind.NewTab: details = wb.Url.Length == 0 ? "(start page)" : wb.Url; break;
                         case WebKind.Input: details = wb.Selector + " <- " + (wb.TextIsExpression ? wb.Text : "\"" + wb.Text + "\""); break;
                         case WebKind.Dialog: details = (wb.Accept ? "OK" : "Cancel") + (wb.Accept && wb.Text.Length > 0 ? " \"" + wb.Text + "\"" : ""); break;
-                        case WebKind.GetText: details = wb.Selector + " -> " + wb.Id + (wb.Required ? "" : " (optional)"); break;
+                        case WebKind.GetText:
+                            details = (wb.Get == WebGetKind.PageUrl || wb.Get == WebGetKind.PageTitle ? "" : wb.Selector + (wb.Index > 1 ? " #" + wb.Index : "") + " ")
+                                + wb.Get + (wb.Get == WebGetKind.Attribute ? " " + wb.Attribute : "") + " -> " + wb.Id + (wb.Required || wb.Get == WebGetKind.Count ? "" : " (optional)");
+                            break;
+                        case WebKind.Script:
+                            details = (wb.TextIsExpression ? "(expression) " : "") + (wb.Script.Replace("\r", " ").Replace("\n", " ").Trim()) + (wb.Id.Length > 0 ? " -> " + wb.Id : "");
+                            break;
                         case WebKind.SwitchTab:
-                            details = string.Join(", ", new[]
+                            details = "tab #" + Math.Max(1, wb.Index) + (wb.Title.Length > 0 || wb.Url.Length > 0 ? " of the tabs with " : " of the window");
+                            details += string.Join(" and ", new[]
                             {
                                 wb.Title.Length > 0 ? "title /" + wb.Title + "/" : null,
-                                wb.Url.Length > 0 ? "address /" + wb.Url + "/" : null,
-                                wb.Index > 0 ? "tab #" + wb.Index : null
+                                wb.Url.Length > 0 ? "address /" + wb.Url + "/" : null
                             }.Where(x => x != null));
                             break;
                         default: details = wb.Selector; break;
                     }
-                    if (wb.Frame.Length > 0 && wb.Kind != WebKind.NewTab && wb.Kind != WebKind.SwitchTab) details = "[" + wb.Frame + "] " + details;
+                    if (wb.Frame.Length > 0 && wb.Kind != WebKind.NewTab && wb.Kind != WebKind.SwitchTab && wb.Kind != WebKind.Script) details = "[" + wb.Frame + "] " + details;
+                    if (wb.Kind != WebKind.SwitchTab && wb.Kind != WebKind.GetText && wb.Index > 1) details += " #" + wb.Index;
                     time = TimeBox.Format(wb.TimeMs);
                     delay = TimeBox.Format(wb.DelayMs);
                     break;
@@ -1908,9 +1941,10 @@ namespace AutomationTest.App
             SetStatus("Pick an element in the browser: move the mouse over it and click. Esc cancels.");
             bool picked = false;
             string selector = "", frame = "", error = null;
+            int index = 1;
             System.Threading.Tasks.Task.Run(() =>
             {
-                try { picked = AutomationTest.Core.Web.WebSession.Shared.PickElement(browser, System.Threading.CancellationToken.None, 120000, out selector, out frame); }
+                try { picked = AutomationTest.Core.Web.WebSession.Shared.PickElement(browser, System.Threading.CancellationToken.None, 120000, out selector, out frame, out index); }
                 catch (Exception ex) when (ex is InvalidOperationException || ex is FormatException || ex is KeyNotFoundException) { error = ex.Message; }
                 try
                 {
@@ -1925,7 +1959,8 @@ namespace AutomationTest.App
                         if (!picked) { SetStatus("Pick cancelled."); return; }
                         _webSelector.Text = selector;
                         _webFrame.Text = frame;
-                        SetStatus("Picked: " + selector + (frame.Length > 0 ? "  (in frame " + frame + ")" : ""));
+                        _webIndex.Text = index.ToString();
+                        SetStatus("Picked: " + selector + (index > 1 ? " (match #" + index + ")" : "") + (frame.Length > 0 ? "  (in frame " + frame + ")" : ""));
                     }));
                 }
                 catch (InvalidOperationException) { }

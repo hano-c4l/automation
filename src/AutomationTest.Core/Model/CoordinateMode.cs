@@ -35,7 +35,34 @@ namespace AutomationTest.Core.Model
         /// <summary>Answers a JavaScript alert, confirm or prompt box.</summary>
         Dialog,
         /// <summary>Reads the text (or value) of an element into a variable.</summary>
-        GetText
+        GetText,
+        /// <summary>Runs JavaScript in the page, like the browser console, and can keep the result in a variable.</summary>
+        Script
+    }
+
+    /// <summary>What a Get Text action reads.</summary>
+    public enum WebGetKind
+    {
+        /// <summary>The visible text of the element; for a field (input, textarea, select) its value.</summary>
+        Text,
+        /// <summary>The value of a field (the value of the selected option for a select), or the value attribute.</summary>
+        Value,
+        /// <summary>The text of the selected option(s) of a select; for a checked checkbox or radio button its label; otherwise like Text.</summary>
+        SelectedText,
+        /// <summary>true or false: a checkbox or radio button is checked, an option is selected, aria-checked is true.</summary>
+        Checked,
+        /// <summary>The HTML inside the element.</summary>
+        Html,
+        /// <summary>The HTML of the element itself.</summary>
+        OuterHtml,
+        /// <summary>An attribute (href, src, data-id, class, aria-label...), named in the Attribute field.</summary>
+        Attribute,
+        /// <summary>How many elements match the selector (a number; 0 when none).</summary>
+        Count,
+        /// <summary>The address of the tab.</summary>
+        PageUrl,
+        /// <summary>The title of the tab.</summary>
+        PageTitle
     }
 
     public enum BrowserKind

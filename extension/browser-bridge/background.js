@@ -89,6 +89,10 @@ async function run(cmd, args) {
       await chrome.windows.update(tab.windowId, { focused: true });
       return {};
     }
+    case "tabInfo": {
+      const t = await chrome.tabs.get(args.tabId);
+      return { url: t.url || "", title: t.title || "" };
+    }
     case "tabExists": {
       try { await chrome.tabs.get(args.tabId); return { exists: true }; } catch (e) { return { exists: false }; }
     }

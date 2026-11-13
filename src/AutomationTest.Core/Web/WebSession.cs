@@ -16,71 +16,6 @@ namespace AutomationTest.Core.Web
         // A click that opens a JavaScript dialog does not return until the dialog is answered; this is how long the click waits for that.
         private const int ClickReleaseTimeoutMs = 1500;
 
-        // resolve(sel, frame): the element for a CSS selector, or for "text=Label" the innermost visible-text match, inside the
-        // (same-origin) iframes named by frame ("sel >>> sel"). Returns { el, ox, oy } (ox, oy: where the frame's document sits in
-        // the page), { error }, or null when something is not there yet.
-        private const string ResolveJs = @"function resolve(sel, frame) {
-  var doc = document, ox = 0, oy = 0;
-  var frames = frame ? frame.split('>>>') : [];
-  for (var i = 0; i < frames.length; i++) {
-    var f = doc.querySelector(frames[i].trim());
-    if (!f) return null;
-    var inner = null;
-    try { inner = f.contentDocument; } catch (err) { inner = null; }
-    if (!inner) return { error: 'The frame ' + frames[i].trim() + ' is from another site, which a script cannot enter.' };
-    var fr = f.getBoundingClientRect();
-    ox += fr.left + f.clientLeft; oy += fr.top + f.clientTop;
-    doc = inner;
-  }
-  var el = null;
-  if (sel.indexOf('text=') === 0) {
-    var want = sel.slice(5).trim().toLowerCase();
-    var hits = Array.prototype.slice.call(doc.querySelectorAll('body *')).filter(function (e) {
-      var t = (e.innerText || e.value || '').trim().toLowerCase();
-      return t.length > 0 && t.indexOf(want) >= 0;
-    });
-    el = hits.filter(function (e) { return !hits.some(function (o) { return o !== e && e.contains(o); }); })[0] || null;
-  } else {
-    el = doc.querySelector(sel);
-  }
-  return el ? { el: el, ox: ox, oy: oy } : null;
-}";
-
-        // Reports where the element is (in page pixels); the arguments are passed as JSON strings.
-        private const string LocateScript = @"(function (sel, frame) {" + ResolveJs + @"
-  var hit;
-  try { hit = resolve(sel, frame); } catch (err) { return { error: 'Bad selector: ' + err.message }; }
-  if (hit && hit.error) return { error: hit.error };
-  if (!hit) return { found: false };
-  var el = hit.el;
-  el.scrollIntoView({ block: 'center', inline: 'center' });
-  // The frames moved while scrolling: measure again.
-  hit = resolve(sel, frame);
-  var r = el.getBoundingClientRect();
-  var visible = r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden';
-  return { found: true, visible: visible, x: hit.ox + r.left + r.width / 2, y: hit.oy + r.top + r.height / 2 };
-})";
-
-        // Focuses the element and selects its content, so typed text replaces it.
-        private const string FocusScript = @"(function (sel, frame) {" + ResolveJs + @"
-  var hit = resolve(sel, frame);
-  if (!hit || hit.error) return false;
-  var e = hit.el;
-  e.focus();
-  if (e.select) e.select(); else e.ownerDocument.execCommand('selectAll');
-  return true;
-})";
-
-        // The text of the element: the value of a field, otherwise its visible text.
-        private const string TextScript = @"(function (sel, frame) {" + ResolveJs + @"
-  var hit = resolve(sel, frame);
-  if (!hit || hit.error) return null;
-  var e = hit.el;
-  var tag = e.tagName;
-  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return String(e.value);
-  return String(e.innerText != null ? e.innerText : e.textContent).trim();
-})";
-
         private static readonly object SharedLock = new object();
         private static WebSession _shared;
 
@@ -139,8 +74,8 @@ namespace AutomationTest.Core.Web
         }
 
         /// <summary>Runs one Web action.</summary>
-        /// <returns>The text read by GetText; null for the other actions.</returns>
-        public string Execute(WebSettings w, string text, CancellationToken token)
+        /// <returns>What GetText read (text, true/false or a number) or what a Script returned; null for the other actions.</returns>
+        public object Execute(WebSettings w, string text, CancellationToken token)
         {
             switch (w.Kind)
             {
@@ -150,6 +85,7 @@ namespace AutomationTest.Core.Web
                 case WebKind.Click: Click(w, token); break;
                 case WebKind.Dialog: Dialog(w, token); break;
                 case WebKind.GetText: return GetText(w, token);
+                case WebKind.Script: return RunScript(w, text, token);
                 case WebKind.SwitchTab: SwitchTab(w, token); break;
             }
             return null;
@@ -270,17 +206,23 @@ namespace AutomationTest.Core.Web
                 || url.StartsWith("data:", StringComparison.OrdinalIgnoreCase) ? url : "https://" + url;
         }
 
+        /// <summary>The arguments of the page scripts for an element: selector, frame and which match (1 = first).</summary>
+        private static string ElementArgs(WebSettings w)
+        {
+            return MiniJson.Write(w.Selector.Trim()) + "," + MiniJson.Write((w.Frame ?? "").Trim()) + "," + Math.Max(1, w.Index);
+        }
+
         private object Cdp(BrowserKind browser, int tab, string method, Dictionary<string, object> parameters, CancellationToken token, int timeoutMs = CallTimeoutMs)
         {
             return Call(browser, "cdp", new Dictionary<string, object> { { "tabId", tab }, { "method", method }, { "params", parameters ?? new Dictionary<string, object>() } }, token, timeoutMs);
         }
 
         /// <summary>Waits until the element is on the page and visible; returns where its centre is (in page pixels).</summary>
-        private double[] FindElement(WebSettings w, CancellationToken token, bool failIfMissing = true)
+        private double[] FindElement(WebSettings w, CancellationToken token, bool failIfMissing = true, bool requireVisible = true)
         {
             if (string.IsNullOrWhiteSpace(w.Selector)) throw new InvalidOperationException(w.Kind + ": no selector is set.");
             int tab = CurrentTab(w.Browser, token);
-            string script = LocateScript + "(" + MiniJson.Write(w.Selector.Trim()) + "," + MiniJson.Write((w.Frame ?? "").Trim()) + ")";
+            string script = WebScripts.Locate + "(" + ElementArgs(w) + ")";
             var watch = Stopwatch.StartNew();
             while (true)
             {
@@ -291,7 +233,7 @@ namespace AutomationTest.Core.Web
                     throw new InvalidOperationException("The page could not be searched: " + MiniJson.Write(ex));
                 var value = (Dictionary<string, object>)((Dictionary<string, object>)reply["result"])["value"];
                 if (value.TryGetValue("error", out object error)) throw new InvalidOperationException(error.ToString());
-                if (value["found"] is bool found && found && value["visible"] is bool visible && visible)
+                if (value["found"] is bool found && found && (!requireVisible || (value["visible"] is bool visible && visible)))
                     return new[] { Convert.ToDouble(value["x"]), Convert.ToDouble(value["y"]) };
                 if (watch.ElapsedMilliseconds >= w.TimeMs)
                 {
@@ -309,7 +251,7 @@ namespace AutomationTest.Core.Web
             Cdp(w.Browser, tab, "Page.bringToFront", null, token);
             Cdp(w.Browser, tab, "Runtime.evaluate", new Dictionary<string, object>
             {
-                { "expression", FocusScript + "(" + MiniJson.Write(w.Selector.Trim()) + "," + MiniJson.Write((w.Frame ?? "").Trim()) + ")" }, { "returnByValue", true }
+                { "expression", WebScripts.Focus + "(" + ElementArgs(w) + ")" }, { "returnByValue", true }
             }, token);
             // insertText goes through the browser's own input path, so frameworks see the change and Vietnamese text is typed as is.
             if (string.IsNullOrEmpty(text)) Cdp(w.Browser, tab, "Input.dispatchKeyEvent", new Dictionary<string, object> { { "type", "rawKeyDown" }, { "key", "Delete" }, { "code", "Delete" }, { "windowsVirtualKeyCode", 46 } }, token);
@@ -343,9 +285,9 @@ namespace AutomationTest.Core.Web
         /// Lets the user point at an element in the tab that is in front in that browser (and brings its window forward). Returns false
         /// when cancelled (Esc, the token, or the time ran out).
         /// </summary>
-        public bool PickElement(BrowserKind browser, CancellationToken token, int timeoutMs, out string selector, out string frame)
+        public bool PickElement(BrowserKind browser, CancellationToken token, int timeoutMs, out string selector, out string frame, out int index)
         {
-            selector = ""; frame = "";
+            selector = ""; frame = ""; index = 1;
             // The tab the user is looking at, not the one a script used before; the script's own tab is left alone.
             EnsureConnected(browser, token);
             int tab = Convert.ToInt32(((Dictionary<string, object>)Call(browser, "activeTab", null, token))["tabId"]);
@@ -366,6 +308,7 @@ namespace AutomationTest.Core.Web
                         if (data.ContainsKey("cancelled")) return false;
                         selector = Convert.ToString(data["selector"]);
                         frame = Convert.ToString(data["frame"]);
+                        index = data.TryGetValue("index", out object picked) ? Math.Max(1, Convert.ToInt32(picked)) : 1;
                         return true;
                     }
                     Thread.Sleep(150);
@@ -379,17 +322,72 @@ namespace AutomationTest.Core.Web
             }
         }
 
-        private string GetText(WebSettings w, CancellationToken token)
+        private object GetText(WebSettings w, CancellationToken token)
         {
-            if (FindElement(w, token, w.Required) == null) return ""; // optional element that is not there
-            int tab = CurrentTab(w.Browser, token);
-            var reply = (Dictionary<string, object>)Cdp(w.Browser, tab, "Runtime.evaluate", new Dictionary<string, object>
+            var browser = w.Browser;
+            if (w.Get == WebGetKind.PageUrl || w.Get == WebGetKind.PageTitle)
             {
-                { "expression", TextScript + "(" + MiniJson.Write(w.Selector.Trim()) + "," + MiniJson.Write((w.Frame ?? "").Trim()) + ")" },
+                int current = CurrentTab(browser, token);
+                var info = (Dictionary<string, object>)Call(browser, "tabInfo", new Dictionary<string, object> { { "tabId", current } }, token);
+                return Convert.ToString(info[w.Get == WebGetKind.PageUrl ? "url" : "title"]) ?? "";
+            }
+            if (string.IsNullOrWhiteSpace(w.Selector)) throw new InvalidOperationException("Get Text: no selector is set.");
+            int tab = CurrentTab(browser, token);
+            if (w.Get == WebGetKind.Count)
+            {
+                var counted = (Dictionary<string, object>)Cdp(browser, tab, "Runtime.evaluate", new Dictionary<string, object>
+                {
+                    { "expression", WebScripts.Count + "(" + MiniJson.Write(w.Selector.Trim()) + "," + MiniJson.Write((w.Frame ?? "").Trim()) + ")" },
+                    { "returnByValue", true }
+                }, token);
+                object number = ((Dictionary<string, object>)counted["result"]).TryGetValue("value", out object cv) ? cv : null;
+                if (number is Dictionary<string, object> failed) throw new InvalidOperationException(Convert.ToString(failed["error"]));
+                return Convert.ToDouble(number ?? 0);
+            }
+            if (w.Get == WebGetKind.Attribute && string.IsNullOrWhiteSpace(w.Attribute)) throw new InvalidOperationException("Get Text: no attribute name is set.");
+
+            // The element only has to be there: a hidden field or a collapsed block can be read too.
+            if (FindElement(w, token, w.Required, false) == null) return w.Get == WebGetKind.Checked ? (object)false : "";
+            var reply = (Dictionary<string, object>)Cdp(browser, tab, "Runtime.evaluate", new Dictionary<string, object>
+            {
+                { "expression", WebScripts.Read + "(" + ElementArgs(w) + "," + MiniJson.Write(w.Get.ToString()) + "," + MiniJson.Write((w.Attribute ?? "").Trim()) + ")" },
                 { "returnByValue", true }
             }, token);
             var result = (Dictionary<string, object>)reply["result"];
-            return result.TryGetValue("value", out object value) ? value as string : null;
+            result.TryGetValue("value", out object value);
+            if (value is bool || value is string) return value;
+            return w.Get == WebGetKind.Checked ? (object)false : "";
+        }
+
+        /// <summary>Runs JavaScript in the page like the browser console (top-level await and repeated let/const work).</summary>
+        private object RunScript(WebSettings w, string code, CancellationToken token)
+        {
+            if (string.IsNullOrWhiteSpace(code)) throw new InvalidOperationException("Script: there is no script to run.");
+            var browser = w.Browser;
+            int tab = CurrentTab(browser, token);
+            var reply = (Dictionary<string, object>)Cdp(browser, tab, "Runtime.evaluate", new Dictionary<string, object>
+            {
+                { "expression", code },
+                { "returnByValue", true },
+                { "awaitPromise", true },
+                { "replMode", true },
+                { "userGesture", true },
+                { "timeout", w.TimeMs }
+            }, token, (int)Math.Min(int.MaxValue, w.TimeMs + CallTimeoutMs));
+            if (reply.TryGetValue("exceptionDetails", out object details) && details is Dictionary<string, object> d)
+            {
+                string message = null;
+                if (d.TryGetValue("exception", out object ex) && ex is Dictionary<string, object> exception && exception.TryGetValue("description", out object desc)) message = Convert.ToString(desc);
+                if (string.IsNullOrEmpty(message) && d.TryGetValue("text", out object text)) message = Convert.ToString(text);
+                string at = d.TryGetValue("lineNumber", out object line) ? " (line " + (Convert.ToInt32(line) + 1) + ")" : "";
+                throw new InvalidOperationException("Script failed" + at + ": " + (message ?? "unknown error"));
+            }
+            var result = (Dictionary<string, object>)reply["result"];
+            if (!result.TryGetValue("value", out object value) || value == null) return "";
+            if (value is string || value is bool) return value;
+            if (value is long l) return (double)l;
+            if (value is double) return value;
+            return MiniJson.Write(value); // an object or an array: as JSON text
         }
 
         private List<TabInfo> ListTabs(BrowserKind browser, CancellationToken token, out int lastWindowId)
@@ -415,7 +413,6 @@ namespace AutomationTest.Core.Web
         private void SwitchTab(WebSettings w, CancellationToken token)
         {
             bool hasPattern = !string.IsNullOrWhiteSpace(w.Title) || !string.IsNullOrWhiteSpace(w.Url);
-            if (!hasPattern && w.Index <= 0) throw new InvalidOperationException("Switch Tab: enter a Title, a URL, an Index, or a combination.");
             EnsureConnected(w.Browser, token);
             var watch = Stopwatch.StartNew();
             while (true)

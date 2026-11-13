@@ -162,13 +162,14 @@ namespace AutomationTest.Core.Runner
         private void ExecuteWeb(ActionNode node, CancellationToken token)
         {
             var w = node.Web;
-            string text = w.Kind == WebKind.Input || w.Kind == WebKind.Dialog
-                ? (w.TextIsExpression ? EvalString(w.Text) : w.Text)
-                : null;
-            if (w.Kind == WebKind.GetText && !Expression.IsValidId((w.Id ?? "").Trim()))
-                throw new InvalidOperationException("Get Text: \"" + w.Id + "\" is not a valid ID.");
-            string result = (WebSession ?? AutomationTest.Core.Web.WebSession.Shared).Execute(w, text, token);
-            if (w.Kind == WebKind.GetText) _vars.Set(w.Id.Trim(), result ?? "");
+            string text = null;
+            if (w.Kind == WebKind.Input || w.Kind == WebKind.Dialog) text = w.TextIsExpression ? EvalString(w.Text) : w.Text;
+            else if (w.Kind == WebKind.Script) text = w.TextIsExpression ? EvalString(w.Script) : w.Script;
+            bool keeps = w.Kind == WebKind.GetText || (w.Kind == WebKind.Script && !string.IsNullOrWhiteSpace(w.Id));
+            if (keeps && !Expression.IsValidId((w.Id ?? "").Trim()))
+                throw new InvalidOperationException((w.Kind == WebKind.Script ? "Script" : "Get Text") + ": \"" + w.Id + "\" is not a valid ID.");
+            object result = (WebSession ?? AutomationTest.Core.Web.WebSession.Shared).Execute(w, text, token);
+            if (keeps) _vars.Set(w.Id.Trim(), result ?? "");
             // New Tab and Switch Tab hold the actions that work in that tab (and browser).
             if (node.IsContainer) ExecuteList(node.Children, token);
             Wait(w.DelayMs, token);

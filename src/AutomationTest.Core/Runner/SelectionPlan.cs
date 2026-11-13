@@ -99,6 +99,7 @@ namespace AutomationTest.Core.Runner
                     break;
                 case ActionCategory.Web:
                     if ((node.Web.Kind == WebKind.Input || node.Web.Kind == WebKind.Dialog) && node.Web.TextIsExpression) text = node.Web.Text;
+                    else if (node.Web.Kind == WebKind.Script && node.Web.TextIsExpression) text = node.Web.Script;
                     break;
                 case ActionCategory.Control:
                     if (node.IsKind(ControlKind.Variable) && node.Variable.UseExpression) text = node.Variable.Expression;
@@ -113,7 +114,7 @@ namespace AutomationTest.Core.Runner
         private static string Defines(ActionNode node)
         {
             if (node.Category == ActionCategory.Web)
-                return node.Web.Kind == WebKind.GetText && !string.IsNullOrWhiteSpace(node.Web.Id) ? node.Web.Id.Trim() : null;
+                return (node.Web.Kind == WebKind.GetText || node.Web.Kind == WebKind.Script) && !string.IsNullOrWhiteSpace(node.Web.Id) ? node.Web.Id.Trim() : null;
             if (node.Category != ActionCategory.Control) return null;
             string id = node.IsKind(ControlKind.Variable) ? node.Variable.Id : node.IsKind(ControlKind.Image) ? node.Image.Id : null;
             return string.IsNullOrWhiteSpace(id) ? null : id.Trim();
