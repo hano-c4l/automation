@@ -30,6 +30,9 @@ namespace AutomationTest.Core.Runner
             _keyboard = keyboard ?? new KeyboardController();
         }
 
+        /// <summary>Performs the Shutdown action; replaceable so tests never shut the computer down.</summary>
+        public ISystemShutdown Shutdown { get; set; } = new WindowsShutdown();
+
         /// <summary>Raised (from the runner thread) with the node that is about to run.</summary>
         public event Action<ActionNode> NodeStarted;
 
@@ -57,6 +60,10 @@ namespace AutomationTest.Core.Runner
             try
             {
                 ExecuteList(actions, token);
+            }
+            catch (ShutdownIssuedException)
+            {
+                // The computer is shutting down: the run ends here so nothing else is clicked or typed and a Loop cannot ask again.
             }
             finally
             {
@@ -144,9 +151,18 @@ namespace AutomationTest.Core.Runner
             Wait(k.DelayMs, token);
         }
 
+        private sealed class ShutdownIssuedException : Exception { }
+
         private void ExecuteCommand(ActionNode node, CancellationToken token)
         {
             var c = node.Command;
+            if (c.Kind == CommandKind.Shutdown)
+            {
+                Wait(c.TimeMs, token); // stoppable: the Stop key cancels the countdown
+                token.ThrowIfCancellationRequested();
+                Shutdown.Shutdown(c.Force);
+                throw new ShutdownIssuedException();
+            }
             if (c.Kind == CommandKind.Active)
             {
                 KeepAwake.Poke(_mouse);

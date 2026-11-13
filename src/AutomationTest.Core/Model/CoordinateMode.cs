@@ -41,7 +41,9 @@ namespace AutomationTest.Core.Model
     {
         Open,
         /// <summary>Sends a harmless input event and asks Windows to stay awake, so a long run is not taken for being idle (lock, screen off, sleep).</summary>
-        Active
+        Active,
+        /// <summary>Waits Time, then shuts the computer down.</summary>
+        Shutdown
     }
 
     public enum ControlKind

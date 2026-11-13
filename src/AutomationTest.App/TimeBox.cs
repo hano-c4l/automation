@@ -46,6 +46,26 @@ namespace AutomationTest.App
             }
         }
 
+        /// <summary>
+        /// Readable text for a computed total: the largest non-zero unit plus the next unit down, rounded to that second unit
+        /// (643632 ms is "10 min 44 s"; 120000 is "2 min"; 1200 is "1 s 200 ms"). Under one second stays in ms.
+        /// </summary>
+        public static string FormatApprox(long ms)
+        {
+            if (ms < 1000) return ms + " ms";
+            int top = UnitFactors.Length - 1;
+            while (UnitFactors[top] > ms) top--;
+            if (top == 0) return ms + " ms";
+            long second = UnitFactors[top - 1];
+            // Round to the second unit first, so 59.6 s becomes "1 min" instead of "0 min 60 s".
+            long rounded = (ms + second / 2) / second * second;
+            while (top < UnitFactors.Length - 1 && UnitFactors[top + 1] <= rounded) top++;
+            second = UnitFactors[top - 1];
+            long big = rounded / UnitFactors[top];
+            long small = rounded % UnitFactors[top] / second;
+            return small == 0 ? big + " " + UnitShort[top] : big + " " + UnitShort[top] + " " + small + " " + UnitShort[top - 1];
+        }
+
         /// <summary>Text such as "500 ms" or "2 s" using the largest unit that divides the value exactly.</summary>
         public static string Format(long ms)
         {

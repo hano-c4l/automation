@@ -106,6 +106,8 @@ namespace AutomationTest.App
         private readonly TimeBox _kbTime = new TimeBox(500);
         private readonly TimeBox _kbDelay = new TimeBox(500);
         private readonly TimeBox _cmdDelay = new TimeBox(0);
+        private readonly TimeBox _cmdTime = new TimeBox(0);
+        private readonly ToggleSwitch _cmdForce = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
 
         // Editor: command
         private readonly ComboBox _cmdKind = MakeCombo(typeof(CommandKind));
@@ -335,6 +337,8 @@ namespace AutomationTest.App
             // Utilities
             var cmdTable = NewTable();
             AddRow(cmdTable, "Path", _cmdValue, null, null, MakeButton("Browse", (s, e) => BrowseCommandPath()));
+            AddRow(cmdTable, "Time", _cmdTime, Help.ShutdownTime);
+            AddRow(cmdTable, "Force", _cmdForce, Help.ShutdownForce);
             AddRow(cmdTable, "Delay", _cmdDelay, Help.KeyDelay);
             _commandBox.Controls.Add(cmdTable);
 
@@ -468,7 +472,11 @@ namespace AutomationTest.App
             _mouseBox.Visible = category == ActionCategory.Mouse;
             _keyboardBox.Visible = category == ActionCategory.Keyboard;
             _commandBox.Visible = category == ActionCategory.Utilities;
-            SetRowVisible(_cmdValue, (_cmdKind.SelectedItem as CommandKind? ?? CommandKind.Open) == CommandKind.Open); // Active has no path; both have a Delay
+            var cmdKind = _cmdKind.SelectedItem as CommandKind? ?? CommandKind.Open;
+            SetRowVisible(_cmdValue, cmdKind == CommandKind.Open); // only Open has a path
+            SetRowVisible(_cmdTime, cmdKind == CommandKind.Shutdown);
+            SetRowVisible(_cmdForce, cmdKind == CommandKind.Shutdown);
+            SetRowVisible(_cmdDelay, cmdKind != CommandKind.Shutdown); // Shutdown has no "after" delay: the machine is gone
             _controlBox.Visible = category == ActionCategory.Control;
             SetRowVisible(_mouseAction, category == ActionCategory.Mouse);
             SetRowVisible(_kbAction, category == ActionCategory.Keyboard);
@@ -608,7 +616,9 @@ namespace AutomationTest.App
                     {
                         Kind = (CommandKind)_cmdKind.SelectedItem,
                         Value = (CommandKind)_cmdKind.SelectedItem == CommandKind.Open ? _cmdValue.Text.Trim() : "",
-                        DelayMs = _cmdDelay.Milliseconds
+                        DelayMs = (CommandKind)_cmdKind.SelectedItem == CommandKind.Shutdown ? 0 : _cmdDelay.Milliseconds,
+                        TimeMs = (CommandKind)_cmdKind.SelectedItem == CommandKind.Shutdown ? _cmdTime.Milliseconds : 0,
+                        Force = (CommandKind)_cmdKind.SelectedItem == CommandKind.Shutdown && _cmdForce.Checked
                     });
 
                 default:
@@ -755,6 +765,8 @@ namespace AutomationTest.App
                     _cmdKind.SelectedItem = node.Command.Kind;
                     _cmdValue.Text = node.Command.Value;
                     _cmdDelay.Milliseconds = node.Command.DelayMs;
+                    _cmdTime.Milliseconds = node.Command.TimeMs;
+                    _cmdForce.Checked = node.Command.Force;
                     break;
 
                 default:
@@ -1456,8 +1468,16 @@ namespace AutomationTest.App
 
                 case ActionCategory.Utilities:
                     action = n.Command.Kind.ToString();
-                    details = n.Command.Kind == CommandKind.Active ? "sends a harmless input event so the computer does not lock or sleep" : n.Command.Value;
-                    delay = TimeBox.Format(n.Command.DelayMs);
+                    if (n.Command.Kind == CommandKind.Shutdown)
+                    {
+                        details = "shut down the computer" + (n.Command.Force ? " (force)" : "");
+                        time = TimeBox.Format(n.Command.TimeMs);
+                    }
+                    else
+                    {
+                        details = n.Command.Kind == CommandKind.Active ? "sends a harmless input event so the computer does not lock or sleep" : n.Command.Value;
+                        delay = TimeBox.Format(n.Command.DelayMs);
+                    }
                     break;
 
                 default:
@@ -1506,7 +1526,7 @@ namespace AutomationTest.App
                             }
                             // The time one pass over the actions inside takes (their Time and Delay added up).
                             long? pass = ActionTiming.PerIterationMs(n);
-                            time = !pass.HasValue ? "?" : n.Children.Exists(c => !c.Disabled) ? TimeBox.Format(pass.Value) : "";
+                            time = !pass.HasValue ? "?" : n.Children.Exists(c => !c.Disabled) ? TimeBox.FormatApprox(pass.Value) : "";
                             break;
                     }
                     break;
@@ -2557,6 +2577,14 @@ namespace AutomationTest.App
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
             _closing = true; // no license check from here on: the program is leaving anyway
+            if (e.CloseReason == CloseReason.WindowsShutDown)
+            {
+                // Windows is shutting down (possibly because of a Shutdown action): never ask, never block it.
+                _cts?.Cancel();
+                if (SettingsEnabled) SaveWindowSettings();
+                base.OnFormClosing(e);
+                return;
+            }
             // A recording in progress is finished first, so its actions count as unsaved changes in the question below.
             if (_recording) StopRecording();
             // Ask first: answering No must not stop a running script.
