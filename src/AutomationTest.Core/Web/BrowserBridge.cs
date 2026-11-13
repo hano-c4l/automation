@@ -30,7 +30,11 @@ namespace AutomationTest.Core.Web
             new ConcurrentDictionary<long, TaskCompletionSource<Dictionary<string, object>>>();
         private readonly SemaphoreSlim _sendLock = new SemaphoreSlim(1, 1);
         private readonly CancellationTokenSource _stop = new CancellationTokenSource();
+        // The extension sends a message every 20 seconds; a connection that has been silent much longer is dead.
+        private const int StaleMs = 60000;
+
         private WebSocket _socket;
+        private long _lastReceivedTicks = Environment.TickCount;
         private long _nextId;
 
         public BrowserBridge(int port = DefaultPort)
@@ -128,9 +132,17 @@ namespace AutomationTest.Core.Web
                     context.Response.Close();
                     continue;
                 }
+                // While the extension that is connected is alive, no other one may take over (two browsers, or another extension).
+                if (Connected && unchecked(Environment.TickCount - Interlocked.Read(ref _lastReceivedTicks)) < StaleMs)
+                {
+                    context.Response.StatusCode = 403;
+                    context.Response.Close();
+                    continue;
+                }
                 try
                 {
                     var ws = (await context.AcceptWebSocketAsync(null).ConfigureAwait(false)).WebSocket;
+                    Interlocked.Exchange(ref _lastReceivedTicks, Environment.TickCount);
                     var old = _socket;
                     _socket = ws; // a reconnecting extension replaces the old connection
                     old?.Abort();
@@ -159,6 +171,7 @@ namespace AutomationTest.Core.Web
                         ms.Write(buffer, 0, r.Count);
                     } while (!r.EndOfMessage);
 
+                    Interlocked.Exchange(ref _lastReceivedTicks, Environment.TickCount);
                     var message = FromJson(Encoding.UTF8.GetString(ms.ToArray()));
                     if (message == null) continue;
                     if (message.TryGetValue("id", out object idValue) && idValue != null)

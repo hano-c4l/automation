@@ -2585,6 +2585,16 @@ namespace AutomationTest.App
             if (_columnsRestored) _lastListWidth = _list.ClientSize.Width;
             else FitDetailsColumn(true);
             _columnsReady = true;
+            // Listen for the browser extension from the start: a browser that has been idle wakes its extension only now and then,
+            // and the extension keeps its connection (and itself) alive once it has connected.
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                try { AutomationTest.Core.Web.WebSession.Shared.ToString(); }
+                catch (InvalidOperationException ex)
+                {
+                    try { BeginInvoke((Action)(() => SetStatus("Web actions are not available: " + ex.Message))); } catch (InvalidOperationException) { }
+                }
+            });
             if (_startStop.Owner != null) CenterRunButtons(_startStop.Owner); // item widths are known only once shown
         }
 

@@ -81,10 +81,24 @@ namespace AutomationTest.Core.Web
   return String(e.innerText != null ? e.innerText : e.textContent).trim();
 })";
 
-        private static readonly Lazy<WebSession> SharedSession = new Lazy<WebSession>(() => new WebSession());
+        private static readonly object SharedLock = new object();
+        private static WebSession _shared;
 
-        /// <summary>The one session of the program (one extension connection, one listening port).</summary>
-        public static WebSession Shared => SharedSession.Value;
+        /// <summary>
+        /// The one session of the program (one extension connection, one listening port). Created on first use; if the port is
+        /// busy that fails with a message, and the next use tries again.
+        /// </summary>
+        public static WebSession Shared
+        {
+            get
+            {
+                lock (SharedLock)
+                {
+                    if (_shared == null) _shared = new WebSession();
+                    return _shared;
+                }
+            }
+        }
 
         private readonly BrowserBridge _bridge;
         private readonly bool _ownsBridge;
@@ -143,7 +157,8 @@ namespace AutomationTest.Core.Web
 
         private void EnsureConnected(CancellationToken token)
         {
-            if (_bridge.WaitConnected(1500, token)) return;
+            // A browser that has been idle puts the extension to sleep; it wakes within about 30 seconds and then connects.
+            if (_bridge.WaitConnected(35000, token)) return;
             throw new InvalidOperationException("The browser is not connected. Add an Open Browser action first, or start the browser that has the Automation Test extension.");
         }
 
