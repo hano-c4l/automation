@@ -100,9 +100,16 @@ namespace AutomationTest.Core.Web
             }
         }
 
+        /// <summary>The session of the program when it has been created (null before the first use); never creates it.</summary>
+        public static WebSession SharedIfCreated
+        {
+            get { lock (SharedLock) return _shared; }
+        }
+
         private readonly BrowserBridge _bridge;
         private readonly bool _ownsBridge;
-        private int _tabId = -1;
+        // The tab the script is using, per browser (tab ids belong to one browser).
+        private readonly Dictionary<BrowserKind, int> _tabs = new Dictionary<BrowserKind, int>();
 
         public WebSession(BrowserBridge bridge = null)
         {
@@ -119,7 +126,17 @@ namespace AutomationTest.Core.Web
             }
         }
 
-        public bool Connected => _bridge.Connected;
+        /// <summary>True while the extension of that browser is connected.</summary>
+        public bool IsConnected(BrowserKind browser) => _bridge.IsConnected(browser);
+
+        /// <summary>Why the last connection of an extension was turned away (for diagnosis).</summary>
+        public string LastRejection => _bridge.LastRejection;
+
+        /// <summary>Forgets the tab each browser was using: the next action that needs one uses the tab that is in front then.</summary>
+        public void ResetTab()
+        {
+            lock (_tabs) _tabs.Clear();
+        }
 
         /// <summary>Runs one Web action.</summary>
         /// <returns>The text read by GetText; null for the other actions.</returns>
@@ -127,8 +144,7 @@ namespace AutomationTest.Core.Web
         {
             switch (w.Kind)
             {
-                case WebKind.OpenBrowser: OpenBrowser(w, token); break;
-                case WebKind.OpenUrl: OpenUrl(w, token); break;
+                case WebKind.NewTab: NewTab(w, token); break;
                 case WebKind.WaitElement: FindElement(w, token); break;
                 case WebKind.Input: Input(w, text, token); break;
                 case WebKind.Click: Click(w, token); break;
@@ -139,64 +155,112 @@ namespace AutomationTest.Core.Web
             return null;
         }
 
-        private void OpenBrowser(WebSettings w, CancellationToken token)
+        private static string ExeOf(BrowserKind browser)
         {
-            if (_bridge.Connected) return;
-            string exe = w.Browser == BrowserKind.Edge ? "msedge.exe" : "chrome.exe";
-            try
+            return browser == BrowserKind.Edge ? "msedge.exe" : "chrome.exe";
+        }
+
+        /// <summary>
+        /// True when the browser has a window open. A browser kept alive in the background (Startup Boost, background apps) has
+        /// processes but no window, and is treated as not running.
+        /// </summary>
+        private static bool HasWindow(BrowserKind browser)
+        {
+            string name = browser == BrowserKind.Edge ? "msedge" : "chrome";
+            foreach (var process in Process.GetProcessesByName(name))
             {
-                Process.Start(new ProcessStartInfo(exe) { UseShellExecute = true });
+                try { if (process.MainWindowHandle != IntPtr.Zero) return true; }
+                catch (InvalidOperationException) { }
+                finally { process.Dispose(); }
             }
-            catch (Exception ex) when (ex is System.ComponentModel.Win32Exception || ex is InvalidOperationException)
+            return false;
+        }
+
+        private string ExtensionMissing(BrowserKind browser)
+        {
+            return "The Automation Test extension of " + browser + " did not connect. Install it in " + browser + " (Load unpacked: the BrowserExtension folder), make sure it is enabled, " +
+                "and check that " + browser + " is not connected twice (another profile)." + (string.IsNullOrEmpty(_bridge.LastRejection) ? "" : " Last refusal: " + _bridge.LastRejection + ".");
+        }
+
+        private void EnsureConnected(BrowserKind browser, CancellationToken token)
+        {
+            if (_bridge.IsConnected(browser)) return;
+            if (!HasWindow(browser))
+                throw new InvalidOperationException(browser + " is not running. Use a New Tab action to start it.");
+            // A browser that has been idle puts its extension to sleep; it wakes within about 30 seconds and then connects.
+            if (!_bridge.WaitConnected(browser, 35000, token)) throw new InvalidOperationException(ExtensionMissing(browser));
+        }
+
+        private object Call(BrowserKind browser, string cmd, Dictionary<string, object> args, CancellationToken token, int timeoutMs = CallTimeoutMs)
+        {
+            return _bridge.Call(browser, cmd, args, timeoutMs, token);
+        }
+
+        private int CurrentTab(BrowserKind browser, CancellationToken token)
+        {
+            EnsureConnected(browser, token);
+            int known;
+            bool has;
+            lock (_tabs) has = _tabs.TryGetValue(browser, out known);
+            if (has)
             {
-                throw new InvalidOperationException("Cannot start " + w.Browser + ": " + ex.Message);
+                var exists = (Dictionary<string, object>)Call(browser, "tabExists", new Dictionary<string, object> { { "tabId", known } }, token);
+                if (exists["exists"] is bool b && b) return known;
             }
-            if (!_bridge.WaitConnected((int)Math.Min(w.TimeMs, int.MaxValue), token))
-                throw new InvalidOperationException(w.Browser + " started, but its browser extension did not connect. Install the Automation Test browser extension in that browser first.");
+            var active = (Dictionary<string, object>)Call(browser, "activeTab", null, token);
+            int id = Convert.ToInt32(active["tabId"]);
+            lock (_tabs) _tabs[browser] = id;
+            return id;
         }
 
-        private void EnsureConnected(CancellationToken token)
+        private void NewTab(WebSettings w, CancellationToken token)
         {
-            // A browser that has been idle puts the extension to sleep; it wakes within about 30 seconds and then connects.
-            if (_bridge.WaitConnected(35000, token)) return;
-            throw new InvalidOperationException("The browser is not connected. Add an Open Browser action first, or start the browser that has the Automation Test extension.");
-        }
-
-        private object Call(string cmd, Dictionary<string, object> args, CancellationToken token, int timeoutMs = CallTimeoutMs)
-        {
-            return _bridge.Call(cmd, args, timeoutMs, token);
-        }
-
-        private int CurrentTab(CancellationToken token)
-        {
-            EnsureConnected(token);
-            if (_tabId >= 0)
+            var browser = w.Browser;
+            bool launched = false;
+            if (!_bridge.IsConnected(browser))
             {
-                var exists = (Dictionary<string, object>)Call("tabExists", new Dictionary<string, object> { { "tabId", _tabId } }, token);
-                if (exists["exists"] is bool b && b) return _tabId;
+                if (HasWindow(browser))
+                {
+                    if (!_bridge.WaitConnected(browser, 35000, token)) throw new InvalidOperationException(ExtensionMissing(browser));
+                }
+                else
+                {
+                    try { Process.Start(new ProcessStartInfo(ExeOf(browser)) { UseShellExecute = true }); }
+                    catch (Exception ex) when (ex is System.ComponentModel.Win32Exception || ex is InvalidOperationException)
+                    {
+                        throw new InvalidOperationException("Cannot start " + browser + ": " + ex.Message);
+                    }
+                    launched = true;
+                    if (!_bridge.WaitConnected(browser, (int)Math.Min(Math.Max(w.TimeMs, 5000), int.MaxValue), token))
+                        throw new InvalidOperationException(browser + " started. " + ExtensionMissing(browser));
+                }
             }
-            var active = (Dictionary<string, object>)Call("activeTab", null, token);
-            _tabId = Convert.ToInt32(active["tabId"]);
-            return _tabId;
-        }
 
-        private void OpenUrl(WebSettings w, CancellationToken token)
-        {
-            if (string.IsNullOrWhiteSpace(w.Url)) throw new InvalidOperationException("Open URL: no address is set.");
-            EnsureConnected(token);
             var args = new Dictionary<string, object>
             {
-                { "url", NormalizeUrl(w.Url) },
-                { "newTab", w.NewTab },
+                { "url", string.IsNullOrWhiteSpace(w.Url) ? "" : NormalizeUrl(w.Url) },
+                { "newTab", true },
                 { "timeoutMs", w.TimeMs }
             };
-            if (!w.NewTab && _tabId >= 0)
+            if (launched)
             {
-                var exists = (Dictionary<string, object>)Call("tabExists", new Dictionary<string, object> { { "tabId", _tabId } }, token);
-                if (exists["exists"] is bool b && b) args["tabId"] = _tabId;
+                // A browser started just now shows its start page: use that tab instead of opening a second one.
+                var active = (Dictionary<string, object>)Call(browser, "activeTab", null, token);
+                string url = Convert.ToString(active["url"]) ?? "";
+                if (IsStartPage(url))
+                {
+                    args["newTab"] = false;
+                    args["tabId"] = Convert.ToInt32(active["tabId"]);
+                }
             }
-            var reply = (Dictionary<string, object>)Call("openUrl", args, token, (int)Math.Min(int.MaxValue, w.TimeMs + CallTimeoutMs));
-            _tabId = Convert.ToInt32(reply["tabId"]);
+            var reply = (Dictionary<string, object>)Call(browser, "openUrl", args, token, (int)Math.Min(int.MaxValue, w.TimeMs + CallTimeoutMs));
+            lock (_tabs) _tabs[browser] = Convert.ToInt32(reply["tabId"]);
+        }
+
+        private static bool IsStartPage(string url)
+        {
+            url = url.TrimEnd('/');
+            return url == "chrome://newtab" || url == "edge://newtab" || url == "about:blank" || url == "";
         }
 
         private static string NormalizeUrl(string url)
@@ -206,22 +270,22 @@ namespace AutomationTest.Core.Web
                 || url.StartsWith("data:", StringComparison.OrdinalIgnoreCase) ? url : "https://" + url;
         }
 
-        private object Cdp(int tab, string method, Dictionary<string, object> parameters, CancellationToken token, int timeoutMs = CallTimeoutMs)
+        private object Cdp(BrowserKind browser, int tab, string method, Dictionary<string, object> parameters, CancellationToken token, int timeoutMs = CallTimeoutMs)
         {
-            return Call("cdp", new Dictionary<string, object> { { "tabId", tab }, { "method", method }, { "params", parameters ?? new Dictionary<string, object>() } }, token, timeoutMs);
+            return Call(browser, "cdp", new Dictionary<string, object> { { "tabId", tab }, { "method", method }, { "params", parameters ?? new Dictionary<string, object>() } }, token, timeoutMs);
         }
 
         /// <summary>Waits until the element is on the page and visible; returns where its centre is (in page pixels).</summary>
-        private double[] FindElement(WebSettings w, CancellationToken token)
+        private double[] FindElement(WebSettings w, CancellationToken token, bool failIfMissing = true)
         {
             if (string.IsNullOrWhiteSpace(w.Selector)) throw new InvalidOperationException(w.Kind + ": no selector is set.");
-            int tab = CurrentTab(token);
+            int tab = CurrentTab(w.Browser, token);
             string script = LocateScript + "(" + MiniJson.Write(w.Selector.Trim()) + "," + MiniJson.Write((w.Frame ?? "").Trim()) + ")";
             var watch = Stopwatch.StartNew();
             while (true)
             {
                 token.ThrowIfCancellationRequested();
-                var reply = (Dictionary<string, object>)Cdp(tab, "Runtime.evaluate",
+                var reply = (Dictionary<string, object>)Cdp(w.Browser, tab, "Runtime.evaluate",
                     new Dictionary<string, object> { { "expression", script }, { "returnByValue", true } }, token);
                 if (reply.TryGetValue("exceptionDetails", out object ex) && ex != null)
                     throw new InvalidOperationException("The page could not be searched: " + MiniJson.Write(ex));
@@ -230,7 +294,10 @@ namespace AutomationTest.Core.Web
                 if (value["found"] is bool found && found && value["visible"] is bool visible && visible)
                     return new[] { Convert.ToDouble(value["x"]), Convert.ToDouble(value["y"]) };
                 if (watch.ElapsedMilliseconds >= w.TimeMs)
+                {
+                    if (!failIfMissing) return null;
                     throw new InvalidOperationException(w.Kind + ": \"" + w.Selector.Trim() + "\" was not found on the page within " + w.TimeMs + " ms.");
+                }
                 Thread.Sleep(150);
             }
         }
@@ -238,33 +305,33 @@ namespace AutomationTest.Core.Web
         private void Input(WebSettings w, string text, CancellationToken token)
         {
             FindElement(w, token);
-            int tab = CurrentTab(token);
-            Cdp(tab, "Page.bringToFront", null, token);
-            Cdp(tab, "Runtime.evaluate", new Dictionary<string, object>
+            int tab = CurrentTab(w.Browser, token);
+            Cdp(w.Browser, tab, "Page.bringToFront", null, token);
+            Cdp(w.Browser, tab, "Runtime.evaluate", new Dictionary<string, object>
             {
                 { "expression", FocusScript + "(" + MiniJson.Write(w.Selector.Trim()) + "," + MiniJson.Write((w.Frame ?? "").Trim()) + ")" }, { "returnByValue", true }
             }, token);
             // insertText goes through the browser's own input path, so frameworks see the change and Vietnamese text is typed as is.
-            if (string.IsNullOrEmpty(text)) Cdp(tab, "Input.dispatchKeyEvent", new Dictionary<string, object> { { "type", "rawKeyDown" }, { "key", "Delete" }, { "code", "Delete" }, { "windowsVirtualKeyCode", 46 } }, token);
-            else Cdp(tab, "Input.insertText", new Dictionary<string, object> { { "text", text } }, token);
+            if (string.IsNullOrEmpty(text)) Cdp(w.Browser, tab, "Input.dispatchKeyEvent", new Dictionary<string, object> { { "type", "rawKeyDown" }, { "key", "Delete" }, { "code", "Delete" }, { "windowsVirtualKeyCode", 46 } }, token);
+            else Cdp(w.Browser, tab, "Input.insertText", new Dictionary<string, object> { { "text", text } }, token);
         }
 
         private void Click(WebSettings w, CancellationToken token)
         {
             var at = FindElement(w, token);
-            int tab = CurrentTab(token);
-            Cdp(tab, "Page.bringToFront", null, token);
+            int tab = CurrentTab(w.Browser, token);
+            Cdp(w.Browser, tab, "Page.bringToFront", null, token);
             Thread.Sleep(100); // the viewport of a tab that was in the background needs a moment
             at = FindElement(w, token); // again: the position can change once the tab is in front
             Func<string, int, Dictionary<string, object>> mouse = (type, count) => new Dictionary<string, object>
             {
                 { "type", type }, { "x", at[0] }, { "y", at[1] }, { "button", "left" }, { "clickCount", count }
             };
-            Cdp(tab, "Input.dispatchMouseEvent", new Dictionary<string, object> { { "type", "mouseMoved" }, { "x", at[0] }, { "y", at[1] } }, token);
-            Cdp(tab, "Input.dispatchMouseEvent", mouse("mousePressed", 1), token);
+            Cdp(w.Browser, tab, "Input.dispatchMouseEvent", new Dictionary<string, object> { { "type", "mouseMoved" }, { "x", at[0] }, { "y", at[1] } }, token);
+            Cdp(w.Browser, tab, "Input.dispatchMouseEvent", mouse("mousePressed", 1), token);
             try
             {
-                Cdp(tab, "Input.dispatchMouseEvent", mouse("mouseReleased", 1), token, ClickReleaseTimeoutMs);
+                Cdp(w.Browser, tab, "Input.dispatchMouseEvent", mouse("mouseReleased", 1), token, ClickReleaseTimeoutMs);
             }
             catch (BridgeTimeoutException)
             {
@@ -272,11 +339,51 @@ namespace AutomationTest.Core.Web
             }
         }
 
+        /// <summary>
+        /// Lets the user point at an element in the tab that is in front in that browser (and brings its window forward). Returns false
+        /// when cancelled (Esc, the token, or the time ran out).
+        /// </summary>
+        public bool PickElement(BrowserKind browser, CancellationToken token, int timeoutMs, out string selector, out string frame)
+        {
+            selector = ""; frame = "";
+            // The tab the user is looking at, not the one a script used before; the script's own tab is left alone.
+            EnsureConnected(browser, token);
+            int tab = Convert.ToInt32(((Dictionary<string, object>)Call(browser, "activeTab", null, token))["tabId"]);
+            // Windows only lets the program in front hand the foreground on: allow the browser to take it.
+            AutomationTest.Core.Native.NativeMethods.AllowSetForegroundWindow(-1);
+            Call(browser, "activateTab", new Dictionary<string, object> { { "tabId", tab } }, token);
+            Cdp(browser, tab, "Runtime.evaluate", new Dictionary<string, object> { { "expression", PickScript.Install }, { "returnByValue", true } }, token);
+            var watch = Stopwatch.StartNew();
+            try
+            {
+                while (!token.IsCancellationRequested && watch.ElapsedMilliseconds < timeoutMs)
+                {
+                    var reply = (Dictionary<string, object>)Cdp(browser, tab, "Runtime.evaluate", new Dictionary<string, object> { { "expression", PickScript.Read }, { "returnByValue", true } }, token);
+                    var result = (Dictionary<string, object>)reply["result"];
+                    if (result.TryGetValue("value", out object value) && value is string json)
+                    {
+                        var data = (Dictionary<string, object>)MiniJson.Parse(json);
+                        if (data.ContainsKey("cancelled")) return false;
+                        selector = Convert.ToString(data["selector"]);
+                        frame = Convert.ToString(data["frame"]);
+                        return true;
+                    }
+                    Thread.Sleep(150);
+                }
+                return false;
+            }
+            finally
+            {
+                try { Cdp(browser, tab, "Runtime.evaluate", new Dictionary<string, object> { { "expression", PickScript.Cancel } }, CancellationToken.None, 3000); }
+                catch (InvalidOperationException) { }
+            }
+        }
+
         private string GetText(WebSettings w, CancellationToken token)
         {
-            FindElement(w, token);
-            int tab = CurrentTab(token);
-            var reply = (Dictionary<string, object>)Cdp(tab, "Runtime.evaluate", new Dictionary<string, object>
+            if (FindElement(w, token, w.Required) == null) return ""; // optional element that is not there
+            int tab = CurrentTab(w.Browser, token);
+            var reply = (Dictionary<string, object>)Cdp(w.Browser, tab, "Runtime.evaluate", new Dictionary<string, object>
             {
                 { "expression", TextScript + "(" + MiniJson.Write(w.Selector.Trim()) + "," + MiniJson.Write((w.Frame ?? "").Trim()) + ")" },
                 { "returnByValue", true }
@@ -285,39 +392,57 @@ namespace AutomationTest.Core.Web
             return result.TryGetValue("value", out object value) ? value as string : null;
         }
 
+        private List<TabInfo> ListTabs(BrowserKind browser, CancellationToken token, out int lastWindowId)
+        {
+            var reply = (Dictionary<string, object>)Call(browser, "tabs", null, token);
+            lastWindowId = reply.TryGetValue("lastWindowId", out object last) && last != null ? Convert.ToInt32(last) : -1;
+            var list = new List<TabInfo>();
+            foreach (var item in (object[])reply["tabs"])
+            {
+                var t = (Dictionary<string, object>)item;
+                list.Add(new TabInfo
+                {
+                    Id = Convert.ToInt32(t["id"]),
+                    WindowId = Convert.ToInt32(t["windowId"]),
+                    Index = Convert.ToInt32(t["index"]),
+                    Title = Convert.ToString(t["title"]) ?? "",
+                    Url = Convert.ToString(t["url"]) ?? ""
+                });
+            }
+            return list;
+        }
+
         private void SwitchTab(WebSettings w, CancellationToken token)
         {
-            string want = (w.Text ?? "").Trim();
-            if (want.Length == 0) throw new InvalidOperationException("Switch Tab: no title or address is set.");
-            EnsureConnected(token);
+            bool hasPattern = !string.IsNullOrWhiteSpace(w.Title) || !string.IsNullOrWhiteSpace(w.Url);
+            if (!hasPattern && w.Index <= 0) throw new InvalidOperationException("Switch Tab: enter a Title, a URL, an Index, or a combination.");
+            EnsureConnected(w.Browser, token);
             var watch = Stopwatch.StartNew();
             while (true)
             {
                 token.ThrowIfCancellationRequested();
-                long best = -1;
-                foreach (var item in (object[])Call("tabs", null, token))
+                TabInfo chosen;
+                try { chosen = TabSelector.Choose(ListTabs(w.Browser, token, out int lastWindow), lastWindow, w.Title, w.Url, w.Index); }
+                catch (ArgumentException ex) { throw new InvalidOperationException("Switch Tab: " + ex.Message); }
+                if (chosen != null)
                 {
-                    var tab = (Dictionary<string, object>)item;
-                    string title = Convert.ToString(tab["title"]) ?? "";
-                    string url = Convert.ToString(tab["url"]) ?? "";
-                    if (title.IndexOf(want, StringComparison.OrdinalIgnoreCase) >= 0 || url.IndexOf(want, StringComparison.OrdinalIgnoreCase) >= 0)
-                        best = Math.Max(best, Convert.ToInt64(tab["id"])); // several matches: the newest tab
-                }
-                if (best >= 0)
-                {
-                    Call("activateTab", new Dictionary<string, object> { { "tabId", best } }, token);
-                    _tabId = (int)best;
+                    Call(w.Browser, "activateTab", new Dictionary<string, object> { { "tabId", chosen.Id } }, token);
+                    lock (_tabs) _tabs[w.Browser] = chosen.Id;
                     return;
                 }
-                if (watch.ElapsedMilliseconds >= w.TimeMs)
-                    throw new InvalidOperationException("Switch Tab: no tab with \"" + want + "\" in its title or address within " + w.TimeMs + " ms.");
+                // Index only: there is no tab at all. With patterns: nothing matches (yet), so wait for it up to the timeout.
+                if (!hasPattern || watch.ElapsedMilliseconds >= w.TimeMs)
+                {
+                    string what = (string.IsNullOrWhiteSpace(w.Title) ? "" : " title /" + w.Title + "/") + (string.IsNullOrWhiteSpace(w.Url) ? "" : " address /" + w.Url + "/");
+                    throw new InvalidOperationException("Switch Tab: no " + w.Browser + " tab" + (hasPattern ? " with" + what + " within " + w.TimeMs + " ms." : " found."));
+                }
                 Thread.Sleep(200);
             }
         }
 
         private void Dialog(WebSettings w, CancellationToken token)
         {
-            int tab = CurrentTab(token);
+            int tab = CurrentTab(w.Browser, token);
             var watch = Stopwatch.StartNew();
             var parameters = new Dictionary<string, object> { { "accept", w.Accept } };
             if (w.Accept && !string.IsNullOrEmpty(w.Text)) parameters["promptText"] = w.Text;
@@ -326,7 +451,7 @@ namespace AutomationTest.Core.Web
                 token.ThrowIfCancellationRequested();
                 try
                 {
-                    Cdp(tab, "Page.handleJavaScriptDialog", parameters, token);
+                    Cdp(w.Browser, tab, "Page.handleJavaScriptDialog", parameters, token);
                     return;
                 }
                 catch (BridgeTimeoutException) { throw; }
