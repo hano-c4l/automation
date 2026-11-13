@@ -328,14 +328,15 @@ Inbox            titles that contain Inbox
 ^Orders \(\d+\)  Orders (3), Orders (12)...
 (Report|Summary) Report or Summary anywhere in the title
 
-Title, URL and Index are three ways to find the tab: give at least
-one. With both a Title and a URL, the tab has to match both.
+Title, URL and Index are three ways to find the tab. With both a
+Title and a URL, the tab has to match both. None is required: with
+nothing filled in the first tab of the window you used last is used.
 
 Tabs are counted in this order: the window you used last first,
 then the other windows; in each window from left to right.
-Title and/or URL only: the first tab that matches (the action waits
-up to Timeout for one). With an Index too: the Index-th tab that
-matches; if there are fewer, the last one.");
+With a Title and/or URL: the Index-th tab that matches (1 = the
+first; the action waits up to Timeout for a match); if there are
+fewer, the last one.");
 
         public static readonly HelpTopic WebUrlPattern = new HelpTopic("URL (Switch Tab)",
 @"A regular expression for the address of the tab, not case sensitive.
@@ -349,16 +350,72 @@ Remember that . means any character; write \. for a real dot.
 See Title for how the tab is chosen when Title, URL and Index are
 combined.");
 
-        public static readonly HelpTopic WebIndex = new HelpTopic("Index (Switch Tab)",
-@"The position of the tab, 1 for the first one.
+        public static readonly HelpTopic WebIndex = new HelpTopic("Index",
+@"Wait, Input, Click, Get Text:
+  Which of the elements that match the Selector (in the Frame) to
+  use: 1 is the first one, 2 the second... A number beyond the last
+  match chooses the last match. Empty counts as 1. The Pick button
+  fills it in when the element it picked is not the only match.
 
-Without a Title or URL: the Index-th tab of the window you used last
-(a number beyond the last tab chooses the last tab).
-With a Title and/or URL: chooses among the tabs that match (a number
-beyond the last match chooses the last match).
+Switch Tab:
+  The position of the tab. Without a Title or URL: the Index-th tab
+  of the window you used last. With a Title and/or URL: the Index-th
+  of the tabs that match. A number beyond the last one chooses the
+  last. Empty counts as 1, so with nothing filled in the first tab
+  of the window you used last is used.");
 
-Leave empty when only the Title and/or URL is used. Title, URL or
-Index (or a combination) must be given.");
+        public static readonly HelpTopic WebGet = new HelpTopic("Get (Get Text)",
+@"What to read from the element; it goes into the variable ID.
+
+Text          the visible text of a button, label, span, div...;
+              for a field (input, textarea, select) its value
+Value         the value of a field; for a select the value of the
+              chosen option; for a date or time field the text in the
+              format of the field (2026-11-14, 2026-11-14T10:30)
+SelectedText  the text of the chosen option(s) of a select (joined
+              with a comma); of a checked checkbox or radio button
+              the text of its label
+Checked       true or false: checkbox, radio button, option, or
+              aria-checked. Use it in a Condition: {agree}
+Html          the HTML inside the element
+OuterHtml     the HTML of the element itself
+Attribute     one attribute: href, src, data-id, class, aria-label...
+Count         how many elements match the Selector (a number, 0 when
+              none; does not wait). Condition: {rows} > 0
+PageUrl       the address of the tab
+PageTitle     the title of the tab
+
+Radio buttons: select the chosen one with :checked, for example
+input[name=size]:checked, and read Value or SelectedText.
+
+Text and numbers are text when they come from the page: use a
+Variable action (type Number, Date...) to convert them.");
+
+        public static readonly HelpTopic WebAttribute = new HelpTopic("Attribute (Get Text)",
+@"The name of the attribute to read, for example href, src, alt,
+data-id, class, placeholder, aria-label. An attribute that is not
+there gives empty text.");
+
+        public static readonly HelpTopic WebScript = new HelpTopic("Script (Web)",
+@"JavaScript that runs in the page, like the browser console (F12,
+Console) of the current tab. Several lines, await and promises are
+fine, and let/const can be used again in the next Script action.
+It runs in the page itself (not in a frame).
+
+The value of the last expression is kept in the variable ID when an
+ID is given: text, true/false and numbers as they are; an object or
+an array as JSON text; nothing as empty text.
+
+    document.title
+    document.querySelectorAll('tr').length
+    await fetch('/api/ping').then(r => r.status)
+    localStorage.getItem('token')
+
+An error in the script stops the run and shows the message.
+Timeout is how long the script may run.
+
+With Expression ON the Script is an expression that makes the
+JavaScript text, so variables can be put in: ""alert('"" + {name} + ""')""");
 
         public static readonly HelpTopic WebText = new HelpTopic("Text (Web)",
 @"Input   the text typed into the element; what was in it is replaced.

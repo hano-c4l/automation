@@ -65,6 +65,25 @@ namespace AutomationTest.Core.Web
     return parts.join(' > ');
   }
 
+  // Which of the elements that match the selector this one is (1 = the first), as the actions count them.
+  function matchIndex(el, sel) {
+    var doc = el.ownerDocument, list;
+    try {
+      if (sel.indexOf('text=') === 0) {
+        var want = sel.slice(5).trim().toLowerCase();
+        var hits = Array.prototype.slice.call(doc.querySelectorAll('body *')).filter(function (e) {
+          var t = (e.innerText || e.value || '').trim().toLowerCase();
+          return t.length > 0 && t.indexOf(want) >= 0;
+        });
+        list = hits.filter(function (e) { return !hits.some(function (o) { return o !== e && e.contains(o); }); });
+      } else {
+        list = Array.prototype.slice.call(doc.querySelectorAll(sel));
+      }
+    } catch (e) { return 1; }
+    var n = list.indexOf(el) + 1;
+    return n > 0 ? n : 1;
+  }
+
   function framePath(el) {
     var list = [], w = el.ownerDocument.defaultView;
     while (w !== top && w.frameElement) { list.unshift(selectorFor(w.frameElement)); w = w.parent; }
@@ -91,7 +110,8 @@ namespace AutomationTest.Core.Web
     swallow(e);
     var el = e.target;
     if (!el || el.nodeType !== 1) return;
-    top.__atPick = JSON.stringify({ selector: selectorFor(el), frame: framePath(el) });
+    var sel = selectorFor(el);
+    top.__atPick = JSON.stringify({ selector: sel, frame: framePath(el), index: matchIndex(el, sel) });
     cleanup();
   }
   function onKey(e) {

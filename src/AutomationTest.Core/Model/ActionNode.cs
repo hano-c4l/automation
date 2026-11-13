@@ -192,8 +192,27 @@ namespace AutomationTest.Core.Model
         /// <summary>SwitchTab: regular expression for the title of the tab (not case sensitive); empty = not used.</summary>
         [DataMember(Order = 14)] public string Title { get; set; } = "";
 
-        /// <summary>SwitchTab: position (1 = first). With a Title it chooses among the tabs that match; 0 = not used.</summary>
+        /// <summary>
+        /// WaitElement, Input, Click, GetText: which of the elements that match the selector to use. SwitchTab: the position of the tab
+        /// (among the matching ones when a Title or URL is given). 1 = the first; beyond the last = the last; 0 or empty = 1.
+        /// </summary>
         [DataMember(Order = 15, EmitDefaultValue = false)] public int Index { get; set; }
+
+        /// <summary>GetText: what to read.</summary>
+        public WebGetKind Get { get; set; }
+
+        /// <summary>GetText with Get = Attribute: the name of the attribute.</summary>
+        [DataMember(Order = 17)] public string Attribute { get; set; } = "";
+
+        /// <summary>Script: the JavaScript to run (or an expression that makes it).</summary>
+        [DataMember(Order = 18)] public string Script { get; set; } = "";
+
+        [DataMember(Name = "Get", Order = 16)]
+        private string GetName
+        {
+            get { return Get.ToString(); }
+            set { Get = ActionNode.Parse(value, WebGetKind.Text); }
+        }
 
         /// <summary>True for an action inside a New Tab or Switch Tab: its Browser is copied from there and cannot be edited.</summary>
         public bool BrowserInherited { get; set; }
@@ -251,6 +270,8 @@ namespace AutomationTest.Core.Model
             Text = "";
             Frame = "";
             Title = "";
+            Attribute = "";
+            Script = "";
             Id = "";
             Required = true;
             Accept = true;
@@ -269,6 +290,8 @@ namespace AutomationTest.Core.Model
             if (Text == null) Text = "";
             if (Frame == null) Frame = "";
             if (Title == null) Title = "";
+            if (Attribute == null) Attribute = "";
+            if (Script == null) Script = "";
             if (Index < 0) Index = 0;
             if (Id == null) Id = "";
             // Switch Tab of the first Web version held plain text in Text: the same words, as a pattern.
