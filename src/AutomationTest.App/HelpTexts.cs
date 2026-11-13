@@ -246,6 +246,20 @@ the keyboard action when a specific program must receive them.
 
 Can be given in milliseconds, seconds, minutes or hours.");
 
+        public static readonly HelpTopic ShutdownTime = new HelpTopic("Time (Shutdown)",
+@"How long to wait before the computer is shut down. The Stop key
+cancels the countdown.
+
+Be careful with scripts from other people: a Shutdown action turns
+your computer off.
+
+Can be given in milliseconds, seconds, minutes or hours.");
+
+        public static readonly HelpTopic ShutdownForce = new HelpTopic("Force Shutdown",
+@"OFF   programs with unsaved work can stop the shutdown (default)
+ON    other programs are closed even if they have unsaved work;
+      that work is lost");
+
         public static readonly HelpTopic KeyDelay = new HelpTopic("Delay (Keyboard)",
 @"How long to wait after this action has finished, before the next action
 starts. Use it to give the program time to react to the keys.

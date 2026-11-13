@@ -144,6 +144,12 @@ namespace AutomationTest.Core.Model
         /// <summary>How long to wait after the action before the next one starts (milliseconds).</summary>
         [DataMember(Order = 3, EmitDefaultValue = false)] public long DelayMs { get; set; }
 
+        /// <summary>Shutdown: how long to wait before the computer is shut down (milliseconds).</summary>
+        [DataMember(Order = 4, EmitDefaultValue = false)] public long TimeMs { get; set; }
+
+        /// <summary>Shutdown: close other programs even if they have unsaved work.</summary>
+        [DataMember(Order = 5, EmitDefaultValue = false)] public bool Force { get; set; }
+
         /// <summary>Open: path of the program or document to open.</summary>
         [DataMember(Order = 2)] public string Value { get; set; } = "";
 
@@ -169,6 +175,7 @@ namespace AutomationTest.Core.Model
         {
             if (Value == null) Value = "";
             if (DelayMs < 0) DelayMs = 0;
+            if (TimeMs < 0) TimeMs = 0;
         }
     }
 
