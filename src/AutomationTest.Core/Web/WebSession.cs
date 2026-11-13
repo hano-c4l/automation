@@ -212,7 +212,7 @@ namespace AutomationTest.Core.Web
         }
 
         /// <summary>Waits until the element is on the page and visible; returns where its centre is (in page pixels).</summary>
-        private double[] FindElement(WebSettings w, CancellationToken token)
+        private double[] FindElement(WebSettings w, CancellationToken token, bool failIfMissing = true)
         {
             if (string.IsNullOrWhiteSpace(w.Selector)) throw new InvalidOperationException(w.Kind + ": no selector is set.");
             int tab = CurrentTab(token);
@@ -230,7 +230,10 @@ namespace AutomationTest.Core.Web
                 if (value["found"] is bool found && found && value["visible"] is bool visible && visible)
                     return new[] { Convert.ToDouble(value["x"]), Convert.ToDouble(value["y"]) };
                 if (watch.ElapsedMilliseconds >= w.TimeMs)
+                {
+                    if (!failIfMissing) return null;
                     throw new InvalidOperationException(w.Kind + ": \"" + w.Selector.Trim() + "\" was not found on the page within " + w.TimeMs + " ms.");
+                }
                 Thread.Sleep(150);
             }
         }
@@ -272,9 +275,45 @@ namespace AutomationTest.Core.Web
             }
         }
 
+        /// <summary>
+        /// Lets the user point at an element in the current tab (it is brought to the front). Returns false when cancelled (Esc, the
+        /// token, or the time ran out).
+        /// </summary>
+        public bool PickElement(CancellationToken token, int timeoutMs, out string selector, out string frame)
+        {
+            selector = ""; frame = "";
+            int tab = CurrentTab(token);
+            Call("activateTab", new Dictionary<string, object> { { "tabId", tab } }, token);
+            Cdp(tab, "Runtime.evaluate", new Dictionary<string, object> { { "expression", PickScript.Install }, { "returnByValue", true } }, token);
+            var watch = Stopwatch.StartNew();
+            try
+            {
+                while (!token.IsCancellationRequested && watch.ElapsedMilliseconds < timeoutMs)
+                {
+                    var reply = (Dictionary<string, object>)Cdp(tab, "Runtime.evaluate", new Dictionary<string, object> { { "expression", PickScript.Read }, { "returnByValue", true } }, token);
+                    var result = (Dictionary<string, object>)reply["result"];
+                    if (result.TryGetValue("value", out object value) && value is string json)
+                    {
+                        var data = (Dictionary<string, object>)MiniJson.Parse(json);
+                        if (data.ContainsKey("cancelled")) return false;
+                        selector = Convert.ToString(data["selector"]);
+                        frame = Convert.ToString(data["frame"]);
+                        return true;
+                    }
+                    Thread.Sleep(150);
+                }
+                return false;
+            }
+            finally
+            {
+                try { Cdp(tab, "Runtime.evaluate", new Dictionary<string, object> { { "expression", PickScript.Cancel } }, CancellationToken.None, 3000); }
+                catch (InvalidOperationException) { }
+            }
+        }
+
         private string GetText(WebSettings w, CancellationToken token)
         {
-            FindElement(w, token);
+            if (FindElement(w, token, w.Required) == null) return ""; // optional element that is not there
             int tab = CurrentTab(token);
             var reply = (Dictionary<string, object>)Cdp(tab, "Runtime.evaluate", new Dictionary<string, object>
             {

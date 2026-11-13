@@ -267,6 +267,10 @@ A CSS selector:   #email    .btn-primary    input[name=q]    form button
 text=Label        the element whose visible text contains Label
                   (not case sensitive), for example text=Sign in
 
+Pick   click the Pick button, then move the mouse over the element in
+       the browser and click it. The selector (and the Frame, when the
+       element is inside an iframe) is filled in for you.
+
 The action waits for the element to appear (see Timeout) and
 scrolls it into view.");
 
@@ -287,6 +291,13 @@ input field, otherwise the visible text. Use it later as {id} in
 expressions (Variable, Condition, Input, Keyboard text...).
 
 Letters, digits and _, not starting with a digit.");
+
+        public static readonly HelpTopic WebRequired = new HelpTopic("Required (Get Text)",
+@"ON    the element must be on the page within the Timeout, otherwise
+      the script stops with an error (default)
+OFF   a missing element is not an error: the variable becomes empty
+      text, so a Condition such as {price} == """" can choose what to
+      do. Use a short Timeout for this.");
 
         public static readonly HelpTopic WebNewTab = new HelpTopic("New tab",
 @"ON    the address opens in a new tab

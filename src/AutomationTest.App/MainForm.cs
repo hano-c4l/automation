@@ -120,6 +120,8 @@ namespace AutomationTest.App
         private readonly ToggleSwitch _webNewTab = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
         private readonly HintTextBox _webSelector = new HintTextBox { Width = 200, Placeholder = "CSS selector or text=Label" };
         private readonly HintTextBox _webFrame = new HintTextBox { Width = 200, Placeholder = "Frame (iframe selector)" };
+        private Button _webPick;
+        private readonly ToggleSwitch _webRequired = new ToggleSwitch { Checked = true, Size = new Size(40, 21) };
         private readonly HintTextBox _webId = new HintTextBox { Width = 200, Placeholder = "Variable ID" };
         private readonly HintTextBox _webText = new HintTextBox { Width = 200, Placeholder = "Text" };
         private readonly ToggleSwitch _webTextExpr = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
@@ -363,9 +365,11 @@ namespace AutomationTest.App
             AddRow(webTable, "Browser", _webBrowser);
             AddRow(webTable, "URL", _webUrl);
             AddRow(webTable, "New tab", _webNewTab, Help.WebNewTab);
-            AddRow(webTable, "Selector", _webSelector, Help.WebSelector);
+            _webPick = MakeButton("Pick", (s, e) => PickWebElement());
+            AddRow(webTable, "Selector", _webSelector, Help.WebSelector, null, _webPick);
             AddRow(webTable, "Frame", _webFrame, Help.WebFrame);
             AddRow(webTable, "ID", _webId, Help.WebId);
+            AddRow(webTable, "Required", _webRequired, Help.WebRequired);
             AddRow(webTable, "Accept", _webAccept, Help.WebDialog);
             AddRow(webTable, "Text", _webText, Help.WebText);
             AddRow(webTable, "Expression", _webTextExpr, Help.ExpressionText);
@@ -522,6 +526,7 @@ namespace AutomationTest.App
             SetRowVisible(_webAccept, web == WebKind.Dialog);
             SetRowVisible(_webFrame, webSelects);
             SetRowVisible(_webId, web == WebKind.GetText);
+            SetRowVisible(_webRequired, web == WebKind.GetText);
             _webText.Placeholder = web == WebKind.SwitchTab ? "Title or address contains" : web == WebKind.Dialog ? "Answer of a prompt box" : "Text";
             SetRowVisible(_webText, web == WebKind.Input || web == WebKind.Dialog || web == WebKind.SwitchTab);
             SetRowVisible(_webTextExpr, web == WebKind.Input || web == WebKind.Dialog);
@@ -678,6 +683,7 @@ namespace AutomationTest.App
                         Selector = _webSelector.Text.Trim(),
                         Frame = _webFrame.Text.Trim(),
                         Id = _webId.Text.Trim(),
+                        Required = _webRequired.Checked,
                         Text = _webText.Text,
                         TextIsExpression = _webTextExpr.Checked,
                         Accept = _webAccept.Checked,
@@ -834,6 +840,7 @@ namespace AutomationTest.App
                     _webSelector.Text = web.Selector;
                     _webFrame.Text = web.Frame;
                     _webId.Text = web.Id;
+                    _webRequired.Checked = web.Required;
                     _webText.Text = web.Text;
                     _webTextExpr.Checked = web.TextIsExpression;
                     _webAccept.Checked = web.Accept;
@@ -1566,7 +1573,7 @@ namespace AutomationTest.App
                         case WebKind.OpenUrl: details = wb.Url + (wb.NewTab ? " (new tab)" : ""); break;
                         case WebKind.Input: details = wb.Selector + " <- " + (wb.TextIsExpression ? wb.Text : "\"" + wb.Text + "\""); break;
                         case WebKind.Dialog: details = (wb.Accept ? "OK" : "Cancel") + (wb.Accept && wb.Text.Length > 0 ? " \"" + wb.Text + "\"" : ""); break;
-                        case WebKind.GetText: details = wb.Selector + " -> " + wb.Id; break;
+                        case WebKind.GetText: details = wb.Selector + " -> " + wb.Id + (wb.Required ? "" : " (optional)"); break;
                         case WebKind.SwitchTab: details = "tab with \"" + wb.Text + "\""; break;
                         default: details = wb.Selector; break;
                     }
@@ -1854,6 +1861,40 @@ namespace AutomationTest.App
             string title = (info.Value.Title ?? "").Trim();
             titleBox.Text = title.Length == 0 ? "" : "^" + System.Text.RegularExpressions.Regex.Escape(title) + "$";
             SetStatus("Process: " + info.Value.ProcessName + (title.Length == 0 ? "" : "  title: \"" + title + "\" (saved as an exact pattern in Title; edit it if the title changes)"));
+        }
+
+        /// <summary>Lets the user point at an element in the browser; the selector (and iframe) it gets fills the form.</summary>
+        private void PickWebElement()
+        {
+            if (!AutomationTest.Core.Web.WebSession.Shared.Connected)
+            {
+                SetStatus("The browser is not connected. Start the browser that has the Automation Test extension first.");
+                return;
+            }
+            _webPick.Enabled = false;
+            SetStatus("Pick an element in the browser: move the mouse over it and click. Esc cancels.");
+            bool picked = false;
+            string selector = "", frame = "", error = null;
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                try { picked = AutomationTest.Core.Web.WebSession.Shared.PickElement(System.Threading.CancellationToken.None, 120000, out selector, out frame); }
+                catch (Exception ex) when (ex is InvalidOperationException || ex is FormatException || ex is KeyNotFoundException) { error = ex.Message; }
+                try
+                {
+                    BeginInvoke((Action)(() =>
+                    {
+                        _webPick.Enabled = true;
+                        if (IsDisposed) return;
+                        Activate();
+                        if (error != null) { SetStatus("Pick failed: " + error); return; }
+                        if (!picked) { SetStatus("Pick cancelled."); return; }
+                        _webSelector.Text = selector;
+                        _webFrame.Text = frame;
+                        SetStatus("Picked: " + selector + (frame.Length > 0 ? "  (in frame " + frame + ")" : ""));
+                    }));
+                }
+                catch (InvalidOperationException) { }
+            });
         }
 
         private void BrowseCommandPath()

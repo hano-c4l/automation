@@ -203,6 +203,9 @@ namespace AutomationTest.Core.Model
         /// <summary>WaitElement, Input, Click, GetText: CSS selector of the iframe the element is in (nested frames separated by " &gt;&gt;&gt; "). Empty = the page itself.</summary>
         [DataMember(Order = 11)] public string Frame { get; set; } = "";
 
+        /// <summary>GetText: when false, an element that is not found within the timeout gives an empty text instead of an error.</summary>
+        [DataMember(Order = 13)] public bool Required { get; set; } = true;
+
         /// <summary>GetText: the variable that receives the text.</summary>
         [DataMember(Order = 12)] public string Id { get; set; } = "";
 
@@ -237,6 +240,7 @@ namespace AutomationTest.Core.Model
             Text = "";
             Frame = "";
             Id = "";
+            Required = true;
             Accept = true;
             TimeMs = 10000;
         }
