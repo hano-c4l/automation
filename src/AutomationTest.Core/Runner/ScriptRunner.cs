@@ -46,6 +46,7 @@ namespace AutomationTest.Core.Runner
         public void Run(AutomationScript script, CancellationToken token)
         {
             if (script == null) throw new ArgumentNullException(nameof(script));
+            BrowserInheritance.Propagate(script.Actions);
             Run(script.Actions, null, token);
         }
 
@@ -168,6 +169,8 @@ namespace AutomationTest.Core.Runner
                 throw new InvalidOperationException("Get Text: \"" + w.Id + "\" is not a valid ID.");
             string result = (WebSession ?? AutomationTest.Core.Web.WebSession.Shared).Execute(w, text, token);
             if (w.Kind == WebKind.GetText) _vars.Set(w.Id.Trim(), result ?? "");
+            // New Tab and Switch Tab hold the actions that work in that tab (and browser).
+            if (node.IsContainer) ExecuteList(node.Children, token);
             Wait(w.DelayMs, token);
         }
 

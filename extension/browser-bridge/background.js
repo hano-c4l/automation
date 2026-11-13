@@ -1,6 +1,8 @@
 // Connects to the Automation Test program on 127.0.0.1 and executes its commands.
 // Commands: { id, cmd, args }.  Replies: { id, result } or { id, error }.  Events: { event, tabId, method, params }.
-const URL = "ws://127.0.0.1:47615/";
+// The program keeps one connection per browser, so the extension says which browser it is in.
+const BROWSER = /Edg\//.test(navigator.userAgent) ? "edge" : "chrome";
+const URL = "ws://127.0.0.1:47615/?browser=" + BROWSER;
 const attached = new Set();
 let socket = null;
 let pingTimer = null;
@@ -63,20 +65,24 @@ async function run(cmd, args) {
       return { browser: navigator.userAgent };
     case "tabs": {
       const tabs = await chrome.tabs.query({});
-      return tabs.map(t => ({ id: t.id, url: t.url, title: t.title, active: t.active, windowId: t.windowId }));
+      let lastWindowId = -1;
+      try { lastWindowId = (await chrome.windows.getLastFocused()).id; } catch (e) { }
+      return { lastWindowId, tabs: tabs.map(t => ({ id: t.id, url: t.url || "", title: t.title || "", active: t.active, windowId: t.windowId, index: t.index })) };
     }
     case "openUrl": {
-      // args: { url, newTab, tabId }
+      // args: { url, newTab, tabId }; an empty url opens the browser's start page
       let tab;
-      if (args.newTab || args.tabId == null) tab = await chrome.tabs.create({ url: args.url, active: true });
-      else tab = await chrome.tabs.update(args.tabId, { url: args.url, active: true });
+      const props = { active: true };
+      if (args.url) props.url = args.url;
+      if (args.newTab || args.tabId == null) tab = await chrome.tabs.create(props);
+      else tab = await chrome.tabs.update(args.tabId, props);
       await waitComplete(tab.id, args.timeoutMs || 15000);
       return { tabId: tab.id };
     }
     case "activeTab": {
       const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
       if (tabs.length === 0) throw new Error("There is no active tab.");
-      return { tabId: tabs[0].id };
+      return { tabId: tabs[0].id, url: tabs[0].url || "" };
     }
     case "activateTab": {
       const tab = await chrome.tabs.update(args.tabId, { active: true });

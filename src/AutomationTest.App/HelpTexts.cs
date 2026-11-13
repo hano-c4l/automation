@@ -299,10 +299,51 @@ OFF   a missing element is not an error: the variable becomes empty
       text, so a Condition such as {price} == """" can choose what to
       do. Use a short Timeout for this.");
 
-        public static readonly HelpTopic WebNewTab = new HelpTopic("New tab",
-@"ON    the address opens in a new tab
-OFF   the address opens in the tab the script is using (the tab
-      that is in front when the script first needs one)");
+        public static readonly HelpTopic WebBrowser = new HelpTopic("Browser",
+@"Which browser the action works in: Chrome or Edge. Both can be
+open and used by the same script.
+
+The actions inside a New Tab or a Switch Tab always use the browser
+of that action: it is filled in for them and cannot be changed. To
+work in the other browser, use a New Tab or Switch Tab action for it.
+
+Each browser needs the Automation Test extension (Load unpacked:
+the BrowserExtension folder) and only one profile of a browser can
+be connected at a time.");
+
+        public static readonly HelpTopic WebUrl = new HelpTopic("URL (New Tab)",
+@"The address to open in a new tab. https:// is added when missing.
+Empty opens the start page of the browser.
+
+If the browser is not running it is started first (that can take
+a while: see Timeout). The actions inside this action work in that
+tab.");
+
+        public static readonly HelpTopic WebTitle = new HelpTopic("Title (Switch Tab)",
+@"A regular expression for the title of the tab, not case sensitive.
+It may match any part of the title, so a title that changes (the
+number of messages, a file name...) can still be found:
+
+Inbox            titles that contain Inbox
+^Orders \(\d+\)  Orders (3), Orders (12)...
+(Report|Summary) Report or Summary anywhere in the title
+
+Tabs are counted in this order: the window you used last first,
+then the other windows; in each window from left to right.
+Only a Title: the first tab that matches (the action waits up to
+Timeout for one). With an Index too: the Index-th tab that matches;
+if there are fewer, the last one.");
+
+        public static readonly HelpTopic WebIndex = new HelpTopic("Index (Switch Tab)",
+@"The position of the tab, 1 for the first one.
+
+Without a Title: the Index-th tab of the window you used last
+(a number beyond the last tab chooses the last tab).
+With a Title: chooses among the tabs that match the Title (a number
+beyond the last match chooses the last match).
+
+Leave empty when only the Title is used. Title or Index (or both)
+must be given.");
 
         public static readonly HelpTopic WebText = new HelpTopic("Text (Web)",
 @"Input   the text typed into the element; what was in it is replaced.

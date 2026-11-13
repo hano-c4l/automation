@@ -32,6 +32,7 @@ namespace AutomationTest.Core.Model
             if (Actions == null) Actions = new List<ActionNode>();
             Actions.RemoveAll(a => a == null);
             foreach (var action in Actions) action.Normalize();
+            BrowserInheritance.Propagate(Actions);
         }
     }
 }

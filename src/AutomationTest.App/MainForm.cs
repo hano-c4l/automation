@@ -117,7 +117,8 @@ namespace AutomationTest.App
         private readonly ComboBox _webKind = MakeCombo(typeof(WebKind));
         private readonly ComboBox _webBrowser = MakeCombo(typeof(BrowserKind));
         private readonly HintTextBox _webUrl = new HintTextBox { Width = 200, Placeholder = "https://..." };
-        private readonly ToggleSwitch _webNewTab = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
+        private readonly HintTextBox _webTitle = new HintTextBox { Width = 200, Placeholder = "Title (regular expression)" };
+        private readonly NumberBox _webIndex = new NumberBox { Width = 200, Minimum = 0, Maximum = 1000, Placeholder = "Index (1 = first)" };
         private readonly HintTextBox _webSelector = new HintTextBox { Width = 200, Placeholder = "CSS selector or text=Label" };
         private readonly HintTextBox _webFrame = new HintTextBox { Width = 200, Placeholder = "Frame (iframe selector)" };
         private Button _webPick;
@@ -362,13 +363,14 @@ namespace AutomationTest.App
 
             // Web
             var webTable = NewTable();
-            AddRow(webTable, "Browser", _webBrowser);
-            AddRow(webTable, "URL", _webUrl);
-            AddRow(webTable, "New tab", _webNewTab, Help.WebNewTab);
+            AddRow(webTable, "ID", _webId, Help.WebId); // an ID is always the first field of its group
+            AddRow(webTable, "Browser", _webBrowser, Help.WebBrowser);
+            AddRow(webTable, "URL", _webUrl, Help.WebUrl);
+            AddRow(webTable, "Title", _webTitle, Help.WebTitle);
+            AddRow(webTable, "Index", _webIndex, Help.WebIndex);
             _webPick = MakeButton("Pick", (s, e) => PickWebElement());
             AddRow(webTable, "Selector", _webSelector, Help.WebSelector, null, _webPick);
             AddRow(webTable, "Frame", _webFrame, Help.WebFrame);
-            AddRow(webTable, "ID", _webId, Help.WebId);
             AddRow(webTable, "Required", _webRequired, Help.WebRequired);
             AddRow(webTable, "Accept", _webAccept, Help.WebDialog);
             AddRow(webTable, "Text", _webText, Help.WebText);
@@ -516,19 +518,20 @@ namespace AutomationTest.App
             SetRowVisible(_cmdDelay, cmdKind != CommandKind.Shutdown); // Shutdown has no "after" delay: the machine is gone
             _controlBox.Visible = category == ActionCategory.Control;
             _webBox.Visible = category == ActionCategory.Web;
-            var web = _webKind.SelectedItem as WebKind? ?? WebKind.OpenBrowser;
+            var web = _webKind.SelectedItem as WebKind? ?? WebKind.NewTab;
             bool webSelects = web == WebKind.WaitElement || web == WebKind.Input || web == WebKind.Click || web == WebKind.GetText;
             SetRowVisible(_webKind, category == ActionCategory.Web);
-            SetRowVisible(_webBrowser, web == WebKind.OpenBrowser);
-            SetRowVisible(_webUrl, web == WebKind.OpenUrl);
-            SetRowVisible(_webNewTab, web == WebKind.OpenUrl);
+            SetRowVisible(_webBrowser, category == ActionCategory.Web);
+            SetRowVisible(_webUrl, web == WebKind.NewTab);
+            SetRowVisible(_webTitle, web == WebKind.SwitchTab);
+            SetRowVisible(_webIndex, web == WebKind.SwitchTab);
             SetRowVisible(_webSelector, webSelects);
             SetRowVisible(_webAccept, web == WebKind.Dialog);
             SetRowVisible(_webFrame, webSelects);
             SetRowVisible(_webId, web == WebKind.GetText);
             SetRowVisible(_webRequired, web == WebKind.GetText);
-            _webText.Placeholder = web == WebKind.SwitchTab ? "Title or address contains" : web == WebKind.Dialog ? "Answer of a prompt box" : "Text";
-            SetRowVisible(_webText, web == WebKind.Input || web == WebKind.Dialog || web == WebKind.SwitchTab);
+            _webText.Placeholder = web == WebKind.Dialog ? "Answer of a prompt box" : "Text";
+            SetRowVisible(_webText, web == WebKind.Input || web == WebKind.Dialog);
             SetRowVisible(_webTextExpr, web == WebKind.Input || web == WebKind.Dialog);
             SetRowVisible(_mouseAction, category == ActionCategory.Mouse);
             SetRowVisible(_kbAction, category == ActionCategory.Keyboard);
@@ -679,7 +682,8 @@ namespace AutomationTest.App
                         Kind = (WebKind)_webKind.SelectedItem,
                         Browser = (BrowserKind)_webBrowser.SelectedItem,
                         Url = _webUrl.Text.Trim(),
-                        NewTab = _webNewTab.Checked,
+                        Title = _webTitle.Text.Trim(),
+                        Index = (int)_webIndex.Value,
                         Selector = _webSelector.Text.Trim(),
                         Frame = _webFrame.Text.Trim(),
                         Id = _webId.Text.Trim(),
@@ -797,6 +801,7 @@ namespace AutomationTest.App
             }
             _name.Text = node.Name ?? "";
             _enabled.Checked = !node.Disabled;
+            _webBrowser.Enabled = true; // a Web action inside a New Tab or Switch Tab turns it off below
             _category.SelectedItem = node.Category;
             switch (node.Category)
             {
@@ -836,7 +841,9 @@ namespace AutomationTest.App
                     _webKind.SelectedItem = web.Kind;
                     _webBrowser.SelectedItem = web.Browser;
                     _webUrl.Text = web.Url;
-                    _webNewTab.Checked = web.NewTab;
+                    _webTitle.Text = web.Title;
+                    _webIndex.Text = web.Index > 0 ? web.Index.ToString() : "";
+                    _webBrowser.Enabled = !web.BrowserInherited; // inside a New Tab or Switch Tab the browser is theirs
                     _webSelector.Text = web.Selector;
                     _webFrame.Text = web.Frame;
                     _webId.Text = web.Id;
@@ -1071,8 +1078,15 @@ namespace AutomationTest.App
 
                     case ActionCategory.Web:
                         var web = node.Web;
-                        if (web.Kind == WebKind.OpenUrl && web.Url.Length == 0) return "Enter the address to open.";
-                        if (web.Kind == WebKind.SwitchTab && web.Text.Trim().Length == 0) return "Enter a word from the title or address of the tab.";
+                        if (web.Kind == WebKind.SwitchTab)
+                        {
+                            if (web.Title.Trim().Length == 0 && web.Index <= 0) return "Enter a Title (regular expression), an Index, or both.";
+                            if (web.Title.Trim().Length > 0)
+                            {
+                                try { new System.Text.RegularExpressions.Regex(web.Title); }
+                                catch (ArgumentException ex) { return "The Title is not a valid regular expression: " + ex.Message; }
+                            }
+                        }
                         if (web.Kind == WebKind.GetText && !Expression.IsValidId(web.Id))
                             return "Enter an ID with letters, digits and _, not starting with a digit (and not true, false, now, today).";
                         if ((web.Kind == WebKind.WaitElement || web.Kind == WebKind.Input || web.Kind == WebKind.Click || web.Kind == WebKind.GetText) && web.Selector.Length == 0)
@@ -1352,6 +1366,7 @@ namespace AutomationTest.App
         private void RefreshList(IEnumerable<ActionNode> select)
         {
             var wanted = select == null ? new HashSet<ActionNode>() : new HashSet<ActionNode>(select);
+            BrowserInheritance.Propagate(_script.Actions); // actions inside a New Tab or Switch Tab take over its browser
             _rows.Clear();
             if (wanted.Count > 0) ExpandTo(_script.Actions, wanted);
             Flatten(_script.Actions, null, 0);
@@ -1567,17 +1582,19 @@ namespace AutomationTest.App
                 case ActionCategory.Web:
                     var wb = n.Web;
                     action = wb.Kind.ToString();
+                    process = wb.Browser.ToString(); // the Process column tells the browser
                     switch (wb.Kind)
                     {
-                        case WebKind.OpenBrowser: details = "start " + wb.Browser + " (or use the one that is open)"; break;
-                        case WebKind.OpenUrl: details = wb.Url + (wb.NewTab ? " (new tab)" : ""); break;
+                        case WebKind.NewTab: details = wb.Url.Length == 0 ? "(start page)" : wb.Url; break;
                         case WebKind.Input: details = wb.Selector + " <- " + (wb.TextIsExpression ? wb.Text : "\"" + wb.Text + "\""); break;
                         case WebKind.Dialog: details = (wb.Accept ? "OK" : "Cancel") + (wb.Accept && wb.Text.Length > 0 ? " \"" + wb.Text + "\"" : ""); break;
                         case WebKind.GetText: details = wb.Selector + " -> " + wb.Id + (wb.Required ? "" : " (optional)"); break;
-                        case WebKind.SwitchTab: details = "tab with \"" + wb.Text + "\""; break;
+                        case WebKind.SwitchTab:
+                            details = (wb.Title.Length > 0 ? "title /" + wb.Title + "/" : "") + (wb.Title.Length > 0 && wb.Index > 0 ? ", " : "") + (wb.Index > 0 ? "tab #" + wb.Index : "");
+                            break;
                         default: details = wb.Selector; break;
                     }
-                    if (wb.Frame.Length > 0 && wb.Kind != WebKind.OpenUrl) details = "[" + wb.Frame + "] " + details;
+                    if (wb.Frame.Length > 0 && wb.Kind != WebKind.NewTab && wb.Kind != WebKind.SwitchTab) details = "[" + wb.Frame + "] " + details;
                     time = TimeBox.Format(wb.TimeMs);
                     delay = TimeBox.Format(wb.DelayMs);
                     break;
@@ -1866,9 +1883,10 @@ namespace AutomationTest.App
         /// <summary>Lets the user point at an element in the browser; the selector (and iframe) it gets fills the form.</summary>
         private void PickWebElement()
         {
-            if (!AutomationTest.Core.Web.WebSession.Shared.Connected)
+            var browser = (BrowserKind)_webBrowser.SelectedItem;
+            if (!AutomationTest.Core.Web.WebSession.Shared.IsConnected(browser))
             {
-                SetStatus("The browser is not connected. Start the browser that has the Automation Test extension first.");
+                SetStatus(browser + " is not connected. Start " + browser + " (with the Automation Test extension) first.");
                 return;
             }
             // Like the other Picks: this window gets out of the way and the Start, Start Selected and Record keys are off meanwhile
@@ -1881,7 +1899,7 @@ namespace AutomationTest.App
             string selector = "", frame = "", error = null;
             System.Threading.Tasks.Task.Run(() =>
             {
-                try { picked = AutomationTest.Core.Web.WebSession.Shared.PickElement(System.Threading.CancellationToken.None, 120000, out selector, out frame); }
+                try { picked = AutomationTest.Core.Web.WebSession.Shared.PickElement(browser, System.Threading.CancellationToken.None, 120000, out selector, out frame); }
                 catch (Exception ex) when (ex is InvalidOperationException || ex is FormatException || ex is KeyNotFoundException) { error = ex.Message; }
                 try
                 {

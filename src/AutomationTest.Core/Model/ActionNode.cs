@@ -186,11 +186,17 @@ namespace AutomationTest.Core.Model
         public WebKind Kind { get; set; }
         public BrowserKind Browser { get; set; }
 
-        /// <summary>OpenUrl: the address.</summary>
+        /// <summary>NewTab: the address (empty = the browser's start page).</summary>
         [DataMember(Order = 3)] public string Url { get; set; } = "";
 
-        /// <summary>OpenUrl: open a new tab instead of using the current one.</summary>
-        [DataMember(Order = 4, EmitDefaultValue = false)] public bool NewTab { get; set; }
+        /// <summary>SwitchTab: regular expression for the title of the tab (not case sensitive); empty = not used.</summary>
+        [DataMember(Order = 14)] public string Title { get; set; } = "";
+
+        /// <summary>SwitchTab: position (1 = first). With a Title it chooses among the tabs that match; 0 = not used.</summary>
+        [DataMember(Order = 15, EmitDefaultValue = false)] public int Index { get; set; }
+
+        /// <summary>True for an action inside a New Tab or Switch Tab: its Browser is copied from there and cannot be edited.</summary>
+        public bool BrowserInherited { get; set; }
 
         /// <summary>WaitElement, Input, Click: CSS selector, or "text=Label" to find an element by its text.</summary>
         [DataMember(Order = 5)] public string Selector { get; set; } = "";
@@ -222,7 +228,12 @@ namespace AutomationTest.Core.Model
         private string KindName
         {
             get { return Kind.ToString(); }
-            set { Kind = ActionNode.Parse(value, WebKind.OpenUrl); }
+            set
+            {
+                // Scripts from the first Web version: "OpenUrl" and "OpenBrowser" became New Tab.
+                if (string.Equals(value, "OpenUrl", StringComparison.OrdinalIgnoreCase) || string.Equals(value, "OpenBrowser", StringComparison.OrdinalIgnoreCase)) Kind = WebKind.NewTab;
+                else Kind = ActionNode.Parse(value, WebKind.NewTab);
+            }
         }
 
         [DataMember(Name = "Browser", Order = 2)]
@@ -239,6 +250,7 @@ namespace AutomationTest.Core.Model
             Selector = "";
             Text = "";
             Frame = "";
+            Title = "";
             Id = "";
             Required = true;
             Accept = true;
@@ -256,7 +268,15 @@ namespace AutomationTest.Core.Model
             if (Selector == null) Selector = "";
             if (Text == null) Text = "";
             if (Frame == null) Frame = "";
+            if (Title == null) Title = "";
+            if (Index < 0) Index = 0;
             if (Id == null) Id = "";
+            // Switch Tab of the first Web version held plain text in Text: the same words, as a pattern.
+            if (Kind == WebKind.SwitchTab && Title.Length == 0 && Index == 0 && Text.Length > 0)
+            {
+                Title = System.Text.RegularExpressions.Regex.Escape(Text.Trim());
+                Text = "";
+            }
             if (TimeMs < 0) TimeMs = 0;
             if (DelayMs < 0) DelayMs = 0;
         }
@@ -583,7 +603,11 @@ namespace AutomationTest.Core.Model
 
         public bool IsContainer
         {
-            get { return Category == ActionCategory.Control && Control != ControlKind.Variable; }
+            get
+            {
+                if (Category == ActionCategory.Web) return Web != null && (Web.Kind == WebKind.NewTab || Web.Kind == WebKind.SwitchTab);
+                return Category == ActionCategory.Control && Control != ControlKind.Variable;
+            }
         }
 
         public bool IsKind(ControlKind kind)

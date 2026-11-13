@@ -41,7 +41,9 @@ namespace AutomationTest.Core.Model
                 case ActionCategory.Utilities:
                     return node.Command.Kind == CommandKind.Shutdown ? node.Command.TimeMs : node.Command.DelayMs;
                 case ActionCategory.Web:
-                    return node.Web.DelayMs;
+                    if (!node.IsContainer) return node.Web.DelayMs;
+                    long? inside = SumChildren(node);
+                    return inside.HasValue ? inside.Value + node.Web.DelayMs : (long?)null;
                 default:
                     break;
             }
