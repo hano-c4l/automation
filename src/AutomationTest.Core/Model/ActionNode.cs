@@ -179,6 +179,85 @@ namespace AutomationTest.Core.Model
         }
     }
 
+    /// <summary>Settings of a Web action. Which fields count depends on <see cref="Kind"/>.</summary>
+    [DataContract]
+    public sealed class WebSettings
+    {
+        public WebKind Kind { get; set; }
+        public BrowserKind Browser { get; set; }
+
+        /// <summary>OpenUrl: the address.</summary>
+        [DataMember(Order = 3)] public string Url { get; set; } = "";
+
+        /// <summary>OpenUrl: open a new tab instead of using the current one.</summary>
+        [DataMember(Order = 4, EmitDefaultValue = false)] public bool NewTab { get; set; }
+
+        /// <summary>WaitElement, Input, Click: CSS selector, or "text=Label" to find an element by its text.</summary>
+        [DataMember(Order = 5)] public string Selector { get; set; } = "";
+
+        /// <summary>Input: the text to type (or an expression); Dialog: the text to answer a prompt box with.</summary>
+        [DataMember(Order = 6)] public string Text { get; set; } = "";
+
+        [DataMember(Order = 7, EmitDefaultValue = false)] public bool TextIsExpression { get; set; }
+
+        /// <summary>WaitElement, Input, Click, GetText: CSS selector of the iframe the element is in (nested frames separated by " &gt;&gt;&gt; "). Empty = the page itself.</summary>
+        [DataMember(Order = 11)] public string Frame { get; set; } = "";
+
+        /// <summary>GetText: the variable that receives the text.</summary>
+        [DataMember(Order = 12)] public string Id { get; set; } = "";
+
+        /// <summary>Dialog: OK (true) or Cancel (false).</summary>
+        [DataMember(Order = 8)] public bool Accept { get; set; } = true;
+
+        /// <summary>How long to wait for the browser, the page, the element or the dialog (milliseconds).</summary>
+        [DataMember(Order = 9)] public long TimeMs { get; set; } = 10000;
+
+        /// <summary>How long to wait after the action before the next one starts (milliseconds).</summary>
+        [DataMember(Order = 10, EmitDefaultValue = false)] public long DelayMs { get; set; }
+
+        [DataMember(Name = "Kind", Order = 1)]
+        private string KindName
+        {
+            get { return Kind.ToString(); }
+            set { Kind = ActionNode.Parse(value, WebKind.OpenUrl); }
+        }
+
+        [DataMember(Name = "Browser", Order = 2)]
+        private string BrowserName
+        {
+            get { return Browser.ToString(); }
+            set { Browser = ActionNode.Parse(value, BrowserKind.Chrome); }
+        }
+
+        [OnDeserializing]
+        private void SetDefaults(StreamingContext context)
+        {
+            Url = "";
+            Selector = "";
+            Text = "";
+            Frame = "";
+            Id = "";
+            Accept = true;
+            TimeMs = 10000;
+        }
+
+        public WebSettings Clone()
+        {
+            return (WebSettings)MemberwiseClone();
+        }
+
+        internal void Normalize()
+        {
+            if (Url == null) Url = "";
+            if (Selector == null) Selector = "";
+            if (Text == null) Text = "";
+            if (Frame == null) Frame = "";
+            if (Id == null) Id = "";
+            if (TimeMs < 0) TimeMs = 0;
+            if (DelayMs < 0) DelayMs = 0;
+        }
+    }
+
     /// <summary>Settings of a Loop action.</summary>
     [DataContract]
     public sealed class LoopSettings
@@ -494,6 +573,7 @@ namespace AutomationTest.Core.Model
         [DataMember(Order = 9, EmitDefaultValue = false)] public ImageSettings Image { get; set; }
         [DataMember(Order = 10, EmitDefaultValue = false)] public VariableSettings Variable { get; set; }
         [DataMember(Order = 11, EmitDefaultValue = false)] public CaseSettings Case { get; set; }
+        [DataMember(Order = 12, EmitDefaultValue = false)] public WebSettings Web { get; set; }
 
         public List<ActionNode> Children { get; set; } = new List<ActionNode>();
 
@@ -520,6 +600,11 @@ namespace AutomationTest.Core.Model
         public static ActionNode NewCommand(CommandSettings settings)
         {
             return new ActionNode { Category = ActionCategory.Utilities, Command = settings ?? new CommandSettings() };
+        }
+
+        public static ActionNode NewWeb(WebSettings settings)
+        {
+            return new ActionNode { Category = ActionCategory.Web, Web = settings ?? new WebSettings() };
         }
 
         public static ActionNode NewLoop(LoopSettings settings)
@@ -602,6 +687,7 @@ namespace AutomationTest.Core.Model
             copy.Mouse = Mouse?.Clone();
             copy.Keyboard = Keyboard?.Clone();
             copy.Command = Command?.Clone();
+            copy.Web = Web?.Clone();
             copy.Loop = Loop?.Clone();
             copy.Wait = Wait?.Clone();
             copy.Image = Image?.Clone();
@@ -635,13 +721,14 @@ namespace AutomationTest.Core.Model
             var mouse = Category == ActionCategory.Mouse ? (Mouse ?? new MouseSettings()) : null;
             var keyboard = Category == ActionCategory.Keyboard ? (Keyboard ?? new KeyboardSettings()) : null;
             var command = Category == ActionCategory.Utilities ? (Command ?? new CommandSettings()) : null;
+            var web = Category == ActionCategory.Web ? (Web ?? new WebSettings()) : null;
             var loop = Category == ActionCategory.Control && Control == ControlKind.Loop ? (Loop ?? new LoopSettings()) : null;
             var wait = Category == ActionCategory.Control && Control == ControlKind.Wait ? (Wait ?? new WaitSettings()) : null;
             var image = Category == ActionCategory.Control && Control == ControlKind.Image ? (Image ?? new ImageSettings()) : null;
             var variable = Category == ActionCategory.Control && Control == ControlKind.Variable ? (Variable ?? new VariableSettings()) : null;
             var caseSettings = Category == ActionCategory.Control && Control == ControlKind.Case ? (Case ?? new CaseSettings()) : null;
-            Mouse = mouse; Keyboard = keyboard; Command = command; Loop = loop; Wait = wait; Image = image; Variable = variable; Case = caseSettings;
-            mouse?.Normalize(); keyboard?.Normalize(); command?.Normalize(); loop?.Normalize(); wait?.Normalize(); image?.Normalize();
+            Mouse = mouse; Keyboard = keyboard; Command = command; Web = web; Loop = loop; Wait = wait; Image = image; Variable = variable; Case = caseSettings;
+            mouse?.Normalize(); keyboard?.Normalize(); command?.Normalize(); web?.Normalize(); loop?.Normalize(); wait?.Normalize(); image?.Normalize();
             variable?.Normalize(); caseSettings?.Normalize();
 
             if (!IsContainer) Children.Clear();

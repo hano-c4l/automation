@@ -97,6 +97,9 @@ namespace AutomationTest.Core.Runner
                 case ActionCategory.Keyboard:
                     if (node.Keyboard.Action == KeyboardAction.Text && node.Keyboard.ValueIsExpression) text = node.Keyboard.Value;
                     break;
+                case ActionCategory.Web:
+                    if ((node.Web.Kind == WebKind.Input || node.Web.Kind == WebKind.Dialog) && node.Web.TextIsExpression) text = node.Web.Text;
+                    break;
                 case ActionCategory.Control:
                     if (node.IsKind(ControlKind.Variable) && node.Variable.UseExpression) text = node.Variable.Expression;
                     else if (node.IsKind(ControlKind.Case)) text = node.Case.Expression;
@@ -109,6 +112,8 @@ namespace AutomationTest.Core.Runner
 
         private static string Defines(ActionNode node)
         {
+            if (node.Category == ActionCategory.Web)
+                return node.Web.Kind == WebKind.GetText && !string.IsNullOrWhiteSpace(node.Web.Id) ? node.Web.Id.Trim() : null;
             if (node.Category != ActionCategory.Control) return null;
             string id = node.IsKind(ControlKind.Variable) ? node.Variable.Id : node.IsKind(ControlKind.Image) ? node.Image.Id : null;
             return string.IsNullOrWhiteSpace(id) ? null : id.Trim();

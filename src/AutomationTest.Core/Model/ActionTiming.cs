@@ -40,6 +40,8 @@ namespace AutomationTest.Core.Model
                     return (held ? k.TimeMs : 0) + k.DelayMs;
                 case ActionCategory.Utilities:
                     return node.Command.Kind == CommandKind.Shutdown ? node.Command.TimeMs : node.Command.DelayMs;
+                case ActionCategory.Web:
+                    return node.Web.DelayMs;
                 default:
                     break;
             }

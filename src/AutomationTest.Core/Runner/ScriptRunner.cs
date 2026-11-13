@@ -30,6 +30,9 @@ namespace AutomationTest.Core.Runner
             _keyboard = keyboard ?? new KeyboardController();
         }
 
+        /// <summary>The browser the Web actions drive; the program-wide session when not set.</summary>
+        public AutomationTest.Core.Web.WebSession WebSession { get; set; }
+
         /// <summary>Performs the Shutdown action; replaceable so tests never shut the computer down.</summary>
         public ISystemShutdown Shutdown { get; set; } = new WindowsShutdown();
 
@@ -97,6 +100,9 @@ namespace AutomationTest.Core.Runner
                 case ActionCategory.Utilities:
                     ExecuteCommand(node, token);
                     break;
+                case ActionCategory.Web:
+                    ExecuteWeb(node, token);
+                    break;
                 case ActionCategory.Control:
                     switch (node.Control)
                     {
@@ -149,6 +155,19 @@ namespace AutomationTest.Core.Runner
                 throw new InvalidOperationException(ex.Message);
             }
             Wait(k.DelayMs, token);
+        }
+
+        private void ExecuteWeb(ActionNode node, CancellationToken token)
+        {
+            var w = node.Web;
+            string text = w.Kind == WebKind.Input || w.Kind == WebKind.Dialog
+                ? (w.TextIsExpression ? EvalString(w.Text) : w.Text)
+                : null;
+            if (w.Kind == WebKind.GetText && !Expression.IsValidId((w.Id ?? "").Trim()))
+                throw new InvalidOperationException("Get Text: \"" + w.Id + "\" is not a valid ID.");
+            string result = (WebSession ?? AutomationTest.Core.Web.WebSession.Shared).Execute(w, text, token);
+            if (w.Kind == WebKind.GetText) _vars.Set(w.Id.Trim(), result ?? "");
+            Wait(w.DelayMs, token);
         }
 
         private sealed class ShutdownIssuedException : Exception { }

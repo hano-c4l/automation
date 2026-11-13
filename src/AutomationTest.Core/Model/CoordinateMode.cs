@@ -15,7 +15,34 @@ namespace AutomationTest.Core.Model
         Control,
         Utilities,
         Mouse,
-        Keyboard
+        Keyboard,
+        /// <summary>Drives a web browser through the browser extension.</summary>
+        Web
+    }
+
+    public enum WebKind
+    {
+        /// <summary>Starts the browser (when the extension is not connected yet) and waits for the extension.</summary>
+        OpenBrowser,
+        OpenUrl,
+        /// <summary>Waits until an element is on the page.</summary>
+        WaitElement,
+        /// <summary>Types text into an element.</summary>
+        Input,
+        /// <summary>Clicks an element.</summary>
+        Click,
+        /// <summary>Answers a JavaScript alert, confirm or prompt box.</summary>
+        Dialog,
+        /// <summary>Reads the text (or value) of an element into a variable.</summary>
+        GetText,
+        /// <summary>Makes the tab whose title or address contains the given text the one the script uses.</summary>
+        SwitchTab
+    }
+
+    public enum BrowserKind
+    {
+        Chrome,
+        Edge
     }
 
     public enum MouseAction
