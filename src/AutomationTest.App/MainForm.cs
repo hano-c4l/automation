@@ -1871,7 +1871,11 @@ namespace AutomationTest.App
                 SetStatus("The browser is not connected. Start the browser that has the Automation Test extension first.");
                 return;
             }
+            // Like the other Picks: this window gets out of the way and the Start, Start Selected and Record keys are off meanwhile
+            // (a run's clicks would be swallowed by the pick and taken for the user's choice).
             _webPick.Enabled = false;
+            SetToggleHotKey(false);
+            Minimize();
             SetStatus("Pick an element in the browser: move the mouse over it and click. Esc cancels.");
             bool picked = false;
             string selector = "", frame = "", error = null;
@@ -1885,6 +1889,8 @@ namespace AutomationTest.App
                     {
                         _webPick.Enabled = true;
                         if (IsDisposed) return;
+                        Restore();
+                        SetToggleHotKey(true);
                         Activate();
                         if (error != null) { SetStatus("Pick failed: " + error); return; }
                         if (!picked) { SetStatus("Pick cancelled."); return; }

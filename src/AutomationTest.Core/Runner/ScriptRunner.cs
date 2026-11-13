@@ -56,6 +56,7 @@ namespace AutomationTest.Core.Runner
             if (actions == null) throw new ArgumentNullException(nameof(actions));
             _windowCache.Clear();
             _vars.Clear();
+            (WebSession ?? AutomationTest.Core.Web.WebSession.SharedIfCreated)?.ResetTab(); // every run starts on the tab that is in front
             if (variables != null)
                 foreach (var pair in variables) _vars.Set(pair.Key, pair.Value);
             // 1 ms timer resolution so short delays and the per-iteration yield are not rounded up to ~15 ms.

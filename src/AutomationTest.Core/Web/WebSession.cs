@@ -100,6 +100,12 @@ namespace AutomationTest.Core.Web
             }
         }
 
+        /// <summary>The session of the program when it has been created (null before the first use); never creates it.</summary>
+        public static WebSession SharedIfCreated
+        {
+            get { lock (SharedLock) return _shared; }
+        }
+
         private readonly BrowserBridge _bridge;
         private readonly bool _ownsBridge;
         private int _tabId = -1;
@@ -120,6 +126,12 @@ namespace AutomationTest.Core.Web
         }
 
         public bool Connected => _bridge.Connected;
+
+        /// <summary>Forgets the current tab: the next action that needs one uses the tab that is in front then.</summary>
+        public void ResetTab()
+        {
+            _tabId = -1;
+        }
 
         /// <summary>Runs one Web action.</summary>
         /// <returns>The text read by GetText; null for the other actions.</returns>
@@ -276,13 +288,15 @@ namespace AutomationTest.Core.Web
         }
 
         /// <summary>
-        /// Lets the user point at an element in the current tab (it is brought to the front). Returns false when cancelled (Esc, the
+        /// Lets the user point at an element in the tab that is in front (and brings its window forward). Returns false when cancelled (Esc, the
         /// token, or the time ran out).
         /// </summary>
         public bool PickElement(CancellationToken token, int timeoutMs, out string selector, out string frame)
         {
             selector = ""; frame = "";
-            int tab = CurrentTab(token);
+            // The tab the user is looking at, not the one a script used before; the script's own tab is left alone.
+            EnsureConnected(token);
+            int tab = Convert.ToInt32(((Dictionary<string, object>)Call("activeTab", null, token))["tabId"]);
             Call("activateTab", new Dictionary<string, object> { { "tabId", tab } }, token);
             Cdp(tab, "Runtime.evaluate", new Dictionary<string, object> { { "expression", PickScript.Install }, { "returnByValue", true } }, token);
             var watch = Stopwatch.StartNew();
