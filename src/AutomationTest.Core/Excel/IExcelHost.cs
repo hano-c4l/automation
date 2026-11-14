@@ -50,6 +50,9 @@ namespace AutomationTest.Core.Excel
         /// <summary>The cell or area that is selected in the active workbook (null when there is none).</summary>
         bool TryGetSelection(out string sheetName, out string address);
 
+        /// <summary>Brings the Excel that has the active workbook to the front (false when there is none).</summary>
+        bool BringToFront();
+
         /// <summary>Called when a run ends: quits the Excel instances the program started hidden, and lets go of everything else.</summary>
         void EndRun();
     }
