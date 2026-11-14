@@ -76,6 +76,12 @@ namespace AutomationTest.App
         private AppSettings _settings = AppSettings.Defaults();
 
         private enum RunKind { None, All, Selected }
+
+        /// <summary>What the last Start Selected dialog was given, by variable name (type name and value); never a password.</summary>
+        private Dictionary<string, Tuple<string, object>> _lastEntered;
+
+        /// <summary>Passwords typed in that dialog, to be hidden in the messages and the log of the run that follows.</summary>
+        private List<string> _pendingSecrets = new List<string>();
         private RunKind _runKind;
         private readonly InputRecorder _recorder = new InputRecorder();
         private bool _recording;
@@ -907,12 +913,14 @@ namespace AutomationTest.App
 
             // Variable
             var varType = (VariableType)_varType.SelectedItem;
-            bool expr = _varUseExpr.Checked;
-            bool literal = variable && !expr;
+            // Clipboard and Password get their value when the script runs: no literal and no expression
+            bool noValue = varType == VariableType.Clipboard || varType == VariableType.Password;
+            bool expr = _varUseExpr.Checked && !noValue;
+            bool literal = variable && !expr && !noValue;
             bool geometry = literal && (varType == VariableType.Position || varType == VariableType.Range);
             SetRowVisible(_varId, variable);
             SetRowVisible(_varType, variable);
-            SetRowVisible(_varUseExpr, variable);
+            SetRowVisible(_varUseExpr, variable && !noValue);
             SetRowVisible(_varExpr, variable && expr);
             SetRowVisible(_varText, literal && (varType == VariableType.String || varType == VariableType.Number));
             SetRowVisible(_varBool, literal && varType == VariableType.Boolean);
@@ -1142,13 +1150,14 @@ namespace AutomationTest.App
             {
                 Id = _varId.Text.Trim(),
                 Type = type,
-                UseExpression = _varUseExpr.Checked,
-                Expression = _varExpr.Text.Trim(),
+                UseExpression = _varUseExpr.Checked && type != VariableType.Clipboard && type != VariableType.Password,
+                Expression = type == VariableType.Clipboard || type == VariableType.Password ? "" : _varExpr.Text.Trim(),
                 X = (int)_varX.Value,
                 Y = (int)_varY.Value,
                 Width = (int)_varW.Value,
                 Height = (int)_varH.Value
             };
+            if (type == VariableType.Clipboard || type == VariableType.Password) { v.X = v.Y = v.Width = v.Height = 0; return v; } // nothing is stored for these
             switch (type)
             {
                 case VariableType.String:
@@ -2535,6 +2544,8 @@ namespace AutomationTest.App
                             var v = n.Variable;
                             action = "Variable";
                             details = "{" + v.Id + "} (" + v.Type + ") = " + (v.UseExpression ? Shorten(v.Expression) : DescribeLiteral(v));
+                            if (v.Type == VariableType.Clipboard) details = "{" + v.Id + "} (Clipboard) = the text in the clipboard when it runs";
+                            else if (v.Type == VariableType.Password) details = "{" + v.Id + "} (Password) = asked when the script runs";
                             break;
                         case ControlKind.Condition:
                             action = "Condition";
@@ -3453,10 +3464,12 @@ namespace AutomationTest.App
                 SetToggleHotKey(false); // a shortcut pressed while the dialog is open must not start anything else
                 try
                 {
-                    using (var form = new VariableInputForm(plan.Needs))
+                    using (var form = new VariableInputForm(plan.Needs, _lastEntered))
                     {
-                        if (form.ShowDialog(this) != DialogResult.OK) return;
+                        if (form.ShowDialog(this) != DialogResult.OK) return; // cancelling leaves what was remembered as it was
                         values = form.Values;
+                        _lastEntered = form.Entered; // only the last dialog is remembered: a variable that is not in the next one is forgotten
+                        _pendingSecrets = form.Secrets;
                     }
                 }
                 finally
@@ -3479,6 +3492,17 @@ namespace AutomationTest.App
             _cts = new CancellationTokenSource();
             var token = _cts.Token;
             var runner = new ScriptRunner(_mouse, _keyboard) { RandomTime = _settings.RandomTime };
+            runner.ClipboardReader = ReadClipboardText;
+            runner.PasswordPrompt = AskPassword;
+            // Passwords are hidden wherever the run shows text: messages, the status, the log and the notice.
+            var secrets = new List<string>(_pendingSecrets ?? new List<string>());
+            _pendingSecrets = new List<string>();
+            Func<string, string> mask = text =>
+            {
+                if (text == null) return null;
+                lock (secrets) foreach (string secret in secrets) text = text.Replace(secret, "****");
+                return text;
+            };
 
             // Settings: Log. One file for this run; a log that cannot be made never stops the run.
             RunLog log = null;
@@ -3487,7 +3511,9 @@ namespace AutomationTest.App
             {
                 string scriptName = _currentPath == null ? null : Path.GetFileNameWithoutExtension(_currentPath);
                 log = RunLog.Start(RunLog.Folder, scriptName, kind == RunKind.Selected, tree, _settings.RandomTime, out logProblem);
+                foreach (string secret in secrets) log?.AddSecret(secret);
             }
+            runner.SecretKnown += secret => { lock (secrets) secrets.Add(secret); log?.AddSecret(secret); };
 
             runner.NodeStarted += node =>
             {
@@ -3496,7 +3522,7 @@ namespace AutomationTest.App
                 PostStatus("Running: " + line.Text + "  " + line.SubItems[3].Text);
             };
             var notes = new List<string>();
-            runner.Message += text => { lock (notes) notes.Add(text); log?.Note(text); PostStatus(text); };
+            runner.Message += text => { text = mask(text); lock (notes) notes.Add(text); log?.Note(text); PostStatus(text); };
 
             _runKind = kind;
             SetRunning(true);
@@ -3518,11 +3544,11 @@ namespace AutomationTest.App
             }
             catch (Exception ex)
             {
-                SetStatus("Error: " + ex.Message);
-                log?.Line("Error: " + ex.Message);
+                SetStatus("Error: " + mask(ex.Message));
+                log?.Line("Error: " + ex.Message); // the log hides the passwords itself
                 log?.End("failed");
                 notice = RunOutcome.Failed;
-                noticeText = ex.Message;
+                noticeText = mask(ex.Message);
             }
             finally
             {
@@ -3531,6 +3557,33 @@ namespace AutomationTest.App
                 LicenseAllowsWork(); // a run that just ended counts as the program being used
             }
             if (_settings.NotifyEnd && notice.HasValue) ToastForm.ShowNotice(notice.Value, noticeText);
+        }
+
+        /// <summary>The text in the clipboard, read on the window's thread (the clipboard needs it); empty when it holds no text.</summary>
+        private string ReadClipboardText()
+        {
+            if (!IsHandleCreated || IsDisposed) return "";
+            return (string)Invoke(new Func<string>(() =>
+            {
+                for (int attempt = 0; attempt < 10; attempt++)
+                {
+                    try { return Clipboard.ContainsText() ? Clipboard.GetText() : ""; }
+                    catch (System.Runtime.InteropServices.ExternalException) { Thread.Sleep(50); } // another program holds the clipboard for a moment
+                }
+                throw new InvalidOperationException("The clipboard is in use by another program.");
+            }));
+        }
+
+        /// <summary>Asks the user for a Password variable while the script runs; null when they cancel. Closes by itself when the run is stopped.</summary>
+        private string AskPassword(string id, CancellationToken token)
+        {
+            if (!IsHandleCreated || IsDisposed) return null;
+            return (string)Invoke(new Func<string>(() =>
+            {
+                using (var form = new PasswordForm(id))
+                using (token.Register(() => { try { BeginInvoke((Action)(() => form.Close())); } catch (InvalidOperationException) { } }))
+                    return form.ShowDialog() == DialogResult.OK ? form.Password : null;
+            }));
         }
 
         /// <summary>

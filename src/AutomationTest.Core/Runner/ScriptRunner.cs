@@ -35,6 +35,20 @@ namespace AutomationTest.Core.Runner
 
         internal Random RandomSource = new Random();
 
+        /// <summary>Gives the text in the clipboard (set by the program, which knows how to reach the clipboard; null when it cannot).</summary>
+        public Func<string> ClipboardReader { get; set; }
+
+        /// <summary>
+        /// Asks the user for the Password variable with that ID (set by the program). Returns the value, or null when the user cancels,
+        /// which stops the run. It is asked once for each ID in a run.
+        /// </summary>
+        public Func<string, CancellationToken, string> PasswordPrompt { get; set; }
+
+        /// <summary>A secret value has become known (a password): the program hides it in the log, the status and the notice.</summary>
+        public event Action<string> SecretKnown;
+
+        private readonly Dictionary<string, string> _passwords = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
         /// <summary>The time with the random extra added when Random Time is on (0 stays 0).</summary>
         internal long Jitter(long ms)
         {
@@ -92,6 +106,7 @@ namespace AutomationTest.Core.Runner
             _vars.Clear();
             _flow = Flow.None;
             _loopDepth = partial ? 1 : 0;
+            _passwords.Clear();
             (WebSession ?? AutomationTest.Core.Web.WebSession.SharedIfCreated)?.ResetTab(); // every run starts on the tab that is in front
             (ExcelSession ?? AutomationTest.Core.Excel.ExcelSession.SharedIfCreated)?.Reset(); // and on the workbook and sheet that are active
             if (variables != null)
@@ -153,7 +168,7 @@ namespace AutomationTest.Core.Runner
                     {
                         case ControlKind.Wait: ExecuteWait(node, token); break;
                         case ControlKind.Image: ExecuteImage(node, token); break;
-                        case ControlKind.Variable: ExecuteVariable(node); break;
+                        case ControlKind.Variable: ExecuteVariable(node, token); break;
                         case ControlKind.Condition: ExecuteCondition(node, token); break;
                         case ControlKind.Case:
                         case ControlKind.Else:
@@ -438,12 +453,32 @@ namespace AutomationTest.Core.Runner
 
         // ---------------------------------------------------------------- variable and condition
 
-        private void ExecuteVariable(ActionNode node)
+        private void ExecuteVariable(ActionNode node, CancellationToken token)
         {
             var v = node.Variable;
             string id = (v.Id ?? "").Trim();
             if (!Expression.IsValidId(id))
                 throw new InvalidOperationException("Variable: \"" + v.Id + "\" is not a valid ID (letters, digits and _, not starting with a digit).");
+            if (v.Type == VariableType.Clipboard)
+            {
+                if (ClipboardReader == null) throw new InvalidOperationException("Variable {" + id + "}: the clipboard cannot be read here.");
+                _vars.Set(id, ClipboardReader() ?? ""); // a copy of the text now; the variable does not follow the clipboard
+                return;
+            }
+            if (v.Type == VariableType.Password)
+            {
+                string secret;
+                if (!_passwords.TryGetValue(id, out secret))
+                {
+                    if (PasswordPrompt == null) throw new InvalidOperationException("Variable {" + id + "}: a Password can only be asked for by the program.");
+                    secret = PasswordPrompt(id, token);
+                    if (secret == null) throw new OperationCanceledException("The password for {" + id + "} was not given.");
+                    _passwords[id] = secret;
+                    if (secret.Length > 0) SecretKnown?.Invoke(secret);
+                }
+                _vars.Set(id, secret);
+                return;
+            }
             try
             {
                 object value = v.UseExpression ? Expression.Evaluate(v.Expression, _vars) : v.GetLiteral();

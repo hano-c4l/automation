@@ -601,6 +601,28 @@ namespace AutomationTest.Core.Model
             set { Type = ActionNode.Parse(value, VariableType.Number); }
         }
 
+        /// <summary>Clipboard and Password have no value of their own: whatever a hand-edited file or an old field left is dropped.</summary>
+        public bool HasNoStoredValue
+        {
+            get { return Type == VariableType.Clipboard || Type == VariableType.Password; }
+        }
+
+        /// <summary>A Password is never written to a file: this runs before every save and before the text used to tell whether a script changed.</summary>
+        [OnSerializing]
+        private void ClearBeforeSaving(StreamingContext context)
+        {
+            DropStoredValue();
+        }
+
+        private void DropStoredValue()
+        {
+            if (!HasNoStoredValue) return;
+            UseExpression = false;
+            Expression = "";
+            Text = "";
+            X = Y = Width = Height = 0;
+        }
+
         [OnDeserializing]
         private void SetDefaults(StreamingContext context)
         {
@@ -619,6 +641,9 @@ namespace AutomationTest.Core.Model
                 case VariableType.Position: return new PointValue(X, Y);
                 case VariableType.Range: return new RangeValue(X, Y, Width, Height);
                 case VariableType.String: return Text ?? "";
+                case VariableType.Clipboard:
+                case VariableType.Password:
+                    return ""; // the value comes from the clipboard or from the user when the script runs
                 default: return Coercion.To(Type, Text ?? "");
             }
         }
@@ -633,6 +658,7 @@ namespace AutomationTest.Core.Model
             if (Id == null) Id = "";
             if (Expression == null) Expression = "";
             if (Text == null) Text = "";
+            DropStoredValue();
             if (Width < 0) Width = 0;
             if (Height < 0) Height = 0;
         }

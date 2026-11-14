@@ -200,7 +200,11 @@ namespace AutomationTest.Core.Model
         Number,
         Boolean,
         Date,
-        DateTime
+        DateTime,
+        /// <summary>Takes the text that is in the clipboard when the action runs (a copy: the variable does not follow the clipboard afterwards).</summary>
+        Clipboard,
+        /// <summary>Asked from the user when the script runs; never stored in the script file or the log.</summary>
+        Password
     }
 
     public enum LoopType
