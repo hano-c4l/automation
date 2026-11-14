@@ -28,6 +28,9 @@ namespace AutomationTest.App
             Tuple.Create(ExcelKind.CreateSheet, "Sheet", "Create"),
             Tuple.Create(ExcelKind.RenameSheet, "Sheet", "Rename"),
             Tuple.Create(ExcelKind.DeleteSheet, "Sheet", "Delete"),
+            Tuple.Create(ExcelKind.SheetCopy, "Sheet", "Copy"),
+            Tuple.Create(ExcelKind.SheetMove, "Sheet", "Move"),
+            Tuple.Create(ExcelKind.SheetVisible, "Sheet", "Visible"),
             Tuple.Create(ExcelKind.GetCell, "Cell", "Get"),
             Tuple.Create(ExcelKind.SetCell, "Cell", "Set"),
             Tuple.Create(ExcelKind.GetRange, "Range", "Get"),
@@ -35,12 +38,16 @@ namespace AutomationTest.App
             Tuple.Create(ExcelKind.Select, "Range", "Select"),
             Tuple.Create(ExcelKind.Find, "Range", "Find"),
             Tuple.Create(ExcelKind.Copy, "Range", "Copy"),
+            Tuple.Create(ExcelKind.CutCells, "Range", "Cut"),
+            Tuple.Create(ExcelKind.ReplaceText, "Range", "Replace"),
             Tuple.Create(ExcelKind.Clear, "Range", "Clear"),
             Tuple.Create(ExcelKind.Format, "Range", "Format"),
             Tuple.Create(ExcelKind.Sort, "Range", "Sort"),
             Tuple.Create(ExcelKind.Filter, "Range", "Filter"),
             Tuple.Create(ExcelKind.InsertCells, "Row/Col", "Insert"),
             Tuple.Create(ExcelKind.DeleteCells, "Row/Col", "Delete"),
+            Tuple.Create(ExcelKind.HideCells, "Row/Col", "Hide"),
+            Tuple.Create(ExcelKind.ShowCells, "Row/Col", "Show"),
             Tuple.Create(ExcelKind.GetInfo, "Excel", "Info"),
             Tuple.Create(ExcelKind.Evaluate, "Excel", "Evaluate"),
             Tuple.Create(ExcelKind.Refresh, "Excel", "Refresh"),
@@ -68,6 +75,23 @@ namespace AutomationTest.App
             Tuple.Create(WebKind.GetText, "Element", "Get"),
         });
 
+        private static readonly Dictionary<CommandKind, Entry> CommandMap = Build(new[]
+        {
+            Tuple.Create(CommandKind.Open, "Program", "Open"),
+            Tuple.Create(CommandKind.Close, "Program", "Close"),
+            Tuple.Create(CommandKind.FsCopy, "File/Folder", "Copy"),
+            Tuple.Create(CommandKind.FsMove, "File/Folder", "Move"),
+            Tuple.Create(CommandKind.FsRename, "File/Folder", "Rename"),
+            Tuple.Create(CommandKind.FsDelete, "File/Folder", "Delete"),
+            Tuple.Create(CommandKind.FsCreate, "File/Folder", "Create"),
+            Tuple.Create(CommandKind.FsExists, "File/Folder", "Exists"),
+            Tuple.Create(CommandKind.FsRead, "File/Folder", "Read"),
+            Tuple.Create(CommandKind.FsWrite, "File/Folder", "Write"),
+            Tuple.Create(CommandKind.FsList, "File/Folder", "List"),
+            Tuple.Create(CommandKind.Active, "System", "Active"),
+            Tuple.Create(CommandKind.Shutdown, "System", "Shutdown"),
+        });
+
         private static Dictionary<T, Entry> Build<T>(Tuple<T, string, string>[] rows)
         {
             var map = new Dictionary<T, Entry>();
@@ -77,10 +101,15 @@ namespace AutomationTest.App
 
         // The groups appear in the order of the first kind that uses them.
         public static IList<string> ExcelGroups { get; } = ExcelMap.Values.Select(e => e.Group).Distinct().ToList();
+        public static IList<string> CommandGroups { get; } = CommandMap.Values.Select(e => e.Group).Distinct().ToList();
         public static IList<string> WebGroups { get; } = WebMap.Values.Select(e => e.Group).Distinct().ToList();
 
         public static string GroupOf(ExcelKind kind) { return ExcelMap[kind].Group; }
         public static string GroupOf(WebKind kind) { return WebMap[kind].Group; }
+        public static string GroupOf(CommandKind kind) { return CommandMap[kind].Group; }
+        public static string LabelOf(CommandKind kind) { return CommandMap[kind].Label; }
+        public static string Display(CommandKind kind) { return CommandMap[kind].Group + " " + CommandMap[kind].Label; }
+        public static IList<CommandKind> CommandKindsOf(string group) { return CommandMap.Where(p => p.Value.Group == group).Select(p => p.Key).ToList(); }
         public static string LabelOf(ExcelKind kind) { return ExcelMap[kind].Label; }
         public static string LabelOf(WebKind kind) { return WebMap[kind].Label; }
 
@@ -95,7 +124,8 @@ namespace AutomationTest.App
         public static bool Covers()
         {
             return Enum.GetValues(typeof(ExcelKind)).Cast<ExcelKind>().All(ExcelMap.ContainsKey)
-                && Enum.GetValues(typeof(WebKind)).Cast<WebKind>().All(WebMap.ContainsKey);
+                && Enum.GetValues(typeof(WebKind)).Cast<WebKind>().All(WebMap.ContainsKey)
+                && Enum.GetValues(typeof(CommandKind)).Cast<CommandKind>().All(CommandMap.ContainsKey);
         }
     }
 }

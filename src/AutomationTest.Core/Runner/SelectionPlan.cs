@@ -105,6 +105,12 @@ namespace AutomationTest.Core.Runner
                 bool valueKind = ScriptRunner.ExcelValueKind(x.Kind);
                 return ReadsOf(x.CellIsExpression ? x.Cell : null, x.Kind == ExcelKind.SetRange || (valueKind && x.ValueIsExpression) ? x.Value : null);
             }
+            if (node.Category == ActionCategory.Utilities)
+            {
+                var c = node.Command;
+                if (c.Kind == CommandKind.Close) return ReadsOf(c.ValueIsExpression ? c.Value : null);
+                return ScriptRunner.CommandIsFileSystem(c.Kind) ? ReadsOf(c.ValueIsExpression ? c.Value : null, c.TargetIsExpression ? c.Target : null) : new string[0];
+            }
             if (node.IsKind(ControlKind.Loop) && node.Loop.Mode == LoopType.For) return ReadsOf(node.Loop.ForFrom, node.Loop.ForTo, node.Loop.ForStep);
 
             string text = null;
@@ -139,6 +145,8 @@ namespace AutomationTest.Core.Runner
                 bool keeps = x.Kind == ExcelKind.GetCell || x.Kind == ExcelKind.GetRange || x.Kind == ExcelKind.GetInfo || x.Kind == ExcelKind.Find || x.Kind == ExcelKind.Evaluate || x.Kind == ExcelKind.RunMacro;
                 return keeps && !string.IsNullOrWhiteSpace(x.Id) ? x.Id.Trim() : null;
             }
+            if (node.Category == ActionCategory.Utilities)
+                return ScriptRunner.CommandKeeps(node.Command.Kind) && !string.IsNullOrWhiteSpace(node.Command.Id) ? node.Command.Id.Trim() : null;
             if (node.IsKind(ControlKind.Loop) && node.Loop.Mode == LoopType.For)
                 return string.IsNullOrWhiteSpace(node.Loop.ForId) ? null : node.Loop.ForId.Trim();
             if (node.Category == ActionCategory.Web)

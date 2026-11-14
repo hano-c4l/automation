@@ -115,8 +115,39 @@ namespace AutomationTest.Core.Model
         /// <summary>Filter: remove the filter of the sheet instead.</summary>
         [DataMember(Order = 43, EmitDefaultValue = false)] public bool ClearFilter { get; set; }
 
-        /// <summary>Copy: paste only the values.</summary>
-        [DataMember(Order = 44, EmitDefaultValue = false)] public bool ValuesOnly { get; set; }
+        /// <summary>Copy: what to paste.</summary>
+        public ExcelPasteKind Paste { get; set; }
+
+        /// <summary>Copy: paste with rows and columns swapped.</summary>
+        [DataMember(Order = 55, EmitDefaultValue = false)] public bool Transpose { get; set; }
+
+        /// <summary>ReplaceText: the text that replaces what Value finds (empty removes it).</summary>
+        [DataMember(Order = 56)] public string ReplaceWith { get; set; } = "";
+
+        /// <summary>SheetVisible: whether the sheet is shown, hidden, or hidden for good.</summary>
+        public ExcelVisibility Visibility { get; set; }
+
+        /// <summary>Kept so that older files (and older builds) still mean the same: the same as Paste = Values.</summary>
+        [DataMember(Order = 44, EmitDefaultValue = false)]
+        public bool ValuesOnly
+        {
+            get { return Paste == ExcelPasteKind.Values; }
+            set { if (value) Paste = ExcelPasteKind.Values; }
+        }
+
+        [DataMember(Name = "Paste", Order = 57, EmitDefaultValue = false)]
+        private string PasteName
+        {
+            get { return Paste == ExcelPasteKind.All ? null : Paste.ToString(); }
+            set { if (value != null) Paste = ActionNode.Parse(value, ExcelPasteKind.All); }
+        }
+
+        [DataMember(Name = "Visibility", Order = 58, EmitDefaultValue = false)]
+        private string VisibilityName
+        {
+            get { return Visibility == ExcelVisibility.Visible ? null : Visibility.ToString(); }
+            set { Visibility = ActionNode.Parse(value, ExcelVisibility.Visible); }
+        }
 
         /// <summary>RunMacro: the macro, for example Module1.Report or 'sales.xlsm'!Report.</summary>
         [DataMember(Order = 45)] public string Macro { get; set; } = "";
@@ -231,6 +262,7 @@ namespace AutomationTest.Core.Model
             FilterField = 1;
             Criteria = "";
             Macro = "";
+            ReplaceWith = "";
         }
 
         public ExcelSettings Clone()
@@ -254,6 +286,7 @@ namespace AutomationTest.Core.Model
             if (SortBy == null) SortBy = "";
             if (Criteria == null) Criteria = "";
             if (Macro == null) Macro = "";
+            if (ReplaceWith == null) ReplaceWith = "";
             if (Count < 1) Count = 1;
             if (FilterField < 1) FilterField = 1;
             if (Index < 0) Index = 0;

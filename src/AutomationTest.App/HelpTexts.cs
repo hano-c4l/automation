@@ -246,6 +246,86 @@ the keyboard action when a specific program must receive them.
 
 Can be given in milliseconds, seconds, minutes or hours.");
 
+        public static readonly HelpTopic CommandId = new HelpTopic("ID (File/Folder)",
+@"The variable that receives the result:
+
+Exists   true or false (a Boolean)
+Read     the text of the file (a String)
+List     a table of one column with the full paths of the files and
+         folders inside the folder: {id.Rows}, {id[1, 1]}...
+         Use it with Loop (For) to go through them.");
+
+        public static readonly HelpTopic CloseMatch = new HelpTopic("Match (Program Close)",
+@"How the programs to close are found:
+
+Title    a regular expression, not case sensitive, on the title of
+         the main window. Programs without a window never match.
+Name     the process name, for example notepad (.exe is optional)
+Path     the full path of the program file
+Id       the process id (a number)
+
+The Automation Test program itself is never closed. If no program
+matches, nothing happens (a note is shown, it is not an error).");
+
+        public static readonly HelpTopic CloseAll = new HelpTopic("All matches (Program Close)",
+@"OFF   only the first program that matches is closed (the one with
+      the lowest process id)
+ON    every program that matches is closed
+
+Be careful with a wide pattern: a Title such as .* matches every
+program that has a window.");
+
+        public static readonly HelpTopic CloseTimeout = new HelpTopic("Timeout (Program Close)",
+@"The program is asked to close its window, as if you clicked the X.
+This is how long to wait for it to end. A program that asks whether
+to save first stays open: the action then fails with a message
+(turn on Kill, or give it more time).
+
+Can be given in milliseconds, seconds, minutes or hours.");
+
+        public static readonly HelpTopic CloseKill = new HelpTopic("Kill (Program Close)",
+@"OFF   the program is asked to close and can save its work (default)
+ON    the program is ended at once; unsaved work is lost
+
+A program that runs as administrator can only be closed when this
+program runs as administrator too.");
+
+        public static readonly HelpTopic FileTarget = new HelpTopic("Destination (File/Folder)",
+@"Copy, Move  where the file or folder goes. An existing folder (or a
+             path ending with \) means ""inside it, same name"";
+             anything else is the full new path.
+Rename       the new name only, without a folder.
+Write        the text to write into the file.
+
+Environment variables such as %TEMP% work in paths, and a path
+without a drive is taken from the program's folder.");
+
+        public static readonly HelpTopic FileOverwrite = new HelpTopic("Overwrite (File/Folder)",
+@"OFF   an existing file or folder at the destination is an error
+ON    a file is replaced; a folder is merged into (files with the
+      same name are replaced, the rest stays)");
+
+        public static readonly HelpTopic FileRecurse = new HelpTopic("Recurse (File/Folder)",
+@"Delete  OFF: a folder that is not empty is an error.
+         ON: the folder is deleted with everything inside it.
+List    ON: also lists what is inside the subfolders.
+
+Careful with scripts from other people: Delete removes your files
+and cannot be undone (nothing goes to the Recycle Bin). A whole
+drive is never deleted.");
+
+        public static readonly HelpTopic FileAppend = new HelpTopic("Append (File/Folder)",
+@"OFF   the file is replaced by the text
+ON    the text is added at the end of the file
+
+The file (and the folders above it) are made when they are missing.");
+
+        public static readonly HelpTopic FileForce = new HelpTopic("Force (File/Folder Delete)",
+@"ON   read-only files are deleted too (their read-only mark is
+     removed first)
+
+A path where nothing exists is not an error: a note is shown.");
+
         public static readonly HelpTopic ShutdownTime = new HelpTopic("Time (Shutdown)",
 @"How long to wait before the computer is shut down. The Stop key
 cancels the countdown.
@@ -436,19 +516,49 @@ All        both
 
 Cell is the area, for example A2:D100, or a whole column B:B.");
 
-        public static readonly HelpTopic ExcelCopy = new HelpTopic("Copy",
-@"Copies the area (Cell) to the destination (Value, its top-left cell).
+        public static readonly HelpTopic ExcelCopy = new HelpTopic("Range Copy / Cut and Sheet Copy / Move",
+@"Range Copy: copies the area (Cell) to the destination (Value, its
+top-left cell). Whole rows and columns work too (2:5, B:D).
+Range Cut: moves the area, with everything in it.
+
 To workbook / To sheet (regular expressions on the names, not case
-sensitive) say where the copy goes; empty means the same workbook /
-the same sheet as the area (a workbook given without a sheet: its
+sensitive) say where it goes; empty means the same workbook / the
+same sheet as the area (a workbook given without a sheet: its
 active sheet).
 
-Values only OFF  values, formulas and formatting
-Values only ON   just the values (formulas become their results)
+Paste  All           values, formulas and formatting
+       Values        just the values (formulas become their results)
+       Formulas      the formulas (relative references shift like
+                     in a paste), keeping the formatting there
+       Formats       just the formatting
+       Column widths just the column widths
+Transpose swaps rows and columns.
 
-Formatting can only be copied inside one Excel window; between
-workbooks that are open in separate Excel windows turn Values only
-on (or use Range Get and Range Set).");
+Between workbooks that are open in separate Excel windows only
+Values and Formulas (without Transpose) work; Range Cut and the
+other kinds need both workbooks in the same Excel window. All the
+kinds except Values and Formulas use the clipboard.
+
+Sheet Copy / Sheet Move: the sheet is chosen by Sheet / Index (empty
+= the current sheet). To workbook says where it goes (empty = the
+same workbook, which is open already); Position says where in that
+workbook (before or after its current sheet, at the start or the
+end). Sheet Copy can name the copy (Value). Select it makes the
+copy or the moved sheet the current one.");
+
+        public static readonly HelpTopic ExcelReplace = new HelpTopic("Replace",
+@"Replaces the text that Value finds with this text, in the cells of
+the area (empty area = the whole sheet). Match case and Whole cell
+work as in Find. Leave this empty to remove the text.");
+
+        public static readonly HelpTopic ExcelVisibility = new HelpTopic("Visibility (Sheet Visible)",
+@"Visible      the sheet is shown
+Hidden       the sheet is hidden (the user can unhide it)
+Very hidden  the sheet is hidden and Excel's Unhide menu does not
+             list it
+
+A workbook needs at least one visible sheet. A hidden sheet cannot
+be the current one.");
 
         public static readonly HelpTopic ExcelFormat = new HelpTopic("Format",
 @"Changes only the fields that are filled in; empty fields and Leave

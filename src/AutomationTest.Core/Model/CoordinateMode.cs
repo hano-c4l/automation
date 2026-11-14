@@ -131,7 +131,39 @@ namespace AutomationTest.Core.Model
         /// <summary>Sends a harmless input event and asks Windows to stay awake, so a long run is not taken for being idle (lock, screen off, sleep).</summary>
         Active,
         /// <summary>Waits Time, then shuts the computer down.</summary>
-        Shutdown
+        Shutdown,
+        /// <summary>Closes running programs found by window title, process name, file path or process id.</summary>
+        Close,
+        // File/Folder actions: they work on a file or a folder, whichever is at the path.
+        /// <summary>Copies a file or a folder (with everything in it) to a destination.</summary>
+        FsCopy,
+        FsMove,
+        /// <summary>Gives a file or folder a new name in the same place.</summary>
+        FsRename,
+        FsDelete,
+        /// <summary>Makes a folder (and the folders above it that are missing).</summary>
+        FsCreate,
+        /// <summary>Stores true or false in a variable: is there a file or folder at the path.</summary>
+        FsExists,
+        /// <summary>Reads a text file into a variable.</summary>
+        FsRead,
+        /// <summary>Writes (or appends) text to a file.</summary>
+        FsWrite,
+        /// <summary>Lists the files and folders of a folder into a table variable.</summary>
+        FsList
+    }
+
+    /// <summary>How the Close action finds the programs to close.</summary>
+    public enum ProgramMatch
+    {
+        /// <summary>A regular expression on the title of the main window.</summary>
+        Title,
+        /// <summary>The process name, for example notepad (with or without .exe).</summary>
+        Name,
+        /// <summary>The full path of the program file.</summary>
+        Path,
+        /// <summary>The process id.</summary>
+        Id
     }
 
     public enum ControlKind
@@ -208,7 +240,44 @@ namespace AutomationTest.Core.Model
         RunMacro,
         Save,
         CloseWorkbook,
-        CloseExcel
+        CloseExcel,
+        /// <summary>Makes a copy of a sheet, in the same workbook or another open one.</summary>
+        SheetCopy,
+        /// <summary>Moves a sheet to another place in its workbook, or into another open workbook.</summary>
+        SheetMove,
+        /// <summary>Hides or shows a sheet.</summary>
+        SheetVisible,
+        /// <summary>Hides rows or columns.</summary>
+        HideCells,
+        /// <summary>Shows hidden rows or columns again.</summary>
+        ShowCells,
+        /// <summary>Moves cells (everything in them) to another place.</summary>
+        CutCells,
+        /// <summary>Replaces text in the cells of an area.</summary>
+        ReplaceText
+    }
+
+    /// <summary>What a Range Copy pastes.</summary>
+    public enum ExcelPasteKind
+    {
+        /// <summary>Values, formulas and formatting.</summary>
+        All,
+        /// <summary>Only the values (formulas arrive as their results).</summary>
+        Values,
+        /// <summary>The formulas (relative references shift like in a paste); values stay as they are.</summary>
+        Formulas,
+        /// <summary>Only the formatting.</summary>
+        Formats,
+        /// <summary>Only the column widths of the area.</summary>
+        ColumnWidths
+    }
+
+    public enum ExcelVisibility
+    {
+        Visible,
+        Hidden,
+        /// <summary>Hidden so that the user cannot unhide it from Excel's menu.</summary>
+        VeryHidden
     }
 
     public enum ExcelTarget

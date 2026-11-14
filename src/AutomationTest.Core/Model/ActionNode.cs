@@ -144,14 +144,48 @@ namespace AutomationTest.Core.Model
         /// <summary>How long to wait after the action before the next one starts (milliseconds).</summary>
         [DataMember(Order = 3, EmitDefaultValue = false)] public long DelayMs { get; set; }
 
-        /// <summary>Shutdown: how long to wait before the computer is shut down (milliseconds).</summary>
+        /// <summary>Shutdown: how long to wait before the computer is shut down. Close: how long to wait for a program to end (milliseconds).</summary>
         [DataMember(Order = 4, EmitDefaultValue = false)] public long TimeMs { get; set; }
 
-        /// <summary>Shutdown: close other programs even if they have unsaved work.</summary>
+        /// <summary>Shutdown: close other programs even if they have unsaved work. Close: end the program at once (it cannot save). Delete: also delete read-only files.</summary>
         [DataMember(Order = 5, EmitDefaultValue = false)] public bool Force { get; set; }
 
-        /// <summary>Open: path of the program or document to open.</summary>
+        /// <summary>Open: path of the program or document to open. Close: what to look for (see <see cref="Match"/>). File/Folder: the path.</summary>
         [DataMember(Order = 2)] public string Value { get; set; } = "";
+
+        /// <summary>The Value is an expression (File/Folder actions).</summary>
+        [DataMember(Order = 6, EmitDefaultValue = false)] public bool ValueIsExpression { get; set; }
+
+        /// <summary>Copy, Move: the destination. Rename: the new name. Write: the text to write.</summary>
+        [DataMember(Order = 7)] public string Target { get; set; } = "";
+
+        /// <summary>The Target is an expression.</summary>
+        [DataMember(Order = 8, EmitDefaultValue = false)] public bool TargetIsExpression { get; set; }
+
+        /// <summary>Copy, Move: replace what is already at the destination.</summary>
+        [DataMember(Order = 9, EmitDefaultValue = false)] public bool Overwrite { get; set; }
+
+        /// <summary>Delete: also delete a folder that is not empty. List: also list what is inside the subfolders.</summary>
+        [DataMember(Order = 10, EmitDefaultValue = false)] public bool Recurse { get; set; }
+
+        /// <summary>Write: add to the end of the file instead of replacing it.</summary>
+        [DataMember(Order = 11, EmitDefaultValue = false)] public bool Append { get; set; }
+
+        /// <summary>Close: close every program that matches, not only the first one.</summary>
+        [DataMember(Order = 12, EmitDefaultValue = false)] public bool All { get; set; }
+
+        /// <summary>Exists, Read, List: the variable that receives the result.</summary>
+        [DataMember(Order = 13)] public string Id { get; set; } = "";
+
+        /// <summary>Close: how the programs are found.</summary>
+        public ProgramMatch Match { get; set; }
+
+        [DataMember(Name = "Match", Order = 14)]
+        private string MatchName
+        {
+            get { return Match.ToString(); }
+            set { Match = ActionNode.Parse(value, ProgramMatch.Title); }
+        }
 
         [DataMember(Name = "Kind", Order = 1)]
         private string KindName
@@ -164,6 +198,8 @@ namespace AutomationTest.Core.Model
         private void SetDefaults(StreamingContext context)
         {
             Value = "";
+            Target = "";
+            Id = "";
         }
 
         public CommandSettings Clone()
@@ -174,6 +210,8 @@ namespace AutomationTest.Core.Model
         internal void Normalize()
         {
             if (Value == null) Value = "";
+            if (Target == null) Target = "";
+            if (Id == null) Id = "";
             if (DelayMs < 0) DelayMs = 0;
             if (TimeMs < 0) TimeMs = 0;
         }

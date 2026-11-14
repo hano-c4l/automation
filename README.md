@@ -8,7 +8,7 @@ Người dùng soạn một kịch bản gồm các action xếp thành cây, r�
 
 - **Chuột:** Click, Mouse Down/Up, Move (có thời gian di chuyển), cuộn chuột; vị trí theo màn hình hoặc theo cửa sổ của chương trình đích (Process, Title, Anchor) để cửa sổ dời chỗ vẫn click đúng.
 - **Bàn phím:** một phím, tổ hợp phím, hoặc cả đoạn text (kể cả tiếng Việt).
-- **Điều khiển:** Loop (số lần, khoảng thời gian, tới thời điểm), Wait (chờ cửa sổ khớp, có Timeout, Retry và thời gian Wait để không nhầm splash), Image (nhận diện ảnh trong một vùng), Variable, Condition (switch-case), biểu thức `{biến}`; Utilities: Open để mở file hoặc chương trình, Active để máy không khóa hay tắt màn hình khi chạy lâu. Mỗi action bật/tắt được (State).
+- **Điều khiển:** Loop (số lần, khoảng thời gian, tới thời điểm), Wait (chờ cửa sổ khớp, có Timeout, Retry và thời gian Wait để không nhầm splash), Image (nhận diện ảnh trong một vùng), Variable, Condition (switch-case), biểu thức `{biến}`; Utilities: Program (mở hoặc đóng chương trình theo tiêu đề, tên, đường dẫn hay process id), File/Folder (copy, move, rename, delete, create, exists, read, write, list), System (Active để máy không khóa hay tắt màn hình khi chạy lâu, Shutdown). Mỗi action bật/tắt được (State).
 - **Start Selected:** chạy riêng các action đang chọn để thử nhanh (hỏi giá trị cho các biến mà phần chọn cần).
 - **Record:** ghi lại click, kéo thả, cuộn và phím thành action; tùy chọn "Record all event" trong Settings để ghi cả di chuyển chuột.
 - **Settings:** phím tắt (Start F3, Start Selected F4, Record F6, Pick F8) và hai tùy chọn, lưu trong `Setting.ini`. Khi đang chạy chỉ phím đã bắt đầu lần chạy mới dừng được (F3 cho chạy cả script, F4 cho chạy phần chọn); Esc chỉ hủy Pick.
@@ -54,7 +54,3 @@ License có hạn cần mạng khi kích hoạt. Chi tiết xem mục License tr
 ## Quy trình git
 
 `main` là production, `preview` là nhánh test; việc mới làm trên nhánh `feature_xxx` tách từ `preview`.
-
-## Bản Rust
-
-Có bản viết lại bằng Rust (một file exe, không cần .NET) với cùng tính năng và cùng định dạng file: repo `automation_rust`, thư mục `D:\Working\AutomationRust`. Kịch bản JSON, `license.lic` và `Setting.ini` dùng chung được giữa hai bản.
