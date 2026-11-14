@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Reflection;
 using System.Windows.Forms;
 using AutomationTest.App;
@@ -293,6 +294,48 @@ namespace AutomationTest.Tests.Suites
             e.Choose(ControlKind.Section);
             e.Call("UpdateAction");
             t.True("a Try cannot be changed into a Section", tryC.IsKind(ControlKind.Try) && e.Status.Contains("cannot be changed"));
+        }
+
+        [Suite("editor.program")]
+        public static void ProgramCategory(T t)
+        {
+            var e = new Editor();
+            var category = (ComboBox)e.Field("_category");
+            var group = (ComboBox)e.Field("_cmdGroup");
+            var kind = (ComboBox)e.Field("_cmdKind");
+
+            // the Program category offers Program and Window, Utilities offers File/Folder and System
+            category.SelectedItem = ActionCategory.Program;
+            t.Eq("Program category groups", string.Join(",", group.Items.Cast<object>()), "Program,Window");
+            t.Eq("Program first type", kind.SelectedItem, CommandKind.Open);
+            group.SelectedItem = "Window";
+            t.Eq("the Window group has six types", kind.Items.Count, 6);
+            category.SelectedItem = ActionCategory.Utilities;
+            t.Eq("Utilities category groups", string.Join(",", group.Items.Cast<object>()), "File/Folder,System");
+            category.SelectedItem = ActionCategory.Program;
+            t.Eq("back to Program: its groups again", string.Join(",", group.Items.Cast<object>()), "Program,Window");
+
+            // a node of each kind goes in and out in the right category
+            foreach (CommandKind k in Enum.GetValues(typeof(CommandKind)))
+            {
+                var back = e.Through(ActionNode.NewCommand(new CommandSettings { Kind = k, Value = "x", Id = "v", Match = ProgramMatch.Name }));
+                t.Eq("category of " + k, back.Category, CommandKinds.CategoryOf(k));
+                t.Eq("kind " + k, back.Command.Kind, k);
+            }
+
+            // the window fields
+            var move = e.Through(ActionNode.NewCommand(new CommandSettings { Kind = CommandKind.WindowMove, Match = ProgramMatch.Path, Value = "C:/a.exe", All = true, X = -30, Y = 40 })).Command;
+            t.Eq("move x", move.X, -30);
+            t.Eq("move y", move.Y, 40);
+            t.Eq("move match", move.Match, ProgramMatch.Path);
+            t.Eq("move all", move.All, true);
+            var resize = e.Through(ActionNode.NewCommand(new CommandSettings { Kind = CommandKind.WindowResize, Match = ProgramMatch.Title, Value = "w", Width = 800, Height = 600, X = 5, Y = 5 })).Command;
+            t.Eq("resize width", resize.Width, 800);
+            t.Eq("resize height", resize.Height, 600);
+            t.Eq("resize drops the position of Move", resize.X + resize.Y, 0);
+            var open = e.Through(ActionNode.NewCommand(new CommandSettings { Kind = CommandKind.Open, Value = "{p}", ValueIsExpression = true, X = 9, Width = 9 })).Command;
+            t.True("Open keeps its expression flag", open.ValueIsExpression);
+            t.Eq("Open drops window fields", open.X + open.Width, 0);
         }
 
         [Suite("editor.group-box")]

@@ -19,7 +19,9 @@ namespace AutomationTest.Core.Model
         /// <summary>Drives a web browser through the browser extension.</summary>
         Web,
         /// <summary>Drives Microsoft Excel (workbooks, sheets, cells).</summary>
-        Excel
+        Excel,
+        /// <summary>Opens, closes and arranges programs and their windows (the settings are those of <see cref="CommandSettings"/>).</summary>
+        Program
     }
 
     public enum WebKind
@@ -150,7 +152,38 @@ namespace AutomationTest.Core.Model
         /// <summary>Writes (or appends) text to a file.</summary>
         FsWrite,
         /// <summary>Lists the files and folders of a folder into a table variable.</summary>
-        FsList
+        FsList,
+        // Window actions (category Program): they act on the first window found (every window found with All).
+        /// <summary>Brings the window to the front.</summary>
+        WindowActivate,
+        WindowMinimize,
+        WindowMaximize,
+        /// <summary>Back to normal size after minimizing or maximizing.</summary>
+        WindowRestore,
+        /// <summary>Moves the window so that its top left corner is at X, Y on the screen.</summary>
+        WindowMove,
+        /// <summary>Gives the window the Width and Height.</summary>
+        WindowResize
+    }
+
+    /// <summary>Which category an action of <see cref="CommandKind"/> belongs to.</summary>
+    public static class CommandKinds
+    {
+        /// <summary>Open, Close and the window actions are in the category Program; the others (File/Folder, System) in Utilities.</summary>
+        public static bool IsProgram(CommandKind kind)
+        {
+            return kind == CommandKind.Open || kind == CommandKind.Close || IsWindow(kind);
+        }
+
+        public static bool IsWindow(CommandKind kind)
+        {
+            return kind >= CommandKind.WindowActivate && kind <= CommandKind.WindowResize;
+        }
+
+        public static ActionCategory CategoryOf(CommandKind kind)
+        {
+            return IsProgram(kind) ? ActionCategory.Program : ActionCategory.Utilities;
+        }
     }
 
     /// <summary>How the Close action finds the programs to close.</summary>

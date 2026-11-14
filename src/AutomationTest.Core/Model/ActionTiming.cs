@@ -39,6 +39,7 @@ namespace AutomationTest.Core.Model
                     bool held = k.Action == KeyboardAction.KeyPress || k.Action == KeyboardAction.ComboKey || k.Action == KeyboardAction.Text;
                     return (held ? k.TimeMs : 0) + k.DelayMs;
                 case ActionCategory.Utilities:
+                case ActionCategory.Program:
                     return node.Command.Kind == CommandKind.Shutdown ? node.Command.TimeMs : node.Command.DelayMs;
                 case ActionCategory.Excel:
                     if (!node.IsContainer) return node.Excel.DelayMs;

@@ -123,6 +123,10 @@ namespace AutomationTest.App
         private readonly ComboBox _cmdGroup = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 120 };
         private readonly ToggleSwitch _cmdValueExpr = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
         private readonly ComboBox _cmdMatch = MakeCombo(typeof(ProgramMatch));
+        private readonly NumberBox _cmdX = new NumberBox { Width = 200, Minimum = -100000, Maximum = 100000, Placeholder = "X (left edge on the screen)" };
+        private readonly NumberBox _cmdY = new NumberBox { Width = 200, Minimum = -100000, Maximum = 100000, Placeholder = "Y (top edge on the screen)" };
+        private readonly NumberBox _cmdW = new NumberBox { Width = 200, Minimum = 0, Maximum = 100000, Placeholder = "Width (pixels)" };
+        private readonly NumberBox _cmdH = new NumberBox { Width = 200, Minimum = 0, Maximum = 100000, Placeholder = "Height (pixels)" };
         private readonly ToggleSwitch _cmdAll = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
         private readonly TimeBox _cmdTimeout = new TimeBox(5000);
         private readonly ToggleSwitch _cmdKill = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
@@ -457,6 +461,10 @@ namespace AutomationTest.App
             _cmdBrowse = MakeButton("Browse", (s, e) => BrowseCommandPath());
             AddRow(cmdTable, "Path", _cmdValue, null, null, _cmdBrowse);
             AddRow(cmdTable, "Expr. (path)", _cmdValueExpr, Help.ExpressionText);
+            AddRow(cmdTable, "X", _cmdX, Help.WindowPlace);
+            AddRow(cmdTable, "Y", _cmdY, Help.WindowPlace);
+            AddRow(cmdTable, "Width", _cmdW, Help.WindowPlace);
+            AddRow(cmdTable, "Height", _cmdH, Help.WindowPlace);
             AddRow(cmdTable, "Destination", _cmdTarget, Help.FileTarget);
             AddRow(cmdTable, "Expr. (dest.)", _cmdTargetExpr, Help.ExpressionText);
             AddRow(cmdTable, "Overwrite", _cmdOverwrite, Help.FileOverwrite);
@@ -664,7 +672,7 @@ namespace AutomationTest.App
                     e.SuppressKeyPress = true;
                 }
             };
-            _category.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
+            _category.SelectedIndexChanged += (s, e) => { FillCmdGroups(); UpdateEditorVisibility(); };
             _mouseAction.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
             _kbAction.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
             _cmdGroup.SelectedIndexChanged += (s, e) => { FillCmdKinds(); if (!_grouping) UpdateEditorVisibility(); };
@@ -709,21 +717,27 @@ namespace AutomationTest.App
             var category = (ActionCategory)_category.SelectedItem;
             _mouseBox.Visible = category == ActionCategory.Mouse;
             _keyboardBox.Visible = category == ActionCategory.Keyboard;
-            _commandBox.Visible = category == ActionCategory.Utilities;
+            _commandBox.Visible = category == ActionCategory.Utilities || category == ActionCategory.Program;
             var cmdKind = _cmdKind.SelectedItem as CommandKind? ?? CommandKind.Open;
             var cmdMatch = _cmdMatch.SelectedItem as ProgramMatch? ?? ProgramMatch.Title;
             bool fs = ScriptRunner.CommandIsFileSystem(cmdKind);
             bool close = cmdKind == CommandKind.Close;
+            bool window = CommandKinds.IsWindow(cmdKind);
+            bool matched = close || window; // the programs or windows are found by Title, Name, Path or Id
             bool hasTarget = cmdKind == CommandKind.FsCopy || cmdKind == CommandKind.FsMove || cmdKind == CommandKind.FsRename || cmdKind == CommandKind.FsWrite;
-            SetRowVisible(_cmdValue, cmdKind == CommandKind.Open || close || fs);
-            SetLabel(_cmdValue, cmdKind == CommandKind.Open ? "Path" : close ? (cmdMatch == ProgramMatch.Title ? "Title" : cmdMatch == ProgramMatch.Name ? "Name" : cmdMatch == ProgramMatch.Path ? "Path" : "Process id") : cmdKind == CommandKind.FsList ? "Folder" : "Path");
+            SetRowVisible(_cmdValue, cmdKind == CommandKind.Open || matched || fs);
+            SetLabel(_cmdValue, cmdKind == CommandKind.Open ? "Path" : matched ? (cmdMatch == ProgramMatch.Title ? "Title" : cmdMatch == ProgramMatch.Name ? "Name" : cmdMatch == ProgramMatch.Path ? "Path" : "Process id") : cmdKind == CommandKind.FsList ? "Folder" : "Path");
             _cmdValue.Placeholder = cmdKind == CommandKind.Open ? "Program or document to open"
-                : close ? (cmdMatch == ProgramMatch.Title ? "Window title (regular expression)" : cmdMatch == ProgramMatch.Name ? "Process name, e.g. notepad" : cmdMatch == ProgramMatch.Path ? "Full path of the program file" : "Process id (a number)")
+                : matched ? (cmdMatch == ProgramMatch.Title ? "Window title (regular expression)" : cmdMatch == ProgramMatch.Name ? "Process name, e.g. notepad" : cmdMatch == ProgramMatch.Path ? "Full path of the program file" : "Process id (a number)")
                 : cmdKind == CommandKind.FsCreate ? "Folder to make" : cmdKind == CommandKind.FsList ? "Folder to list" : "File or folder";
-            _cmdBrowse.Visible = cmdKind == CommandKind.Open || (close && cmdMatch == ProgramMatch.Path) || fs; // a title, a name or an id is typed
-            SetRowVisible(_cmdValueExpr, close || fs);
-            SetRowVisible(_cmdMatch, close);
-            SetRowVisible(_cmdAll, close);
+            _cmdBrowse.Visible = cmdKind == CommandKind.Open || (matched && cmdMatch == ProgramMatch.Path) || fs; // a title, a name or an id is typed
+            SetRowVisible(_cmdValueExpr, cmdKind == CommandKind.Open || matched || fs);
+            SetRowVisible(_cmdMatch, matched);
+            SetRowVisible(_cmdAll, matched);
+            SetRowVisible(_cmdX, cmdKind == CommandKind.WindowMove);
+            SetRowVisible(_cmdY, cmdKind == CommandKind.WindowMove);
+            SetRowVisible(_cmdW, cmdKind == CommandKind.WindowResize);
+            SetRowVisible(_cmdH, cmdKind == CommandKind.WindowResize);
             SetRowVisible(_cmdTimeout, close && !_cmdKill.Checked);
             SetRowVisible(_cmdKill, close);
             SetRowVisible(_cmdTarget, hasTarget);
@@ -864,8 +878,8 @@ namespace AutomationTest.App
             SetRowVisible(_xlDelay, xlOn);
             SetRowVisible(_mouseAction, category == ActionCategory.Mouse);
             SetRowVisible(_kbAction, category == ActionCategory.Keyboard);
-            SetRowVisible(_cmdKind, category == ActionCategory.Utilities);
-            SetRowVisible(_cmdGroup, category == ActionCategory.Utilities);
+            SetRowVisible(_cmdKind, category == ActionCategory.Utilities || category == ActionCategory.Program);
+            SetRowVisible(_cmdGroup, category == ActionCategory.Utilities || category == ActionCategory.Program);
             SetRowVisible(_controlKind, category == ActionCategory.Control);
 
             // Mouse
@@ -1004,16 +1018,21 @@ namespace AutomationTest.App
                     });
 
                 case ActionCategory.Utilities:
+                case ActionCategory.Program:
                     var ck = (CommandKind)_cmdKind.SelectedItem;
-                    bool cfs = ScriptRunner.CommandIsFileSystem(ck), cclose = ck == CommandKind.Close;
+                    bool cfs = ScriptRunner.CommandIsFileSystem(ck), cclose = ck == CommandKind.Close, cwindow = CommandKinds.IsWindow(ck);
                     bool ctarget = ck == CommandKind.FsCopy || ck == CommandKind.FsMove || ck == CommandKind.FsRename || ck == CommandKind.FsWrite;
                     return ActionNode.NewCommand(new CommandSettings
                     {
                         Kind = ck,
-                        Value = ck == CommandKind.Open || cclose || cfs ? _cmdValue.Text.Trim() : "",
-                        ValueIsExpression = (cclose || cfs) && _cmdValueExpr.Checked,
-                        Match = cclose ? (ProgramMatch)_cmdMatch.SelectedItem : ProgramMatch.Title,
-                        All = cclose && _cmdAll.Checked,
+                        Value = ck == CommandKind.Open || cclose || cwindow || cfs ? _cmdValue.Text.Trim() : "",
+                        ValueIsExpression = (ck == CommandKind.Open || cclose || cwindow || cfs) && _cmdValueExpr.Checked,
+                        Match = cclose || cwindow ? (ProgramMatch)_cmdMatch.SelectedItem : ProgramMatch.Title,
+                        All = (cclose || cwindow) && _cmdAll.Checked,
+                        X = ck == CommandKind.WindowMove ? (int)_cmdX.Value : 0,
+                        Y = ck == CommandKind.WindowMove ? (int)_cmdY.Value : 0,
+                        Width = ck == CommandKind.WindowResize ? (int)_cmdW.Value : 0,
+                        Height = ck == CommandKind.WindowResize ? (int)_cmdH.Value : 0,
                         Target = ctarget ? (ck == CommandKind.FsWrite ? _cmdTarget.Text : _cmdTarget.Text.Trim()) : "",
                         TargetIsExpression = ctarget && _cmdTargetExpr.Checked,
                         Overwrite = (ck == CommandKind.FsCopy || ck == CommandKind.FsMove) && _cmdOverwrite.Checked,
@@ -1343,8 +1362,13 @@ namespace AutomationTest.App
                     break;
 
                 case ActionCategory.Utilities:
+                case ActionCategory.Program:
                     var cs = node.Command;
                     SetCommandKind(cs.Kind);
+                    _cmdX.Value = Clamp(_cmdX, cs.X);
+                    _cmdY.Value = Clamp(_cmdY, cs.Y);
+                    _cmdW.Value = Clamp(_cmdW, cs.Width);
+                    _cmdH.Value = Clamp(_cmdH, cs.Height);
                     _cmdValue.Text = cs.Value;
                     _cmdValueExpr.Checked = cs.ValueIsExpression;
                     _cmdMatch.SelectedItem = cs.Match;
@@ -1871,9 +1895,11 @@ namespace AutomationTest.App
         {
             bool fs = ScriptRunner.CommandIsFileSystem(c.Kind);
             if (c.Kind == CommandKind.Open && c.Value.Length == 0) return "Enter the program or document to open.";
-            if (c.Kind == CommandKind.Close)
+            if (c.Kind == CommandKind.Open && c.ValueIsExpression) Expression.CheckSyntax(c.Value);
+            if (c.Kind == CommandKind.WindowResize && (c.Width < 1 || c.Height < 1)) return "Enter a Width and a Height of at least 1.";
+            if (c.Kind == CommandKind.Close || CommandKinds.IsWindow(c.Kind))
             {
-                if (c.Value.Length == 0) return "Enter what to close (a window title, a process name, a path or a process id).";
+                if (c.Value.Length == 0) return "Enter the program or window (a window title, a process name, a path or a process id).";
                 if (c.ValueIsExpression) Expression.CheckSyntax(c.Value);
                 else if (c.Match == ProgramMatch.Title)
                 {
@@ -2074,6 +2100,7 @@ namespace AutomationTest.App
                         return ValidateExcel(node.Excel);
 
                     case ActionCategory.Utilities:
+                    case ActionCategory.Program:
                         return ValidateCommand(node.Command);
 
                     case ActionCategory.Web:
@@ -2758,6 +2785,7 @@ namespace AutomationTest.App
                     break;
 
                 case ActionCategory.Utilities:
+                case ActionCategory.Program:
                     var cd = n.Command;
                     action = ActionGroups.Display(cd.Kind);
                     switch (cd.Kind)
@@ -4171,7 +4199,7 @@ namespace AutomationTest.App
             {
                 _xlGroup.Items.AddRange(ActionGroups.ExcelGroups.Cast<object>().ToArray());
                 _webGroup.Items.AddRange(ActionGroups.WebGroups.Cast<object>().ToArray());
-                _cmdGroup.Items.AddRange(ActionGroups.CommandGroups.Cast<object>().ToArray());
+                _cmdGroup.Items.AddRange(ActionGroups.CommandGroupsFor(ActionCategory.Utilities).Cast<object>().ToArray());
                 _cmdKind.FormattingEnabled = true;
                 _cmdKind.Format += (s, e) => { if (e.ListItem is CommandKind k) e.Value = ActionGroups.LabelOf(k); };
                 _cmdGroup.SelectedIndex = 0;
@@ -4197,6 +4225,26 @@ namespace AutomationTest.App
                 _xlKind.Items.Clear();
                 _xlKind.Items.AddRange(ActionGroups.KindsOf((string)_xlGroup.SelectedItem).Cast<object>().ToArray());
                 _xlKind.SelectedIndex = 0;
+            }
+            finally { _grouping = before; }
+        }
+
+        /// <summary>The Group box of the Utilities and Program categories shows only the groups of the chosen category.</summary>
+        private void FillCmdGroups()
+        {
+            var category = _category.SelectedItem as ActionCategory? ?? ActionCategory.Mouse;
+            if (category != ActionCategory.Utilities && category != ActionCategory.Program) return;
+            var wanted = ActionGroups.CommandGroupsFor(category);
+            bool same = _cmdGroup.Items.Count == wanted.Count && wanted.Select((g, i) => (string)_cmdGroup.Items[i] == g).All(b => b);
+            if (same) return;
+            bool before = _grouping;
+            _grouping = true;
+            try
+            {
+                _cmdGroup.Items.Clear();
+                _cmdGroup.Items.AddRange(wanted.Cast<object>().ToArray());
+                _cmdGroup.SelectedIndex = 0;
+                FillCmdKinds();
             }
             finally { _grouping = before; }
         }

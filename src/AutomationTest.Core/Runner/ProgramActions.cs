@@ -18,6 +18,89 @@ namespace AutomationTest.Core.Runner
         private const uint WM_CLOSE = 0x0010;
 
         [DllImport("user32.dll")]
+        private static extern bool ShowWindow(IntPtr hwnd, int command);
+
+        [DllImport("user32.dll")]
+        private static extern bool IsIconic(IntPtr hwnd);
+
+        [DllImport("user32.dll")]
+        private static extern bool IsZoomed(IntPtr hwnd);
+
+        [DllImport("user32.dll")]
+        private static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int width, int height, uint flags);
+
+        [DllImport("user32.dll")]
+        private static extern bool GetWindowRect(IntPtr hwnd, out WindowRect rect);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct WindowRect { public int Left, Top, Right, Bottom; }
+
+        private const int SwMaximize = 3, SwMinimize = 6, SwRestore = 9;
+        private const uint SwpNoSize = 0x1, SwpNoMove = 0x2, SwpNoZOrder = 0x4, SwpNoActivate = 0x10;
+
+        /// <summary>
+        /// Minimizes, maximizes, restores, activates, moves or resizes the first window found (every window with
+        /// <paramref name="all"/>). Returns how many windows were found; 0 when there is none.
+        /// </summary>
+        public static int Arrange(CommandKind kind, ProgramMatch match, string value, bool all, int x, int y, int width, int height)
+        {
+            string text = (value ?? "").Trim();
+            if (text.Length == 0) throw new InvalidOperationException("Enter the window to act on (" + Describe(match) + ").");
+            var windows = FindWindows(match, text, all);
+            foreach (IntPtr hwnd in windows)
+            {
+                switch (kind)
+                {
+                    case CommandKind.WindowActivate:
+                        if (IsIconic(hwnd)) ShowWindow(hwnd, SwRestore);
+                        WindowLocator.BringToFront(hwnd);
+                        break;
+                    case CommandKind.WindowMinimize: ShowWindow(hwnd, SwMinimize); break;
+                    case CommandKind.WindowMaximize: ShowWindow(hwnd, SwMaximize); break;
+                    case CommandKind.WindowRestore: ShowWindow(hwnd, SwRestore); break;
+                    case CommandKind.WindowMove:
+                        if (IsIconic(hwnd) || IsZoomed(hwnd)) ShowWindow(hwnd, SwRestore); // a minimized or maximized window has no place to move
+                        if (!SetWindowPos(hwnd, IntPtr.Zero, x, y, 0, 0, SwpNoSize | SwpNoZOrder | SwpNoActivate))
+                            throw new InvalidOperationException("The window could not be moved (a window of a program that runs as administrator can only be moved when this program does too).");
+                        break;
+                    case CommandKind.WindowResize:
+                        if (width < 1 || height < 1) throw new InvalidOperationException("Enter a Width and a Height of at least 1.");
+                        if (IsIconic(hwnd) || IsZoomed(hwnd)) ShowWindow(hwnd, SwRestore);
+                        if (!SetWindowPos(hwnd, IntPtr.Zero, 0, 0, width, height, SwpNoMove | SwpNoZOrder | SwpNoActivate))
+                            throw new InvalidOperationException("The window could not be resized (a window of a program that runs as administrator can only be resized when this program does too).");
+                        break;
+                }
+            }
+            return windows.Count;
+        }
+
+        /// <summary>The top-left corner and the size of a window on the screen (for the tests and for checking a result).</summary>
+        public static void GetBounds(IntPtr hwnd, out int x, out int y, out int width, out int height)
+        {
+            WindowRect r;
+            GetWindowRect(hwnd, out r);
+            x = r.Left; y = r.Top; width = r.Right - r.Left; height = r.Bottom - r.Top;
+        }
+
+        /// <summary>
+        /// The visible windows (with a title) of the programs that match, the one at the front first; only the first one unless
+        /// <paramref name="all"/>. A title match gives the windows whose own title matches.
+        /// </summary>
+        public static List<IntPtr> FindWindows(ProgramMatch match, string text, bool all)
+        {
+            var found = new List<IntPtr>();
+            foreach (var program in Find(match, text))
+            {
+                using (program.Process) found.AddRange(program.Windows);
+            }
+            if (found.Count == 0) return found;
+            // Front to back, so "the first window" is the one the user sees on top.
+            var order = new List<IntPtr>();
+            NativeMethods.EnumWindows((hwnd, _) => { if (found.Contains(hwnd)) order.Add(hwnd); return true; }, IntPtr.Zero);
+            return all ? order : order.Take(1).ToList();
+        }
+
+        [DllImport("user32.dll")]
         private static extern bool PostMessage(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam);
 
         [DllImport("kernel32.dll", SetLastError = true)]

@@ -271,7 +271,7 @@ List     a table of one column with the full paths of the files and
          folders inside the folder: {id.Rows}, {id[1, 1]}...
          Use it with Loop (For) to go through them.");
 
-        public static readonly HelpTopic CloseMatch = new HelpTopic("Match (Program Close)",
+        public static readonly HelpTopic CloseMatch = new HelpTopic("Match (Program Close and Window actions)",
 @"How the programs to close are found:
 
 Title    a regular expression, not case sensitive, on the title of
@@ -281,7 +281,25 @@ Path     the full path of the program file
 Id       the process id (a number)
 
 The Automation Test program itself is never closed. If no program
-matches, nothing happens (a note is shown, it is not an error).");
+matches, Close does nothing (a note is shown, it is not an error);
+the Window actions fail with an error instead.");
+
+        public static readonly HelpTopic WindowPlace = new HelpTopic("Window Move and Resize",
+@"The window is found like the programs of Close: by its Title
+(a regular expression), the process Name, the Path of the program
+or the process Id (see Match). Only visible windows with a title
+count. Activate, Minimize, Maximize and Restore need nothing else.
+
+Move  X and Y: where the top left corner of the window goes, in
+      pixels on the screen (the top left of the main screen is 0, 0;
+      a second screen to the left has negative X).
+Resize  Width and Height of the whole window in pixels.
+
+A minimized or maximized window is restored first, so it can be
+moved or resized. If no window is found the action fails with an
+error (a Try can catch it). A window of a program that runs as
+administrator can only be changed when this program runs as
+administrator too.");
 
         public static readonly HelpTopic CloseAll = new HelpTopic("All matches (Program Close)",
 @"OFF   only the first program that matches is closed (the one with

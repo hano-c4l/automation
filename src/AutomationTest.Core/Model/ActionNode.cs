@@ -171,7 +171,13 @@ namespace AutomationTest.Core.Model
         /// <summary>Write: add to the end of the file instead of replacing it.</summary>
         [DataMember(Order = 11, EmitDefaultValue = false)] public bool Append { get; set; }
 
-        /// <summary>Close: close every program that matches, not only the first one.</summary>
+        /// <summary>Window actions: Move gives X and Y, Resize gives Width and Height (pixels on the screen).</summary>
+        [DataMember(Order = 15, EmitDefaultValue = false)] public int X { get; set; }
+        [DataMember(Order = 16, EmitDefaultValue = false)] public int Y { get; set; }
+        [DataMember(Order = 17, EmitDefaultValue = false)] public int Width { get; set; }
+        [DataMember(Order = 18, EmitDefaultValue = false)] public int Height { get; set; }
+
+        /// <summary>Close: close every program that matches, not only the first one. Window actions: act on every window found.</summary>
         [DataMember(Order = 12, EmitDefaultValue = false)] public bool All { get; set; }
 
         /// <summary>Exists, Read, List: the variable that receives the result.</summary>
@@ -791,7 +797,8 @@ namespace AutomationTest.Core.Model
 
         public static ActionNode NewCommand(CommandSettings settings)
         {
-            return new ActionNode { Category = ActionCategory.Utilities, Command = settings ?? new CommandSettings() };
+            settings = settings ?? new CommandSettings();
+            return new ActionNode { Category = CommandKinds.CategoryOf(settings.Kind), Command = settings };
         }
 
         public static ActionNode NewExcel(ExcelSettings settings)
@@ -958,7 +965,9 @@ namespace AutomationTest.Core.Model
 
             var mouse = Category == ActionCategory.Mouse ? (Mouse ?? new MouseSettings()) : null;
             var keyboard = Category == ActionCategory.Keyboard ? (Keyboard ?? new KeyboardSettings()) : null;
-            var command = Category == ActionCategory.Utilities ? (Command ?? new CommandSettings()) : null;
+            var command = Category == ActionCategory.Utilities || Category == ActionCategory.Program ? (Command ?? new CommandSettings()) : null;
+            // Open and Close were Utilities before the category Program existed: such files are read as Program actions.
+            if (command != null) Category = CommandKinds.CategoryOf(command.Kind);
             var web = Category == ActionCategory.Web ? (Web ?? new WebSettings()) : null;
             var excel = Category == ActionCategory.Excel ? (Excel ?? new ExcelSettings()) : null;
             var loop = Category == ActionCategory.Control && Control == ControlKind.Loop ? (Loop ?? new LoopSettings()) : null;

@@ -105,10 +105,10 @@ namespace AutomationTest.Core.Runner
                 bool valueKind = ScriptRunner.ExcelValueKind(x.Kind);
                 return ReadsOf(x.CellIsExpression ? x.Cell : null, x.Kind == ExcelKind.SetRange || (valueKind && x.ValueIsExpression) ? x.Value : null);
             }
-            if (node.Category == ActionCategory.Utilities)
+            if (node.Category == ActionCategory.Utilities || node.Category == ActionCategory.Program)
             {
                 var c = node.Command;
-                if (c.Kind == CommandKind.Close) return ReadsOf(c.ValueIsExpression ? c.Value : null);
+                if (CommandKinds.IsProgram(c.Kind)) return ReadsOf(c.ValueIsExpression ? c.Value : null);
                 return ScriptRunner.CommandIsFileSystem(c.Kind) ? ReadsOf(c.ValueIsExpression ? c.Value : null, c.TargetIsExpression ? c.Target : null) : new string[0];
             }
             if (node.IsKind(ControlKind.Loop) && node.Loop.Mode == LoopType.For) return ReadsOf(node.Loop.ForFrom, node.Loop.ForTo, node.Loop.ForStep);
@@ -146,7 +146,7 @@ namespace AutomationTest.Core.Runner
                 return keeps && !string.IsNullOrWhiteSpace(x.Id) ? x.Id.Trim() : null;
             }
             if (node.IsKind(ControlKind.Catch)) return string.IsNullOrWhiteSpace(node.Catch?.Id) ? null : node.Catch.Id.Trim(); // the error message
-            if (node.Category == ActionCategory.Utilities)
+            if (node.Category == ActionCategory.Utilities || node.Category == ActionCategory.Program)
                 return ScriptRunner.CommandKeeps(node.Command.Kind) && !string.IsNullOrWhiteSpace(node.Command.Id) ? node.Command.Id.Trim() : null;
             if (node.IsKind(ControlKind.Loop) && node.Loop.Mode == LoopType.For)
                 return string.IsNullOrWhiteSpace(node.Loop.ForId) ? null : node.Loop.ForId.Trim();
