@@ -628,10 +628,10 @@ namespace AutomationTest.App
             var xlInfo = _xlInfo.SelectedItem as ExcelInfoKind? ?? ExcelInfoKind.LastRow;
             bool xlOn = category == ActionCategory.Excel;
             bool infoCell = xl == ExcelKind.GetInfo && (xlInfo == ExcelInfoKind.LastRow || xlInfo == ExcelInfoKind.LastColumn);
-            bool xlCell = xl == ExcelKind.GetCell || xl == ExcelKind.SetCell || xl == ExcelKind.Find || infoCell;
-            bool xlValue = xl == ExcelKind.SetCell || xl == ExcelKind.Find || xl == ExcelKind.Evaluate;
+            bool xlCell = xl == ExcelKind.GetCell || xl == ExcelKind.SetCell || xl == ExcelKind.GetRange || xl == ExcelKind.SetRange || xl == ExcelKind.Find || infoCell;
+            bool xlValue = xl == ExcelKind.SetCell || xl == ExcelKind.SetRange || xl == ExcelKind.Find || xl == ExcelKind.Evaluate;
             SetRowVisible(_xlKind, xlOn);
-            SetRowVisible(_xlId, xl == ExcelKind.GetCell || xl == ExcelKind.GetInfo || xl == ExcelKind.Find || xl == ExcelKind.Evaluate);
+            SetRowVisible(_xlId, xl == ExcelKind.GetCell || xl == ExcelKind.GetRange || xl == ExcelKind.GetInfo || xl == ExcelKind.Find || xl == ExcelKind.Evaluate);
             _xlId.Placeholder = xl == ExcelKind.Find || xl == ExcelKind.Evaluate ? "Variable ID (optional)" : "Variable ID";
             SetRowVisible(_xlPath, xl == ExcelKind.Workbook);
             SetRowVisible(_xlName, xl == ExcelKind.Workbook);
@@ -643,16 +643,16 @@ namespace AutomationTest.App
             _xlIndex.Placeholder = xl == ExcelKind.DeleteSheet ? "Index (empty = the current sheet)" : "Index (1 = first)";
             SetRowVisible(_xlPosition, xl == ExcelKind.CreateSheet);
             SetRowVisible(_xlSelectNew, xl == ExcelKind.CreateSheet);
-            SetRowVisible(_xlGet, xl == ExcelKind.GetCell);
+            SetRowVisible(_xlGet, xl == ExcelKind.GetCell || xl == ExcelKind.GetRange);
             SetRowVisible(_xlInfo, xl == ExcelKind.GetInfo);
             SetRowVisible(_xlCell, xlCell);
             SetRowVisible(_xlPick, xlCell);
-            _xlCell.Placeholder = xl == ExcelKind.Find ? "Area to search (empty = whole sheet)" : xl == ExcelKind.GetInfo ? (xlInfo == ExcelInfoKind.LastRow ? "A cell in the column (B1)" : "A cell in the row (B1)") : "Cell (B2)";
+            _xlCell.Placeholder = xl == ExcelKind.GetRange ? "Area to read (A1:D20)" : xl == ExcelKind.SetRange ? "Top-left cell (A1)" : xl == ExcelKind.Find ? "Area to search (empty = whole sheet)" : xl == ExcelKind.GetInfo ? (xlInfo == ExcelInfoKind.LastRow ? "A cell in the column (B1)" : "A cell in the row (B1)") : "Cell (B2)";
             SetRowVisible(_xlCellExpr, xlCell);
-            SetRowVisible(_xlAs, xl == ExcelKind.SetCell);
+            SetRowVisible(_xlAs, xl == ExcelKind.SetCell || xl == ExcelKind.SetRange);
             SetRowVisible(_xlValue, xlValue);
-            _xlValue.Placeholder = xl == ExcelKind.Find ? "Text to find" : xl == ExcelKind.Evaluate ? "Formula, for example SUM(A1:A10)" : "Value";
-            SetRowVisible(_xlValueExpr, xlValue);
+            _xlValue.Placeholder = xl == ExcelKind.SetRange ? "Table variable, for example {t}" : xl == ExcelKind.Find ? "Text to find" : xl == ExcelKind.Evaluate ? "Formula, for example SUM(A1:A10)" : "Value";
+            SetRowVisible(_xlValueExpr, xlValue && xl != ExcelKind.SetRange); // Set Range always takes a variable
             SetRowVisible(_xlMatchCase, xl == ExcelKind.Find);
             SetRowVisible(_xlWholeCell, xl == ExcelKind.Find);
             SetRowVisible(_xlSaveAs, xl == ExcelKind.Save);
@@ -826,7 +826,7 @@ namespace AutomationTest.App
                         Info = (ExcelInfoKind)_xlInfo.SelectedItem,
                         As = (ExcelSetKind)_xlAs.SelectedItem,
                         Value = xk == ExcelKind.SetCell ? _xlValue.Text : _xlValue.Text.Trim(), // spaces count in a value that is written
-                        ValueIsExpression = _xlValueExpr.Checked,
+                        ValueIsExpression = xk == ExcelKind.SetRange || _xlValueExpr.Checked,
                         MatchCase = _xlMatchCase.Checked,
                         WholeCell = _xlWholeCell.Checked,
                         SaveAs = _xlSaveAs.Checked,
@@ -1293,6 +1293,17 @@ namespace AutomationTest.App
                 case ExcelKind.GetInfo:
                     if ((x.Info == ExcelInfoKind.LastRow || x.Info == ExcelInfoKind.LastColumn) && (problem = cellProblem(x.Cell, x.CellIsExpression)) != null) return problem;
                     break;
+                case ExcelKind.GetRange:
+                    if (x.CellIsExpression) Expression.CheckSyntax(x.Cell);
+                    else if ((problem = AutomationTest.Core.Excel.ExcelAddress.Check(x.Cell, "area")) != null) return problem;
+                    if (x.Get != ExcelGetKind.Value && x.Get != ExcelGetKind.Text && x.Get != ExcelGetKind.Formula)
+                        return "Get Range reads the Value, the Text or the Formula of the cells (not " + x.Get + ").";
+                    break;
+                case ExcelKind.SetRange:
+                    if ((problem = cellProblem(x.Cell, x.CellIsExpression)) != null) return problem;
+                    if (x.Value.Trim().Length == 0) return "Enter the table variable to write, for example {t} (read with Get Range).";
+                    Expression.CheckSyntax(x.Value);
+                    break;
                 case ExcelKind.Find:
                     if (x.Value.Length == 0) return "Enter the text to find.";
                     if (x.Cell.Length > 0)
@@ -1315,7 +1326,7 @@ namespace AutomationTest.App
                     break;
             }
             if ((x.Kind == ExcelKind.SetCell || x.Kind == ExcelKind.Find || x.Kind == ExcelKind.Evaluate) && x.ValueIsExpression) Expression.CheckSyntax(x.Value);
-            bool needsId = x.Kind == ExcelKind.GetCell || x.Kind == ExcelKind.GetInfo;
+            bool needsId = x.Kind == ExcelKind.GetCell || x.Kind == ExcelKind.GetRange || x.Kind == ExcelKind.GetInfo;
             bool hasId = x.Kind == ExcelKind.Find || x.Kind == ExcelKind.Evaluate || needsId;
             if (hasId && (needsId || x.Id.Length > 0) && !Expression.IsValidId(x.Id))
                 return needsId ? "Enter an ID for the value: letters, digits and _, not starting with a digit (and not true, false, now, today)."
@@ -1885,6 +1896,8 @@ namespace AutomationTest.App
                         case ExcelKind.DeleteSheet: details = xd.SheetName.Length == 0 && xd.Index <= 0 ? "the current sheet" : "sheet " + (xd.SheetName.Length > 0 ? "/" + xd.SheetName + "/ " : "") + "#" + Math.Max(1, xd.Index); break;
                         case ExcelKind.GetCell: details = xd.Cell + " " + xd.Get + " -> " + xd.Id; break;
                         case ExcelKind.SetCell: details = xd.Cell + " = " + xd.Value + (xd.As != ExcelSetKind.Auto ? " (" + xd.As + ")" : ""); break;
+                        case ExcelKind.GetRange: details = xd.Cell + " " + xd.Get + " -> table " + xd.Id; break;
+                        case ExcelKind.SetRange: details = xd.Value + " -> " + xd.Cell + (xd.As != ExcelSetKind.Auto ? " (" + xd.As + ")" : ""); break;
                         case ExcelKind.Find: details = "find \"" + xd.Value + "\"" + (xd.Cell.Length > 0 ? " in " + xd.Cell : "") + (xd.Id.Length > 0 ? " -> " + xd.Id : ""); break;
                         case ExcelKind.GetInfo: details = xd.Info + (xd.Info == ExcelInfoKind.LastRow || xd.Info == ExcelInfoKind.LastColumn ? " of " + xd.Cell : "") + " -> " + xd.Id; break;
                         case ExcelKind.Evaluate: details = xd.Value + (xd.Id.Length > 0 ? " -> " + xd.Id : ""); break;

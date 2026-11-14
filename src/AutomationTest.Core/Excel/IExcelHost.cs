@@ -96,6 +96,11 @@ namespace AutomationTest.Core.Excel
         void SetText(string address, string text);
         void SetFormula(string address, string formula);
 
+        /// <summary>The cells of an area, typed like GetValue (empty cells as ""), 0-based. Kind: Value, Text or Formula.</summary>
+        object[,] GetRange(string area, ExcelGetKind kind);
+        /// <summary>Writes the values into the cells that start at the top-left cell.</summary>
+        void SetRange(string topLeft, object[,] values, ExcelSetKind how);
+
         /// <param name="area">Where to look; empty = the whole sheet.</param>
         CellMatch Find(string area, string what, bool matchCase, bool wholeCell);
         /// <summary>The last row that has something in the column of the cell (0 when the column is empty).</summary>

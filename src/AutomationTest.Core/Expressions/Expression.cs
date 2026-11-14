@@ -139,6 +139,21 @@ namespace AutomationTest.Core.Expressions
             public override object Eval(VariableStore vars) { return Ops.GetMember(_target.Eval(vars), _name); }
         }
 
+        /// <summary>{t[row, column]}: one value of a table.</summary>
+        private sealed class Index : Node
+        {
+            private readonly Node _target, _row, _column;
+            public Index(Node target, Node row, Node column, int pos) { _target = target; _row = row; _column = column; }
+            public override void Collect(ISet<string> names) { _target.Collect(names); _row.Collect(names); _column.Collect(names); }
+            public override object Eval(VariableStore vars)
+            {
+                object target = _target.Eval(vars);
+                if (!(target is TableValue table)) throw new ExpressionException("[row, column] reads a table, but the value is " + Format.TypeName(target) + ".");
+                double r = Ops.ToNumber(_row.Eval(vars)), c = Ops.ToNumber(_column.Eval(vars));
+                return table.Get((int)Math.Round(r), (int)Math.Round(c));
+            }
+        }
+
         private sealed class Unary : Node
         {
             private readonly char _op;
@@ -260,7 +275,7 @@ namespace AutomationTest.Core.Expressions
                             _tokens.Add(new Token { Kind = T.Op, Text = two, Pos = start });
                             i += 2;
                         }
-                        else if ("+-*/%()<>=!{},.".IndexOf(c) >= 0)
+                        else if ("+-*/%()<>=!{},.[]".IndexOf(c) >= 0)
                         {
                             _tokens.Add(new Token { Kind = T.Op, Text = c.ToString(), Pos = start });
                             i++;
@@ -363,8 +378,19 @@ namespace AutomationTest.Core.Expressions
             private Node ParsePostfix()
             {
                 var node = ParsePrimary();
-                while (IsOp("."))
+                while (IsOp(".") || IsOp("["))
                 {
+                    if (IsOp("["))
+                    {
+                        int open = Cur.Pos;
+                        _i++;
+                        var row = ParseOr();
+                        if (!Accept(",")) Fail("A table needs a row and a column: [row, column]", Cur.Pos);
+                        var column = ParseOr();
+                        if (!Accept("]")) Fail("Missing ]", Cur.Pos);
+                        node = new Index(node, row, column, open);
+                        continue;
+                    }
                     _i++;
                     if (Cur.Kind != T.Ident) Fail("A property name is expected after '.'", Cur.Pos);
                     node = new Member(node, Cur.Text);
@@ -468,6 +494,10 @@ namespace AutomationTest.Core.Expressions
                         if (n == "height") return r.Height;
                         if (n == "position") return r.Position;
                         if (n == "size") return r.Size;
+                        break;
+                    case TableValue table:
+                        if (n == "rows") return (double)table.Rows;
+                        if (n == "columns") return (double)table.Columns;
                         break;
                     case CellValue c:
                         if (n == "found") return c.Found;

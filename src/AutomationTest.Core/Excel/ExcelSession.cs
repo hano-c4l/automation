@@ -99,6 +99,8 @@ namespace AutomationTest.Core.Excel
                 case ExcelKind.DeleteSheet: DeleteSheet(x); return null;
                 case ExcelKind.GetCell: return GetCell(x, args);
                 case ExcelKind.SetCell: SetCell(x, args); return null;
+                case ExcelKind.GetRange: return GetRange(x, args);
+                case ExcelKind.SetRange: SetRange(x, args); return null;
                 case ExcelKind.Find: return Find(x, args);
                 case ExcelKind.GetInfo: return GetInfo(x, args);
                 case ExcelKind.Evaluate: return Evaluate(args);
@@ -218,6 +220,29 @@ namespace AutomationTest.Core.Excel
                     else sheet.SetValue(address, Format.Display(value));
                     break;
             }
+        }
+
+        private object GetRange(ExcelSettings x, ExcelArgs args)
+        {
+            if (x.Get != ExcelGetKind.Value && x.Get != ExcelGetKind.Text && x.Get != ExcelGetKind.Formula)
+                throw new InvalidOperationException("Get Range reads the Value, the Text or the Formula of the cells (not " + x.Get + ").");
+            string area = CellAddress(args, "area");
+            var cells = CurrentSheet().GetRange(area, x.Get);
+            var typed = new object[cells.GetLength(0), cells.GetLength(1)];
+            for (int r = 0; r < typed.GetLength(0); r++)
+                for (int c = 0; c < typed.GetLength(1); c++)
+                    typed[r, c] = ExcelValues.ForVariable(cells[r, c]);
+            return new TableValue(typed);
+        }
+
+        private void SetRange(ExcelSettings x, ExcelArgs args)
+        {
+            string address = CellAddress(args, "top-left cell");
+            int colon = address.IndexOf(':');
+            if (colon > 0) address = address.Substring(0, colon); // an area was given: its first cell is where the table starts
+            if (!(args.Value is TableValue table))
+                throw new InvalidOperationException("Set Range writes a table: the value must be a table variable such as {t} (read with Get Range), not " + Format.TypeName(args.Value) + ".");
+            CurrentSheet().SetRange(address, table.ToArray(), x.As);
         }
 
         private object Find(ExcelSettings x, ExcelArgs args)
