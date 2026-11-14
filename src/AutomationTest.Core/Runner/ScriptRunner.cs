@@ -176,10 +176,10 @@ namespace AutomationTest.Core.Runner
             else if (w.Kind == WebKind.Script) text = w.TextIsExpression ? EvalString(w.Script) : w.Script;
             bool keeps = w.Kind == WebKind.GetText || (w.Kind == WebKind.Script && !string.IsNullOrWhiteSpace(w.Id));
             if (keeps && !Expression.IsValidId((w.Id ?? "").Trim()))
-                throw new InvalidOperationException((w.Kind == WebKind.Script ? "Script" : "Get Text") + ": \"" + w.Id + "\" is not a valid ID.");
+                throw new InvalidOperationException((w.Kind == WebKind.Script ? "Script" : "Element Get") + ": \"" + w.Id + "\" is not a valid ID.");
             object result = (WebSession ?? AutomationTest.Core.Web.WebSession.Shared).Execute(w, text, token);
             if (keeps) _vars.Set(w.Id.Trim(), result ?? "");
-            // New Tab and Switch Tab hold the actions that work in that tab (and browser).
+            // Tab New and Tab Switch hold the actions that work in that tab (and browser).
             if (node.IsContainer) ExecuteList(node.Children, token);
             Wait(w.DelayMs, token);
         }
@@ -225,7 +225,7 @@ namespace AutomationTest.Core.Runner
                 if (found != null && found.Found) ExecuteList(node.Children, token);
                 else Message?.Invoke("Not found in Excel: " + Format.Display(args.Value));
             }
-            else if (node.IsContainer) ExecuteList(node.Children, token); // Workbook and Select Sheet hold the actions that work there
+            else if (node.IsContainer) ExecuteList(node.Children, token); // Workbook and Sheet Select hold the actions that work there
             Wait(x.DelayMs, token);
         }
 

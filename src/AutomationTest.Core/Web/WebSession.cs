@@ -197,7 +197,7 @@ namespace AutomationTest.Core.Web
         {
             if (_bridge.IsConnected(browser)) return;
             if (!HasWindow(browser))
-                throw new InvalidOperationException(browser + " is not running. Use a New Tab action to start it.");
+                throw new InvalidOperationException(browser + " is not running. Use a Tab New action to start it.");
             // A browser that has been idle puts its extension to sleep; it wakes within about 30 seconds and then connects.
             if (!_bridge.WaitConnected(browser, 35000, token)) throw new InvalidOperationException(ExtensionMissing(browser));
         }
@@ -807,7 +807,7 @@ namespace AutomationTest.Core.Web
                 var info = (Dictionary<string, object>)Call(browser, "tabInfo", new Dictionary<string, object> { { "tabId", current } }, token);
                 return Convert.ToString(info[w.Get == WebGetKind.PageUrl ? "url" : "title"]) ?? "";
             }
-            if (string.IsNullOrWhiteSpace(w.Selector)) throw new InvalidOperationException("Get Text: no selector is set.");
+            if (string.IsNullOrWhiteSpace(w.Selector)) throw new InvalidOperationException("Element Get: no selector is set.");
             int tab = CurrentTab(browser, token);
             if (w.Get == WebGetKind.Count)
             {
@@ -822,7 +822,7 @@ namespace AutomationTest.Core.Web
                 if (number is Dictionary<string, object> failed) throw new InvalidOperationException(Convert.ToString(failed["error"]));
                 return Convert.ToDouble(number ?? 0);
             }
-            if (w.Get == WebGetKind.Attribute && string.IsNullOrWhiteSpace(w.Attribute)) throw new InvalidOperationException("Get Text: no attribute name is set.");
+            if (w.Get == WebGetKind.Attribute && string.IsNullOrWhiteSpace(w.Attribute)) throw new InvalidOperationException("Element Get: no attribute name is set.");
 
             // The element only has to be there: a hidden field or a collapsed block can be read too.
             var found = Locate(w, token, w.Required, false);
@@ -880,7 +880,7 @@ namespace AutomationTest.Core.Web
         /// <summary>
         /// Closes every window of the browser. The extension answers first and closes the windows a moment later, so the answer is not
         /// lost with the connection. A browser kept alive in the background (Startup Boost) may stay connected and open a new window at
-        /// the next New Tab; one that really quits is started again by New Tab.
+        /// the next Tab New; one that really quits is started again by Tab New.
         /// </summary>
         private void CloseBrowser(WebSettings w, CancellationToken token)
         {
@@ -920,7 +920,7 @@ namespace AutomationTest.Core.Web
                 token.ThrowIfCancellationRequested();
                 TabInfo chosen;
                 try { chosen = TabSelector.Choose(ListTabs(w.Browser, token, out int lastWindow), lastWindow, w.Title, w.Url, w.Index); }
-                catch (ArgumentException ex) { throw new InvalidOperationException("Switch Tab: " + ex.Message); }
+                catch (ArgumentException ex) { throw new InvalidOperationException("Tab Switch: " + ex.Message); }
                 if (chosen != null)
                 {
                     Call(w.Browser, "activateTab", new Dictionary<string, object> { { "tabId", chosen.Id } }, token);
@@ -931,7 +931,7 @@ namespace AutomationTest.Core.Web
                 if (!hasPattern || watch.ElapsedMilliseconds >= w.TimeMs)
                 {
                     string what = (string.IsNullOrWhiteSpace(w.Title) ? "" : " title /" + w.Title + "/") + (string.IsNullOrWhiteSpace(w.Url) ? "" : " address /" + w.Url + "/");
-                    throw new InvalidOperationException("Switch Tab: no " + w.Browser + " tab" + (hasPattern ? " with" + what + " within " + w.TimeMs + " ms." : " found."));
+                    throw new InvalidOperationException("Tab Switch: no " + w.Browser + " tab" + (hasPattern ? " with" + what + " within " + w.TimeMs + " ms." : " found."));
                 }
                 Thread.Sleep(200);
             }

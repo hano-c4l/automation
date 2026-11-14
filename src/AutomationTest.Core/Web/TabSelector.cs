@@ -17,7 +17,7 @@ namespace AutomationTest.Core.Web
     }
 
     /// <summary>
-    /// Picks the tab for a Switch Tab action. Tab order: the window that was last in use first, then the other windows by id; inside
+    /// Picks the tab for a Tab Switch action. Tab order: the window that was last in use first, then the other windows by id; inside
     /// a window by position. Index is 1 for the first tab; 0 means "not set". The Title and URL patterns are regular expressions
     /// (not case sensitive) on the title and on the address of the tab; a tab has to match every pattern that is given.
     /// - No pattern: the Index-th tab of the window that was last in use.
