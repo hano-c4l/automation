@@ -101,7 +101,7 @@ AutomationTest.sln
 4. Keyboard, Utilities/Open, Wait, Image, Variable, Condition, biểu thức, Record — đã xong và đã vào `preview`.
 5. License theo máy và công cụ tạo key (KeyGen) — đã xong, đã vào `preview` và `main`.
 6. Web và Excel, nhóm action Group + Type, Utilities (Program, File/Folder), một bản chạy mỗi user — đã xong, đã vào `preview` (Web, Excel, nhóm action và một bản chạy cũng đã vào `main`).
-7. Kế hoạch tiếp theo (P0 bộ test trong repo; P1 Try/Catch/Break/Continue/Return và Section; P2 Log, Message, Random Time; P3 Variable Clipboard và Password, Start Selected nhớ giá trị; P4 copy/paste và kéo thả; P5 category Program và thao tác cửa sổ; P6 Image thành kiểu Variable và OCR; P7 Auto Script; P8 API; P9 Email): xem `docs/ROADMAP.md`.
+7. Kế hoạch tiếp theo (P0 đến P5 đã xong: P0 bộ test trong repo; P1 Try/Catch/Break/Continue/Return và Section; P2 Log, Message, Random Time; P3 Variable Clipboard và Password, Start Selected nhớ giá trị; P4 copy/paste và kéo thả; P5 category Program và thao tác cửa sổ; P6 Image thành kiểu Variable và OCR; P7 Auto Script; P8 API; P9 Email): xem `docs/ROADMAP.md`.
 
 ## 7. Quy trình git (theo CLAUDE.md)
 
