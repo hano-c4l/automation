@@ -4,7 +4,7 @@ Tài liệu này ghi các tính năng đã được yêu cầu nhưng chưa làm
 Tình trạng hiện tại xem `docs/STATUS.md`, yêu cầu gốc và quyết định kỹ thuật xem `docs/PROJECT.md`.
 Mỗi giai đoạn là một nhánh `feature_xxx` tách từ `preview`, xong thì PR vào `preview` (quy ước git trong `CLAUDE.md`).
 
-Cập nhật lần cuối: 2026-11-15. Trạng thái: **P0 (bộ test trong repo) đã xong phần chính; P1 (R1 và R14: Try/Catch/Break/Continue/Return và Section) P2 (R2 Log, R3 Message, R4 Random Time) và P3 (R6 Clipboard, R15 Password, R7 Start Selected nhớ giá trị) đã xong**; các giai đoạn còn lại chưa bắt đầu. P0 chưa có: test cho Web (cần trình duyệt và extension), RecordConverter, overlay/hook/phím nóng và Image trên cửa sổ thật.
+Cập nhật lần cuối: 2026-11-15. Trạng thái: **P0 (bộ test trong repo) đã xong phần chính; P1 (R1 và R14: Try/Catch/Break/Continue/Return và Section) P2 (R2 Log, R3 Message, R4 Random Time) và P3 (R6 Clipboard, R15 Password, R7 Start Selected nhớ giá trị) và P4 (R13 copy/paste, kéo thả, Undo/Redo) đã xong**; các giai đoạn còn lại chưa bắt đầu. P0 chưa có: test cho Web (cần trình duyệt và extension), RecordConverter, overlay/hook/phím nóng và Image trên cửa sổ thật.
 
 ## 1. Danh sách yêu cầu
 
@@ -100,7 +100,7 @@ Mã R1, R2... dùng để tham chiếu trong các mục sau.
 - **Bảo mật:** chạy file kịch bản của người khác có thể xóa file, tắt máy, đóng chương trình: ghi cảnh báo giống Open/Shutdown trong Help (`?`).
 - Mật khẩu: kịch bản con cần Password thì hỏi như bình thường (một lần mỗi ID mỗi lần chạy).
 
-### R13. Copy/paste action và kéo thả trong danh sách
+### R13. Copy/paste action và kéo thả trong danh sách – đã làm (P4, kèm Undo/Redo)
 - **Ctrl+C / Ctrl+X / Ctrl+V** trong danh sách action: sao chép/cắt các action đang chọn (kèm toàn bộ con). Dữ liệu đặt vào clipboard với một định dạng riêng (JSON của các node), nên dán được sang kịch bản khác hoặc lần mở khác. Dán chèn như Add: vào container đang chọn hoặc sau dòng đang chọn; tuân theo quy tắc cây (không dán vào Condition trực tiếp, v.v.). ID biến và Name giữ nguyên.
 - **Kéo thả** để sắp xếp: kéo nhiều dòng, thả lên/xuống/vào trong container, có đường chỉ vị trí thả; từ chối thả vào chính con cháu của nó hoặc vào chỗ vi phạm quy tắc Condition/Try.
 - **Đề xuất thêm: Undo/Redo** cho danh sách action. Hiện chưa có hoàn tác, mà kéo thả và dán dễ làm hỏng kịch bản; nên làm cùng giai đoạn này (một ngăn xếp snapshot JSON của `AutomationScript` là đủ).
@@ -113,7 +113,7 @@ Mã R1, R2... dùng để tham chiếu trong các mục sau.
 | P1 (**xong**) | R1 Try/Catch/Break/Continue/Return + R14 Section | Nền cho cây và runner; Return cần cho Auto Script | L |
 | P2 (**xong**) | R2 Log, R3 Message, R4 Random Time (hộp Settings) | Log nên ghi được Try/Catch từ đầu; ba ô cùng một hộp | M |
 | P3 (**xong**) | R6 Clipboard, R15 Password, R7 nhớ giá trị Start Selected | Nhỏ, độc lập, Password cần có trước API/Email/Auto Script | M |
-| P4 | R13 copy/paste, kéo thả, (Undo/Redo) | Sau P1 để quy tắc cây (Try, Section) đã chốt | L |
+| P4 (**xong**) | R13 copy/paste, kéo thả, (Undo/Redo) | Sau P1 để quy tắc cây (Try, Section) đã chốt | L |
 | P5 | R5 Category Program + thao tác cửa sổ | Tách category kéo theo chuyển đổi file | M |
 | P6 | R10 Image → Variable, R11 OCR | Thay đổi phá vỡ lớn nhất; OCR cần thử công cụ trước | L |
 | P7 | R12 Auto Script | Cần Return (P1), biến/Password (P3) | M |
