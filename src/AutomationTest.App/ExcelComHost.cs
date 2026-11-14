@@ -446,6 +446,22 @@ namespace AutomationTest.App
                 return new ComSheet(_host, _host.Com(() => Workbook.Worksheets[index]));
             }
 
+            public int VisibleSheetCount
+            {
+                get
+                {
+                    dynamic sheets = _host.Com(() => Workbook.Worksheets);
+                    int count = _host.Com(() => (int)sheets.Count);
+                    int visible = 0;
+                    for (int i = 1; i <= count; i++)
+                    {
+                        int index = i;
+                        if (_host.Com(() => (int)sheets[index].Visible) == -1) visible++; // xlSheetVisible
+                    }
+                    return visible;
+                }
+            }
+
             public IExcelSheet AddSheet(string name, ExcelSheetPosition position, IExcelSheet current, bool select)
             {
                 dynamic previous = _host.Com(() => Workbook.ActiveSheet);
@@ -611,7 +627,14 @@ namespace AutomationTest.App
                 });
             }
 
-            public void Copy(string source, IExcelSheet target, string destination, bool valuesOnly)
+            private bool SameWindow(dynamic other)
+            {
+                return (long)Sheet.Application.Hwnd == (long)other.Application.Hwnd;
+            }
+
+            private const string SeparateWindows = "The two workbooks are open in separate Excel windows, which can only exchange values and formulas (Paste = Values or Formulas, no Transpose). Open both files in the same Excel window for the rest.";
+
+            public void Copy(string source, IExcelSheet target, string destination, ExcelPasteKind paste, bool transpose)
             {
                 string first = destination.Split(':')[0]; // the paste starts at the first cell
                 dynamic targetSheet = ((ComSheet)target).Sheet;
@@ -619,19 +642,121 @@ namespace AutomationTest.App
                 {
                     dynamic from = Sheet.Range[source];
                     dynamic to = targetSheet.Range[first];
-                    if (valuesOnly)
+                    int rows = (int)from.Rows.Count, columns = (int)from.Columns.Count;
+                    if (!transpose && paste == ExcelPasteKind.Values)
                     {
                         // Straight from cell to cell: the clipboard of the user is left alone (formulas arrive as their results).
-                        // This also works between workbooks of separate Excel windows.
-                        to.Resize[(int)from.Rows.Count, (int)from.Columns.Count].Value = from.Value;
+                        to.Resize[rows, columns].Value = from.Value;
                         return;
                     }
-                    if ((long)Sheet.Application.Hwnd != (long)targetSheet.Application.Hwnd)
-                        throw new InvalidOperationException("The two workbooks are open in separate Excel windows, so formatting cannot be copied between them. " +
-                            "Turn on Values only, or open both files in the same Excel window.");
-                    from.Copy(to); // with formatting: Excel's own copy, which uses the clipboard
+                    if (!transpose && paste == ExcelPasteKind.Formulas)
+                    {
+                        // R1C1 keeps the relative references the way a paste shifts them; no clipboard either.
+                        to.Resize[rows, columns].FormulaR1C1 = from.FormulaR1C1;
+                        return;
+                    }
+                    if (!SameWindow(targetSheet)) throw new InvalidOperationException(SeparateWindows);
+                    if (!transpose && paste == ExcelPasteKind.All) from.Copy(to); // Excel's own copy, which uses the clipboard
+                    else
+                    {
+                        from.Copy();
+                        // xlPasteAll -4104, xlPasteValues -4163, xlPasteFormulas -4123, xlPasteFormats -4122, xlPasteColumnWidths 8
+                        int what = paste == ExcelPasteKind.Values ? -4163 : paste == ExcelPasteKind.Formulas ? -4123 : paste == ExcelPasteKind.Formats ? -4122
+                            : paste == ExcelPasteKind.ColumnWidths ? 8 : -4104;
+                        to.PasteSpecial(what, -4142, false, transpose); // xlPasteSpecialOperationNone, skip blanks off
+                    }
                     targetSheet.Application.CutCopyMode = false;
                 });
+            }
+
+            public void Cut(string source, IExcelSheet target, string destination)
+            {
+                string first = destination.Split(':')[0];
+                dynamic targetSheet = ((ComSheet)target).Sheet;
+                _host.Com(() =>
+                {
+                    if (!SameWindow(targetSheet)) throw new InvalidOperationException("The two workbooks are open in separate Excel windows, so cells cannot be moved between them. Open both files in the same Excel window.");
+                    Sheet.Range[source].Cut(targetSheet.Range[first]);
+                    targetSheet.Application.CutCopyMode = false;
+                });
+            }
+
+            public bool Replace(string area, string what, string with, bool matchCase, bool wholeCell)
+            {
+                return _host.Com(() =>
+                {
+                    dynamic range = string.IsNullOrEmpty(area) ? Sheet.Cells : Sheet.Range[area];
+                    // LookAt: xlWhole 1, xlPart 2; SearchOrder: xlByRows 1
+                    return (bool)range.Replace(what, with, wholeCell ? 1 : 2, 1, matchCase);
+                });
+            }
+
+            public void SetVisibility(ExcelVisibility visibility)
+            {
+                // xlSheetVisible -1, xlSheetHidden 0, xlSheetVeryHidden 2
+                _host.Com(() => Sheet.Visible = visibility == ExcelVisibility.Visible ? -1 : visibility == ExcelVisibility.Hidden ? 0 : 2);
+            }
+
+            public void SetHidden(ExcelTarget target, string at, int count, bool hidden)
+            {
+                _host.Com(() =>
+                {
+                    dynamic range = Sheet.Range[Lines(target, at, count)];
+                    if (target == ExcelTarget.Rows) range.EntireRow.Hidden = hidden; else range.EntireColumn.Hidden = hidden;
+                });
+            }
+
+            public IExcelSheet CopySheet(IExcelWorkbook destination, ExcelSheetPosition position, bool select)
+            {
+                return PlaceSheet((ComWorkbook)destination, position, select, true);
+            }
+
+            public void MoveSheet(IExcelWorkbook destination, ExcelSheetPosition position, bool select)
+            {
+                PlaceSheet((ComWorkbook)destination, position, select, false);
+            }
+
+            /// <summary>Copies or moves this sheet into the workbook at the position and returns the sheet at its new place.</summary>
+            private IExcelSheet PlaceSheet(ComWorkbook destination, ExcelSheetPosition position, bool select, bool copy)
+            {
+                dynamic book = destination.Workbook;
+                dynamic added = null;
+                _host.Com(() =>
+                {
+                    if ((long)Sheet.Application.Hwnd != (long)book.Application.Hwnd)
+                        throw new InvalidOperationException("The two workbooks are open in separate Excel windows, so a sheet cannot be " + (copy ? "copied" : "moved") + " between them. Open both files in the same Excel window.");
+                    dynamic previous = book.ActiveSheet;
+                    bool sameBook = (string)Sheet.Parent.FullName == (string)book.FullName;
+                    if (!copy && sameBook && previous != null && (position == ExcelSheetPosition.BeforeCurrent || position == ExcelSheetPosition.AfterCurrent)
+                        && (string)previous.Name == (string)Sheet.Name)
+                        throw new InvalidOperationException("A sheet cannot be moved next to itself: the current sheet of the workbook is the one being moved.");
+                    dynamic sheets = book.Worksheets;
+                    int count = (int)sheets.Count;
+                    int index;
+                    switch (position)
+                    {
+                        case ExcelSheetPosition.Start: index = 1; break;
+                        case ExcelSheetPosition.BeforeCurrent: index = previous == null ? 1 : (int)previous.Index; break;
+                        case ExcelSheetPosition.AfterCurrent: index = previous == null ? count + 1 : (int)previous.Index + 1; break;
+                        default: index = count + 1; break;
+                    }
+                    bool before = index <= count;
+                    dynamic anchor = sheets[before ? index : count];
+                    if (copy)
+                    {
+                        if (before) Sheet.Copy(anchor); else Sheet.Copy(Type.Missing, anchor);
+                    }
+                    else
+                    {
+                        if (before) Sheet.Move(anchor); else Sheet.Move(Type.Missing, anchor);
+                    }
+                    added = book.ActiveSheet; // Excel makes the new sheet the active one of the workbook
+                    if (!select && previous != null && !(!copy && sameBook && (string)previous.Name == (string)added.Name))
+                    {
+                        try { previous.Activate(); } catch (COMException) { /* the workbook is not in front: leave it */ }
+                    }
+                });
+                return new ComSheet(_host, added);
             }
 
             public void FormatCells(string area, ExcelFormat format)

@@ -113,6 +113,19 @@ namespace AutomationTest.App
         // Editor: command
         private readonly ComboBox _cmdKind = MakeCombo(typeof(CommandKind));
         private readonly HintTextBox _cmdValue = new HintTextBox { Width = 200, Placeholder = "Process Path" };
+        private readonly ComboBox _cmdGroup = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 120 };
+        private readonly ToggleSwitch _cmdValueExpr = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
+        private readonly ComboBox _cmdMatch = MakeCombo(typeof(ProgramMatch));
+        private readonly ToggleSwitch _cmdAll = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
+        private readonly TimeBox _cmdTimeout = new TimeBox(5000);
+        private readonly ToggleSwitch _cmdKill = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
+        private readonly HintTextBox _cmdTarget = new HintTextBox { Width = 200, Placeholder = "Destination" };
+        private readonly ToggleSwitch _cmdTargetExpr = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
+        private readonly ToggleSwitch _cmdOverwrite = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
+        private readonly ToggleSwitch _cmdRecurse = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
+        private readonly ToggleSwitch _cmdAppend = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
+        private readonly ToggleSwitch _cmdDelForce = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
+        private readonly HintTextBox _cmdId = new HintTextBox { Width = 200, Placeholder = "Variable ID" };
 
         // Editor: web
         private readonly ComboBox _webGroup = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 120 };
@@ -184,7 +197,10 @@ namespace AutomationTest.App
         private readonly NumberBox _xlFilterField = new NumberBox { Width = 200, Minimum = 1, Maximum = 16384, Placeholder = "Column of the area (1 = first)", Text = "1" };
         private readonly HintTextBox _xlCriteria = new HintTextBox { Width = 200, Placeholder = "Criterion (>5, =Hanoi, <>, *text*)" };
         private readonly ToggleSwitch _xlClearFilter = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
-        private readonly ToggleSwitch _xlValuesOnly = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
+        private readonly ComboBox _xlPaste = MakeCombo(typeof(ExcelPasteKind));
+        private readonly ToggleSwitch _xlTranspose = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
+        private readonly HintTextBox _xlReplaceWith = new HintTextBox { Width = 200, Placeholder = "Replace with (empty removes the text)" };
+        private readonly ComboBox _xlVisibility = MakeCombo(typeof(ExcelVisibility));
         private readonly HintTextBox _xlMacro = new HintTextBox { Width = 200, Placeholder = "Macro (Module1.Report)" };
         private readonly TimeBox _xlTime = new TimeBox(30000);
         private readonly TimeBox _xlDelay = new TimeBox(0);
@@ -389,7 +405,8 @@ namespace AutomationTest.App
             AddRow(common, "Category", _category);
             AddRow(common, "Action", _mouseAction);
             AddRow(common, "Action", _kbAction);
-            AddRow(common, "Action", _cmdKind);
+            AddRow(common, "Group", _cmdGroup);
+            AddRow(common, "Type", _cmdKind);
             AddRow(common, "Group", _webGroup);
             AddRow(common, "Type", _webKind);
             AddRow(common, "Group", _xlGroup);
@@ -426,7 +443,19 @@ namespace AutomationTest.App
 
             // Utilities
             var cmdTable = NewTable();
+            AddRow(cmdTable, "ID", _cmdId, Help.CommandId); // an ID is always the first field of its group
+            AddRow(cmdTable, "Match", _cmdMatch, Help.CloseMatch);
             AddRow(cmdTable, "Path", _cmdValue, null, null, MakeButton("Browse", (s, e) => BrowseCommandPath()));
+            AddRow(cmdTable, "Expr. (path)", _cmdValueExpr, Help.ExpressionText);
+            AddRow(cmdTable, "Destination", _cmdTarget, Help.FileTarget);
+            AddRow(cmdTable, "Expr. (dest.)", _cmdTargetExpr, Help.ExpressionText);
+            AddRow(cmdTable, "Overwrite", _cmdOverwrite, Help.FileOverwrite);
+            AddRow(cmdTable, "Recurse", _cmdRecurse, Help.FileRecurse);
+            AddRow(cmdTable, "Append", _cmdAppend, Help.FileAppend);
+            AddRow(cmdTable, "Force", _cmdDelForce, Help.FileForce);
+            AddRow(cmdTable, "All matches", _cmdAll, Help.CloseAll);
+            AddRow(cmdTable, "Timeout", _cmdTimeout, Help.CloseTimeout);
+            AddRow(cmdTable, "Kill", _cmdKill, Help.CloseKill);
             AddRow(cmdTable, "Time", _cmdTime, Help.ShutdownTime);
             AddRow(cmdTable, "Force", _cmdForce, Help.ShutdownForce);
             AddRow(cmdTable, "Delay", _cmdDelay, Help.KeyDelay);
@@ -486,7 +515,10 @@ namespace AutomationTest.App
             AddRow(xlTable, "Expr. (value)", _xlValueExpr, Help.ExpressionText);
             AddRow(xlTable, "To workbook", _xlDestWorkbook, Help.ExcelCopy);
             AddRow(xlTable, "To sheet", _xlDestSheet, Help.ExcelCopy);
-            AddRow(xlTable, "Values only", _xlValuesOnly, Help.ExcelCopy);
+            AddRow(xlTable, "Paste", _xlPaste, Help.ExcelCopy);
+            AddRow(xlTable, "Transpose", _xlTranspose, Help.ExcelCopy);
+            AddRow(xlTable, "Replace with", _xlReplaceWith, Help.ExcelReplace);
+            AddRow(xlTable, "Visibility", _xlVisibility, Help.ExcelVisibility);
             AddRow(xlTable, "Num. format", _xlNumberFormat, Help.ExcelFormat);
             AddRow(xlTable, "Bold", _xlBold, Help.ExcelFormat);
             AddRow(xlTable, "Italic", _xlItalic, Help.ExcelFormat);
@@ -546,7 +578,7 @@ namespace AutomationTest.App
 
             // Extra space above the first row of a new group, so related rows read together.
             const int Group = 12, Small = 6;
-            Space(_enabled, Small); Space(_category, Small); Space(_mouseAction, Small); Space(_kbAction, Small); Space(_cmdKind, Small); Space(_controlKind, Small);
+            Space(_enabled, Small); Space(_category, Small); Space(_mouseAction, Small); Space(_kbAction, Small); Space(_cmdGroup, Small); Space(_controlKind, Small);
             common.Padding = new Padding(GroupInset, 0, 0, 10); // Padding (not Margin): a docked table ignores its margin
             Space(_time, Group); Space(_processName, Group);                     // Mouse: after Type, after Delay
             Space(_kbTime, Group);                                               // Keyboard: before Time
@@ -614,7 +646,9 @@ namespace AutomationTest.App
             _category.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
             _mouseAction.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
             _kbAction.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
-            _cmdKind.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
+            _cmdGroup.SelectedIndexChanged += (s, e) => { FillCmdKinds(); if (!_grouping) UpdateEditorVisibility(); };
+            _cmdKind.SelectedIndexChanged += (s, e) => { if (!_grouping) UpdateEditorVisibility(); };
+            _cmdMatch.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
             InitGroups();
             _webGroup.SelectedIndexChanged += (s, e) => { FillWebKinds(); if (!_grouping) UpdateEditorVisibility(); };
             _xlGroup.SelectedIndexChanged += (s, e) => { FillXlKinds(); if (!_grouping) UpdateEditorVisibility(); };
@@ -655,7 +689,29 @@ namespace AutomationTest.App
             _keyboardBox.Visible = category == ActionCategory.Keyboard;
             _commandBox.Visible = category == ActionCategory.Utilities;
             var cmdKind = _cmdKind.SelectedItem as CommandKind? ?? CommandKind.Open;
-            SetRowVisible(_cmdValue, cmdKind == CommandKind.Open); // only Open has a path
+            var cmdMatch = _cmdMatch.SelectedItem as ProgramMatch? ?? ProgramMatch.Title;
+            bool fs = ScriptRunner.CommandIsFileSystem(cmdKind);
+            bool close = cmdKind == CommandKind.Close;
+            bool hasTarget = cmdKind == CommandKind.FsCopy || cmdKind == CommandKind.FsMove || cmdKind == CommandKind.FsRename || cmdKind == CommandKind.FsWrite;
+            SetRowVisible(_cmdValue, cmdKind == CommandKind.Open || close || fs);
+            SetLabel(_cmdValue, cmdKind == CommandKind.Open ? "Path" : close ? (cmdMatch == ProgramMatch.Title ? "Title" : cmdMatch == ProgramMatch.Name ? "Name" : cmdMatch == ProgramMatch.Path ? "Path" : "Process id") : cmdKind == CommandKind.FsList ? "Folder" : "Path");
+            _cmdValue.Placeholder = cmdKind == CommandKind.Open ? "Program or document to open"
+                : close ? (cmdMatch == ProgramMatch.Title ? "Window title (regular expression)" : cmdMatch == ProgramMatch.Name ? "Process name, e.g. notepad" : cmdMatch == ProgramMatch.Path ? "Full path of the program file" : "Process id (a number)")
+                : cmdKind == CommandKind.FsCreate ? "Folder to make" : cmdKind == CommandKind.FsList ? "Folder to list" : "File or folder";
+            SetRowVisible(_cmdValueExpr, close || fs);
+            SetRowVisible(_cmdMatch, close);
+            SetRowVisible(_cmdAll, close);
+            SetRowVisible(_cmdTimeout, close && !_cmdKill.Checked);
+            SetRowVisible(_cmdKill, close);
+            SetRowVisible(_cmdTarget, hasTarget);
+            SetLabel(_cmdTarget, cmdKind == CommandKind.FsRename ? "New name" : cmdKind == CommandKind.FsWrite ? "Text" : "Destination");
+            _cmdTarget.Placeholder = cmdKind == CommandKind.FsRename ? "New name (no folder)" : cmdKind == CommandKind.FsWrite ? "Text to write" : "Destination (a folder or a new path)";
+            SetRowVisible(_cmdTargetExpr, hasTarget);
+            SetRowVisible(_cmdOverwrite, cmdKind == CommandKind.FsCopy || cmdKind == CommandKind.FsMove);
+            SetRowVisible(_cmdRecurse, cmdKind == CommandKind.FsDelete || cmdKind == CommandKind.FsList);
+            SetRowVisible(_cmdAppend, cmdKind == CommandKind.FsWrite);
+            SetRowVisible(_cmdDelForce, cmdKind == CommandKind.FsDelete);
+            SetRowVisible(_cmdId, ScriptRunner.CommandKeeps(cmdKind));
             SetRowVisible(_cmdTime, cmdKind == CommandKind.Shutdown);
             SetRowVisible(_cmdForce, cmdKind == CommandKind.Shutdown);
             SetRowVisible(_cmdDelay, cmdKind != CommandKind.Shutdown); // Shutdown has no "after" delay: the machine is gone
@@ -709,11 +765,12 @@ namespace AutomationTest.App
             var xlInfo = _xlInfo.SelectedItem as ExcelInfoKind? ?? ExcelInfoKind.LastRow;
             bool xlOn = category == ActionCategory.Excel;
             bool infoCell = xl == ExcelKind.GetInfo && (xlInfo == ExcelInfoKind.LastRow || xlInfo == ExcelInfoKind.LastColumn);
-            bool xlArea = xl == ExcelKind.Select || xl == ExcelKind.Clear || xl == ExcelKind.Copy || xl == ExcelKind.Format || xl == ExcelKind.Sort
-                || (xl == ExcelKind.Filter && !_xlClearFilter.Checked) || xl == ExcelKind.InsertCells || xl == ExcelKind.DeleteCells;
-            bool xlCell = xl == ExcelKind.GetCell || xl == ExcelKind.SetCell || xl == ExcelKind.GetRange || xl == ExcelKind.SetRange || xl == ExcelKind.Find || infoCell || xlArea;
+            bool xlArea = xl == ExcelKind.Select || xl == ExcelKind.Clear || xl == ExcelKind.Copy || xl == ExcelKind.CutCells || xl == ExcelKind.Format || xl == ExcelKind.Sort
+                || (xl == ExcelKind.Filter && !_xlClearFilter.Checked) || xl == ExcelKind.InsertCells || xl == ExcelKind.DeleteCells || xl == ExcelKind.HideCells || xl == ExcelKind.ShowCells;
+            bool xlCell = xl == ExcelKind.ReplaceText || xl == ExcelKind.GetCell || xl == ExcelKind.SetCell || xl == ExcelKind.GetRange || xl == ExcelKind.SetRange || xl == ExcelKind.Find || infoCell || xlArea;
             bool xlValue = ScriptRunner.ExcelValueKind(xl) || xl == ExcelKind.SetRange;
-            bool insertDelete = xl == ExcelKind.InsertCells || xl == ExcelKind.DeleteCells;
+            bool insertDelete = xl == ExcelKind.InsertCells || xl == ExcelKind.DeleteCells || xl == ExcelKind.HideCells || xl == ExcelKind.ShowCells;
+            bool xlSheetOnly = xl == ExcelKind.SheetCopy || xl == ExcelKind.SheetMove || xl == ExcelKind.SheetVisible; // a whole sheet, not cells
             SetRowVisible(_xlKind, xlOn);
             SetRowVisible(_xlGroup, xlOn);
             SetRowVisible(_xlId, xl == ExcelKind.GetCell || xl == ExcelKind.GetRange || xl == ExcelKind.GetInfo || xl == ExcelKind.Find || xl == ExcelKind.Evaluate || xl == ExcelKind.RunMacro);
@@ -723,26 +780,29 @@ namespace AutomationTest.App
             SetRowVisible(_xlReadOnly, xl == ExcelKind.Workbook);
             SetRowVisible(_xlVisible, xl == ExcelKind.Workbook);
             SetRowVisible(_xlAllowMacros, xl == ExcelKind.Workbook);
-            SetRowVisible(_xlSheetName, xl == ExcelKind.SelectSheet || xl == ExcelKind.CreateSheet || xl == ExcelKind.DeleteSheet || xl == ExcelKind.RenameSheet);
-            _xlSheetName.Placeholder = xl == ExcelKind.CreateSheet ? "Name of the new sheet (optional)" : xl == ExcelKind.RenameSheet ? "Sheet to rename (regular expr.; empty = this one)" : "Sheet name (regular expression)";
-            SetRowVisible(_xlIndex, xl == ExcelKind.SelectSheet || xl == ExcelKind.DeleteSheet || xl == ExcelKind.RenameSheet);
-            _xlIndex.Placeholder = xl == ExcelKind.DeleteSheet || xl == ExcelKind.RenameSheet ? "Index (empty = the current sheet)" : "Index (1 = first)";
-            SetRowVisible(_xlPosition, xl == ExcelKind.CreateSheet);
-            SetRowVisible(_xlSelectNew, xl == ExcelKind.CreateSheet);
+            SetRowVisible(_xlSheetName, xl == ExcelKind.SelectSheet || xl == ExcelKind.CreateSheet || xl == ExcelKind.DeleteSheet || xl == ExcelKind.RenameSheet || xlSheetOnly);
+            _xlSheetName.Placeholder = xlSheetOnly ? "Sheet (regular expr.; empty = this one)" : xl == ExcelKind.CreateSheet ? "Name of the new sheet (optional)" : xl == ExcelKind.RenameSheet ? "Sheet to rename (regular expr.; empty = this one)" : "Sheet name (regular expression)";
+            SetRowVisible(_xlIndex, xl == ExcelKind.SelectSheet || xl == ExcelKind.DeleteSheet || xl == ExcelKind.RenameSheet || xlSheetOnly);
+            _xlIndex.Placeholder = xl == ExcelKind.DeleteSheet || xl == ExcelKind.RenameSheet || xlSheetOnly ? "Index (empty = the current sheet)" : "Index (1 = first)";
+            SetRowVisible(_xlPosition, xl == ExcelKind.CreateSheet || xl == ExcelKind.SheetCopy || xl == ExcelKind.SheetMove);
+            SetRowVisible(_xlSelectNew, xl == ExcelKind.CreateSheet || xl == ExcelKind.SheetCopy || xl == ExcelKind.SheetMove);
+            SetRowVisible(_xlVisibility, xl == ExcelKind.SheetVisible);
             SetRowVisible(_xlGet, xl == ExcelKind.GetCell || xl == ExcelKind.GetRange);
             SetRowVisible(_xlInfo, xl == ExcelKind.GetInfo);
             SetRowVisible(_xlTarget, insertDelete);
             SetRowVisible(_xlCount, insertDelete);
             SetRowVisible(_xlClearWhat, xl == ExcelKind.Clear);
-            bool xlUse = xlCell || xl == ExcelKind.Evaluate || xl == ExcelKind.GetInfo || (xl == ExcelKind.Filter && _xlClearFilter.Checked);
+            bool xlUse = xlCell || xlSheetOnly || xl == ExcelKind.Evaluate || xl == ExcelKind.GetInfo || (xl == ExcelKind.Filter && _xlClearFilter.Checked);
             SetRowVisible(_xlUseWorkbook, xlUse && !(xl == ExcelKind.GetInfo && xlInfo == ExcelInfoKind.Selection));
-            SetRowVisible(_xlUseSheet, xlUse && !XlWorkbookInfoOnly(xl, xlInfo));
-            SetRowVisible(_xlDestWorkbook, xl == ExcelKind.Copy);
-            SetRowVisible(_xlDestSheet, xl == ExcelKind.Copy);
+            SetRowVisible(_xlUseSheet, xlUse && !xlSheetOnly && !XlWorkbookInfoOnly(xl, xlInfo));
+            SetRowVisible(_xlDestWorkbook, xl == ExcelKind.Copy || xl == ExcelKind.CutCells || xl == ExcelKind.SheetCopy || xl == ExcelKind.SheetMove);
+            SetRowVisible(_xlDestSheet, xl == ExcelKind.Copy || xl == ExcelKind.CutCells);
             SetRowVisible(_xlCell, xlCell);
             SetRowVisible(_xlPick, xlCell);
             _xlCell.Placeholder = xl == ExcelKind.GetRange ? "Area to read (A1:D20)" : xl == ExcelKind.SetRange ? "Top-left cell (A1)"
                 : xl == ExcelKind.Find ? "Area to search (empty = whole sheet)"
+                : xl == ExcelKind.ReplaceText ? "Area (empty = whole sheet)"
+                : xl == ExcelKind.CutCells ? "Area to move (A1:C5)"
                 : xl == ExcelKind.GetInfo ? (xlInfo == ExcelInfoKind.LastRow ? "A cell in the column (B1)" : "A cell in the row (B1)")
                 : insertDelete ? "A cell in the first row or column (B5)"
                 : xl == ExcelKind.Select ? "Cell or area to select"
@@ -754,9 +814,11 @@ namespace AutomationTest.App
             SetRowVisible(_xlValue, xlValue);
             _xlValue.Placeholder = xl == ExcelKind.SetRange ? "Table variable, for example {t}" : xl == ExcelKind.Find ? "Text to find"
                 : xl == ExcelKind.Evaluate ? "Formula, for example SUM(A1:A10)" : xl == ExcelKind.RenameSheet ? "New name of the sheet"
-                : xl == ExcelKind.Copy ? "Destination (its top-left cell)" : xl == ExcelKind.RunMacro ? "Argument (optional)" : "Value";
+                : xl == ExcelKind.Copy || xl == ExcelKind.CutCells ? "Destination (its top-left cell)" : xl == ExcelKind.ReplaceText ? "Text to find" : xl == ExcelKind.SheetCopy ? "Name of the copy (optional)" : xl == ExcelKind.RunMacro ? "Argument (optional)" : "Value";
             SetRowVisible(_xlValueExpr, xlValue && xl != ExcelKind.SetRange); // Range Set always takes a variable
-            SetRowVisible(_xlValuesOnly, xl == ExcelKind.Copy);
+            SetRowVisible(_xlPaste, xl == ExcelKind.Copy);
+            SetRowVisible(_xlTranspose, xl == ExcelKind.Copy);
+            SetRowVisible(_xlReplaceWith, xl == ExcelKind.ReplaceText);
             SetRowVisible(_xlNumberFormat, xl == ExcelKind.Format);
             SetRowVisible(_xlBold, xl == ExcelKind.Format);
             SetRowVisible(_xlItalic, xl == ExcelKind.Format);
@@ -770,8 +832,8 @@ namespace AutomationTest.App
             SetRowVisible(_xlFilterField, xl == ExcelKind.Filter && !_xlClearFilter.Checked);
             SetRowVisible(_xlCriteria, xl == ExcelKind.Filter && !_xlClearFilter.Checked);
             SetRowVisible(_xlMacro, xl == ExcelKind.RunMacro);
-            SetRowVisible(_xlMatchCase, xl == ExcelKind.Find);
-            SetRowVisible(_xlWholeCell, xl == ExcelKind.Find);
+            SetRowVisible(_xlMatchCase, xl == ExcelKind.Find || xl == ExcelKind.ReplaceText);
+            SetRowVisible(_xlWholeCell, xl == ExcelKind.Find || xl == ExcelKind.ReplaceText);
             SetRowVisible(_xlSaveAs, xl == ExcelKind.Save);
             SetRowVisible(_xlSavePath, xl == ExcelKind.Save && _xlSaveAs.Checked);
             SetRowVisible(_xlSaveChanges, xl == ExcelKind.CloseWorkbook || xl == ExcelKind.CloseExcel);
@@ -780,6 +842,7 @@ namespace AutomationTest.App
             SetRowVisible(_mouseAction, category == ActionCategory.Mouse);
             SetRowVisible(_kbAction, category == ActionCategory.Keyboard);
             SetRowVisible(_cmdKind, category == ActionCategory.Utilities);
+            SetRowVisible(_cmdGroup, category == ActionCategory.Utilities);
             SetRowVisible(_controlKind, category == ActionCategory.Control);
 
             // Mouse
@@ -915,13 +978,25 @@ namespace AutomationTest.App
                     });
 
                 case ActionCategory.Utilities:
+                    var ck = (CommandKind)_cmdKind.SelectedItem;
+                    bool cfs = ScriptRunner.CommandIsFileSystem(ck), cclose = ck == CommandKind.Close;
+                    bool ctarget = ck == CommandKind.FsCopy || ck == CommandKind.FsMove || ck == CommandKind.FsRename || ck == CommandKind.FsWrite;
                     return ActionNode.NewCommand(new CommandSettings
                     {
-                        Kind = (CommandKind)_cmdKind.SelectedItem,
-                        Value = (CommandKind)_cmdKind.SelectedItem == CommandKind.Open ? _cmdValue.Text.Trim() : "",
-                        DelayMs = (CommandKind)_cmdKind.SelectedItem == CommandKind.Shutdown ? 0 : _cmdDelay.Milliseconds,
-                        TimeMs = (CommandKind)_cmdKind.SelectedItem == CommandKind.Shutdown ? _cmdTime.Milliseconds : 0,
-                        Force = (CommandKind)_cmdKind.SelectedItem == CommandKind.Shutdown && _cmdForce.Checked
+                        Kind = ck,
+                        Value = ck == CommandKind.Open || cclose || cfs ? _cmdValue.Text.Trim() : "",
+                        ValueIsExpression = (cclose || cfs) && _cmdValueExpr.Checked,
+                        Match = cclose ? (ProgramMatch)_cmdMatch.SelectedItem : ProgramMatch.Title,
+                        All = cclose && _cmdAll.Checked,
+                        Target = ctarget ? (ck == CommandKind.FsWrite ? _cmdTarget.Text : _cmdTarget.Text.Trim()) : "",
+                        TargetIsExpression = ctarget && _cmdTargetExpr.Checked,
+                        Overwrite = (ck == CommandKind.FsCopy || ck == CommandKind.FsMove) && _cmdOverwrite.Checked,
+                        Recurse = (ck == CommandKind.FsDelete || ck == CommandKind.FsList) && _cmdRecurse.Checked,
+                        Append = ck == CommandKind.FsWrite && _cmdAppend.Checked,
+                        Id = ScriptRunner.CommandKeeps(ck) ? _cmdId.Text.Trim() : "",
+                        DelayMs = ck == CommandKind.Shutdown ? 0 : _cmdDelay.Milliseconds,
+                        TimeMs = ck == CommandKind.Shutdown ? _cmdTime.Milliseconds : cclose ? _cmdTimeout.Milliseconds : 0,
+                        Force = ck == CommandKind.Shutdown ? _cmdForce.Checked : cclose ? _cmdKill.Checked : ck == CommandKind.FsDelete && _cmdDelForce.Checked
                     });
 
                 case ActionCategory.Excel:
@@ -935,10 +1010,10 @@ namespace AutomationTest.App
                         Visible = _xlVisible.Checked,
                         SheetName = _xlSheetName.Text.Trim(),
                         Index = (int)_xlIndex.Value,
-                        UseWorkbook = XlUses(xk) && !(xk == ExcelKind.GetInfo && (ExcelInfoKind)_xlInfo.SelectedItem == ExcelInfoKind.Selection) ? _xlUseWorkbook.Text.Trim() : "",
+                        UseWorkbook = (XlUses(xk) || xk == ExcelKind.SheetCopy || xk == ExcelKind.SheetMove || xk == ExcelKind.SheetVisible) && !(xk == ExcelKind.GetInfo && (ExcelInfoKind)_xlInfo.SelectedItem == ExcelInfoKind.Selection) ? _xlUseWorkbook.Text.Trim() : "",
                         UseSheet = XlUses(xk) && !XlWorkbookInfoOnly(xk, (ExcelInfoKind)_xlInfo.SelectedItem) ? _xlUseSheet.Text.Trim() : "",
-                        DestWorkbook = xk == ExcelKind.Copy ? _xlDestWorkbook.Text.Trim() : "",
-                        DestSheet = xk == ExcelKind.Copy ? _xlDestSheet.Text.Trim() : "",
+                        DestWorkbook = xk == ExcelKind.Copy || xk == ExcelKind.CutCells || xk == ExcelKind.SheetCopy || xk == ExcelKind.SheetMove ? _xlDestWorkbook.Text.Trim() : "",
+                        DestSheet = xk == ExcelKind.Copy || xk == ExcelKind.CutCells ? _xlDestSheet.Text.Trim() : "",
                         Position = (ExcelSheetPosition)_xlPosition.SelectedItem,
                         SelectNew = _xlSelectNew.Checked,
                         Cell = _xlCell.Text.Trim(),
@@ -968,7 +1043,10 @@ namespace AutomationTest.App
                         FilterField = Math.Max(1, (int)_xlFilterField.Value),
                         Criteria = _xlCriteria.Text.Trim(),
                         ClearFilter = _xlClearFilter.Checked,
-                        ValuesOnly = _xlValuesOnly.Checked,
+                        Paste = xk == ExcelKind.Copy ? (ExcelPasteKind)_xlPaste.SelectedItem : ExcelPasteKind.All,
+                        Transpose = xk == ExcelKind.Copy && _xlTranspose.Checked,
+                        ReplaceWith = xk == ExcelKind.ReplaceText ? _xlReplaceWith.Text : "",
+                        Visibility = xk == ExcelKind.SheetVisible ? (ExcelVisibility)_xlVisibility.SelectedItem : ExcelVisibility.Visible,
                         Macro = _xlMacro.Text.Trim(),
                         AllowMacros = _xlAllowMacros.Checked,
                         Id = _xlId.Text.Trim(),
@@ -1189,7 +1267,10 @@ namespace AutomationTest.App
                     _xlFilterField.Text = xs.FilterField.ToString();
                     _xlCriteria.Text = xs.Criteria;
                     _xlClearFilter.Checked = xs.ClearFilter;
-                    _xlValuesOnly.Checked = xs.ValuesOnly;
+                    _xlPaste.SelectedItem = xs.Paste;
+                    _xlTranspose.Checked = xs.Transpose;
+                    _xlReplaceWith.Text = xs.ReplaceWith ?? "";
+                    _xlVisibility.SelectedItem = xs.Visibility;
                     _xlMacro.Text = xs.Macro;
                     _xlAllowMacros.Checked = xs.AllowMacros;
                     _xlId.Text = xs.Id;
@@ -1225,11 +1306,24 @@ namespace AutomationTest.App
                     break;
 
                 case ActionCategory.Utilities:
-                    _cmdKind.SelectedItem = node.Command.Kind;
-                    _cmdValue.Text = node.Command.Value;
-                    _cmdDelay.Milliseconds = node.Command.DelayMs;
-                    _cmdTime.Milliseconds = node.Command.TimeMs;
-                    _cmdForce.Checked = node.Command.Force;
+                    var cs = node.Command;
+                    SetCommandKind(cs.Kind);
+                    _cmdValue.Text = cs.Value;
+                    _cmdValueExpr.Checked = cs.ValueIsExpression;
+                    _cmdMatch.SelectedItem = cs.Match;
+                    _cmdAll.Checked = cs.All;
+                    _cmdTarget.Text = cs.Target ?? "";
+                    _cmdTargetExpr.Checked = cs.TargetIsExpression;
+                    _cmdOverwrite.Checked = cs.Overwrite;
+                    _cmdRecurse.Checked = cs.Recurse;
+                    _cmdAppend.Checked = cs.Append;
+                    _cmdId.Text = cs.Id ?? "";
+                    _cmdDelay.Milliseconds = cs.DelayMs;
+                    _cmdTime.Milliseconds = cs.Kind == CommandKind.Shutdown ? cs.TimeMs : 0;
+                    _cmdTimeout.Milliseconds = cs.Kind == CommandKind.Close ? cs.TimeMs : 5000;
+                    _cmdForce.Checked = cs.Kind == CommandKind.Shutdown && cs.Force;
+                    _cmdKill.Checked = cs.Kind == CommandKind.Close && cs.Force;
+                    _cmdDelForce.Checked = cs.Kind == CommandKind.FsDelete && cs.Force;
                     break;
 
                 default:
@@ -1436,6 +1530,7 @@ namespace AutomationTest.App
                 case ExcelKind.GetCell: case ExcelKind.SetCell: case ExcelKind.GetRange: case ExcelKind.SetRange: case ExcelKind.Find:
                 case ExcelKind.GetInfo: case ExcelKind.Evaluate: case ExcelKind.Select: case ExcelKind.InsertCells: case ExcelKind.DeleteCells:
                 case ExcelKind.Clear: case ExcelKind.Copy: case ExcelKind.Format: case ExcelKind.Sort: case ExcelKind.Filter:
+                case ExcelKind.CutCells: case ExcelKind.ReplaceText: case ExcelKind.HideCells: case ExcelKind.ShowCells:
                     return true;
             }
             return false;
@@ -1445,6 +1540,34 @@ namespace AutomationTest.App
         private static bool XlWorkbookInfoOnly(ExcelKind kind, ExcelInfoKind info)
         {
             return kind == ExcelKind.GetInfo && (info == ExcelInfoKind.SheetCount || info == ExcelInfoKind.WorkbookName || info == ExcelInfoKind.WorkbookPath || info == ExcelInfoKind.Selection);
+        }
+
+        /// <summary>A message when a Utilities action could never run (an empty path, a bad pattern or id), otherwise null.</summary>
+        private static string ValidateCommand(CommandSettings c)
+        {
+            bool fs = ScriptRunner.CommandIsFileSystem(c.Kind);
+            if (c.Kind == CommandKind.Open && c.Value.Length == 0) return "Enter the program or document to open.";
+            if (c.Kind == CommandKind.Close)
+            {
+                if (c.Value.Length == 0) return "Enter what to close (a window title, a process name, a path or a process id).";
+                if (c.ValueIsExpression) Expression.CheckSyntax(c.Value);
+                else if (c.Match == ProgramMatch.Title)
+                {
+                    try { new System.Text.RegularExpressions.Regex(c.Value); }
+                    catch (ArgumentException ex) { return "The title is not a valid regular expression: " + ex.Message; }
+                }
+                else if (c.Match == ProgramMatch.Id && !int.TryParse(c.Value, out int pid)) return "The process id is a number.";
+            }
+            if (fs)
+            {
+                if (c.Value.Length == 0) return "Enter the " + (c.Kind == CommandKind.FsList ? "folder" : "path") + ".";
+                if (c.ValueIsExpression) Expression.CheckSyntax(c.Value);
+                if ((c.Kind == CommandKind.FsCopy || c.Kind == CommandKind.FsMove) && c.Target.Trim().Length == 0) return "Enter the destination.";
+                if (c.Kind == CommandKind.FsRename && c.Target.Trim().Length == 0) return "Enter the new name.";
+                if (c.TargetIsExpression && c.Target.Length > 0) Expression.CheckSyntax(c.Target);
+                if (ScriptRunner.CommandKeeps(c.Kind) && !Expression.IsValidId(c.Id)) return "Enter an ID with letters, digits and _, not starting with a digit (and not true, false, now, today).";
+            }
+            return null;
         }
 
         private static string ValidateExcel(ExcelSettings x)
@@ -1499,6 +1622,33 @@ namespace AutomationTest.App
                 case ExcelKind.Clear:
                     if (x.CellIsExpression) Expression.CheckSyntax(x.Cell);
                     else if ((problem = AutomationTest.Core.Excel.ExcelAddress.Check(x.Cell, "area")) != null) return problem;
+                    break;
+                case ExcelKind.SheetCopy:
+                    if ((problem = badPattern(x.SheetName)) != null) return problem;
+                    if (!x.ValueIsExpression && x.Value.Trim().Length > 0 && (x.Value.Trim().Length > 31 || x.Value.IndexOfAny(new[] { ':', '\\', '/', '?', '*', '[', ']' }) >= 0))
+                        return "A sheet name has at most 31 characters and none of : \\ / ? * [ ].";
+                    break;
+                case ExcelKind.SheetMove:
+                case ExcelKind.SheetVisible:
+                    if ((problem = badPattern(x.SheetName)) != null) return problem;
+                    break;
+                case ExcelKind.HideCells:
+                case ExcelKind.ShowCells:
+                    if ((problem = cellProblem(x.Cell, x.CellIsExpression)) != null) return problem;
+                    break;
+                case ExcelKind.CutCells:
+                    if (x.CellIsExpression) Expression.CheckSyntax(x.Cell);
+                    else if ((problem = AutomationTest.Core.Excel.ExcelAddress.Check(x.Cell, "area to move")) != null) return problem;
+                    if (x.Value.Trim().Length == 0) return "Enter the destination cell.";
+                    if (!x.ValueIsExpression && (problem = AutomationTest.Core.Excel.ExcelAddress.Check(x.Value, "destination cell")) != null) return problem;
+                    break;
+                case ExcelKind.ReplaceText:
+                    if (x.Value.Length == 0) return "Enter the text to find.";
+                    if (x.Cell.Length > 0)
+                    {
+                        if (x.CellIsExpression) Expression.CheckSyntax(x.Cell);
+                        else if ((problem = AutomationTest.Core.Excel.ExcelAddress.Check(x.Cell, "area")) != null) return problem;
+                    }
                     break;
                 case ExcelKind.Copy:
                     if (x.CellIsExpression) Expression.CheckSyntax(x.Cell);
@@ -1598,6 +1748,9 @@ namespace AutomationTest.App
 
                     case ActionCategory.Excel:
                         return ValidateExcel(node.Excel);
+
+                    case ActionCategory.Utilities:
+                        return ValidateCommand(node.Command);
 
                     case ActionCategory.Web:
                         var web = node.Web;
@@ -2170,7 +2323,14 @@ namespace AutomationTest.App
                         case ExcelKind.InsertCells: details = "insert " + xd.Count + " " + xd.Target.ToString().ToLowerInvariant() + " at " + xd.Cell; break;
                         case ExcelKind.DeleteCells: details = "delete " + xd.Count + " " + xd.Target.ToString().ToLowerInvariant() + " at " + xd.Cell; break;
                         case ExcelKind.Clear: details = "clear " + xd.ClearWhat.ToString().ToLowerInvariant() + " of " + xd.Cell; break;
-                        case ExcelKind.Copy: details = xd.Cell + " -> " + xd.Value + (xd.ValuesOnly ? " (values only)" : ""); break;
+                        case ExcelKind.Copy: details = xd.Cell + " -> " + xd.Value + (xd.Paste != ExcelPasteKind.All ? " (" + xd.Paste.ToString().ToLowerInvariant() + ")" : "") + (xd.Transpose ? " (transpose)" : ""); break;
+                        case ExcelKind.CutCells: details = "move " + xd.Cell + " -> " + xd.Value; break;
+                        case ExcelKind.ReplaceText: details = "replace \"" + xd.Value + "\" with \"" + xd.ReplaceWith + "\"" + (xd.Cell.Length > 0 ? " in " + xd.Cell : ""); break;
+                        case ExcelKind.SheetCopy: details = "copy " + (xd.SheetName.Length > 0 ? "/" + xd.SheetName + "/ " : xd.Index > 0 ? "#" + xd.Index + " " : "this sheet ") + (xd.Value.Length > 0 ? "as \"" + xd.Value + "\" " : "") + "(" + xd.Position + ")"; break;
+                        case ExcelKind.SheetMove: details = "move " + (xd.SheetName.Length > 0 ? "/" + xd.SheetName + "/ " : xd.Index > 0 ? "#" + xd.Index + " " : "this sheet ") + "(" + xd.Position + ")"; break;
+                        case ExcelKind.SheetVisible: details = (xd.SheetName.Length > 0 ? "/" + xd.SheetName + "/ " : xd.Index > 0 ? "#" + xd.Index + " " : "this sheet ") + "-> " + xd.Visibility; break;
+                        case ExcelKind.HideCells: details = "hide " + xd.Count + " " + xd.Target.ToString().ToLowerInvariant() + " at " + xd.Cell; break;
+                        case ExcelKind.ShowCells: details = "show " + xd.Count + " " + xd.Target.ToString().ToLowerInvariant() + " at " + xd.Cell; break;
                         case ExcelKind.Format:
                             details = xd.Cell + ": " + string.Join(", ", new[]
                             {
@@ -2197,7 +2357,7 @@ namespace AutomationTest.App
                     }
                     if (xd.UseWorkbook.Length > 0 || xd.UseSheet.Length > 0)
                         details = "[" + xd.UseWorkbook + "]" + xd.UseSheet + " " + details;
-                    if (xd.Kind == ExcelKind.Copy && (xd.DestWorkbook.Length > 0 || xd.DestSheet.Length > 0))
+                    if ((xd.Kind == ExcelKind.Copy || xd.Kind == ExcelKind.CutCells || xd.Kind == ExcelKind.SheetCopy || xd.Kind == ExcelKind.SheetMove) && (xd.DestWorkbook.Length > 0 || xd.DestSheet.Length > 0))
                         details += " to [" + xd.DestWorkbook + "]" + xd.DestSheet;
                     if (xd.Kind == ExcelKind.Workbook || xd.Kind == ExcelKind.CloseExcel) time = TimeBox.Format(xd.TimeMs);
                     delay = TimeBox.Format(xd.DelayMs);
@@ -2249,17 +2409,28 @@ namespace AutomationTest.App
                     break;
 
                 case ActionCategory.Utilities:
-                    action = n.Command.Kind.ToString();
-                    if (n.Command.Kind == CommandKind.Shutdown)
+                    var cd = n.Command;
+                    action = ActionGroups.Display(cd.Kind);
+                    switch (cd.Kind)
                     {
-                        details = "shut down the computer" + (n.Command.Force ? " (force)" : "");
-                        time = TimeBox.Format(n.Command.TimeMs);
+                        case CommandKind.Shutdown:
+                            details = "shut down the computer" + (cd.Force ? " (force)" : "");
+                            time = TimeBox.Format(cd.TimeMs);
+                            break;
+                        case CommandKind.Active: details = "sends a harmless input event so the computer does not lock or sleep"; break;
+                        case CommandKind.Open: details = cd.Value; break;
+                        case CommandKind.Close: details = (cd.ValueIsExpression ? "= " : "") + cd.Match + " " + cd.Value + (cd.All ? " (all)" : "") + (cd.Force ? " (kill)" : ""); break;
+                        case CommandKind.FsCopy: details = cd.Value + " -> " + cd.Target + (cd.Overwrite ? " (overwrite)" : ""); break;
+                        case CommandKind.FsMove: details = cd.Value + " -> " + cd.Target + (cd.Overwrite ? " (overwrite)" : ""); break;
+                        case CommandKind.FsRename: details = cd.Value + " -> " + cd.Target; break;
+                        case CommandKind.FsDelete: details = cd.Value + (cd.Recurse ? " (recurse)" : "") + (cd.Force ? " (force)" : ""); break;
+                        case CommandKind.FsCreate: details = cd.Value; break;
+                        case CommandKind.FsExists: details = cd.Value + " -> " + cd.Id; break;
+                        case CommandKind.FsRead: details = cd.Value + " -> " + cd.Id; break;
+                        case CommandKind.FsWrite: details = (cd.Append ? "append to " : "write ") + cd.Value; break;
+                        case CommandKind.FsList: details = cd.Value + (cd.Recurse ? " (recurse)" : "") + " -> table " + cd.Id; break;
                     }
-                    else
-                    {
-                        details = n.Command.Kind == CommandKind.Active ? "sends a harmless input event so the computer does not lock or sleep" : n.Command.Value;
-                        delay = TimeBox.Format(n.Command.DelayMs);
-                    }
+                    if (cd.Kind != CommandKind.Shutdown) delay = TimeBox.Format(cd.DelayMs);
                     break;
 
                 default:
@@ -3557,6 +3728,11 @@ namespace AutomationTest.App
             {
                 _xlGroup.Items.AddRange(ActionGroups.ExcelGroups.Cast<object>().ToArray());
                 _webGroup.Items.AddRange(ActionGroups.WebGroups.Cast<object>().ToArray());
+                _cmdGroup.Items.AddRange(ActionGroups.CommandGroups.Cast<object>().ToArray());
+                _cmdKind.FormattingEnabled = true;
+                _cmdKind.Format += (s, e) => { if (e.ListItem is CommandKind k) e.Value = ActionGroups.LabelOf(k); };
+                _cmdGroup.SelectedIndex = 0;
+                FillCmdKinds();
                 _xlKind.FormattingEnabled = true;
                 _xlKind.Format += (s, e) => { if (e.ListItem is ExcelKind k) e.Value = ActionGroups.LabelOf(k); };
                 _webKind.FormattingEnabled = true;
@@ -3580,6 +3756,37 @@ namespace AutomationTest.App
                 _xlKind.SelectedIndex = 0;
             }
             finally { _grouping = before; }
+        }
+
+        private void FillCmdKinds()
+        {
+            bool before = _grouping;
+            _grouping = true;
+            try
+            {
+                _cmdKind.Items.Clear();
+                _cmdKind.Items.AddRange(ActionGroups.CommandKindsOf((string)_cmdGroup.SelectedItem).Cast<object>().ToArray());
+                _cmdKind.SelectedIndex = 0;
+            }
+            finally { _grouping = before; }
+        }
+
+        private void SetCommandKind(CommandKind kind)
+        {
+            bool before = _grouping;
+            _grouping = true;
+            try
+            {
+                _cmdGroup.SelectedItem = ActionGroups.GroupOf(kind);
+                _cmdKind.SelectedItem = kind;
+            }
+            finally { _grouping = before; }
+            if (!before) UpdateEditorVisibility();
+        }
+
+        private void SetLabel(Control field, string text)
+        {
+            if (_rowLabels.TryGetValue(field, out var label)) label.Text = text;
         }
 
         private void FillWebKinds()

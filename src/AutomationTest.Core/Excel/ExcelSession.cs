@@ -118,6 +118,13 @@ namespace AutomationTest.Core.Excel
                 case ExcelKind.Save: Save(x); return null;
                 case ExcelKind.CloseWorkbook: CloseWorkbook(x); return null;
                 case ExcelKind.CloseExcel: CloseExcel(x, token); return null;
+                case ExcelKind.SheetCopy: SheetCopy(x, args); return null;
+                case ExcelKind.SheetMove: SheetMove(x); return null;
+                case ExcelKind.SheetVisible: SheetVisible(x); return null;
+                case ExcelKind.HideCells: HideShowCells(x, args, true); return null;
+                case ExcelKind.ShowCells: HideShowCells(x, args, false); return null;
+                case ExcelKind.CutCells: CutCells(x, args); return null;
+                case ExcelKind.ReplaceText: ReplaceText(x, args); return null;
             }
             return null;
         }
@@ -301,6 +308,20 @@ namespace AutomationTest.Core.Excel
             else SheetFor(x).DeleteCells(x.Target, at, count);
         }
 
+        /// <summary>The sheet that gets a copy or a cut: To workbook / To sheet, empty = where the area is (a workbook alone: its active sheet).</summary>
+        private IExcelSheet DestinationSheet(ExcelSettings x, IExcelSheet from)
+        {
+            if (string.IsNullOrWhiteSpace(x.DestWorkbook) && string.IsNullOrWhiteSpace(x.DestSheet)) return from;
+            IExcelWorkbook destWorkbook = string.IsNullOrWhiteSpace(x.DestWorkbook) ? WorkbookFor(x) : _host.FindOpenWorkbook(x.DestWorkbook.Trim(), _host.Token);
+            if (string.IsNullOrWhiteSpace(x.DestSheet)) return destWorkbook.ActiveSheet;
+            int position;
+            try { position = SheetSelector.Choose(destWorkbook.SheetNames, x.DestSheet.Trim(), 0); }
+            catch (ArgumentException ex) { throw new InvalidOperationException("The destination sheet name is not a valid regular expression: " + ex.Message); }
+            if (position == 0)
+                throw new InvalidOperationException("No sheet with a name matching \"" + x.DestSheet + "\" in " + destWorkbook.Name + " (sheets: " + string.Join(", ", destWorkbook.SheetNames) + ").");
+            return destWorkbook.Sheet(position);
+        }
+
         private void CopyCells(ExcelSettings x, ExcelArgs args)
         {
             string source = CellAddress(args, "area to copy");
@@ -308,23 +329,88 @@ namespace AutomationTest.Core.Excel
             string problem = ExcelAddress.Check(destination, "destination cell");
             if (problem != null) throw new InvalidOperationException(problem);
             var from = SheetFor(x);
-            IExcelSheet target = from;
-            if (!string.IsNullOrWhiteSpace(x.DestWorkbook) || !string.IsNullOrWhiteSpace(x.DestSheet))
+            from.Copy(source, DestinationSheet(x, from), destination, x.Paste, x.Transpose);
+        }
+
+        private void CutCells(ExcelSettings x, ExcelArgs args)
+        {
+            string source = CellAddress(args, "area to move");
+            string destination = Format.Display(args.Value).Trim();
+            string problem = ExcelAddress.Check(destination, "destination cell");
+            if (problem != null) throw new InvalidOperationException(problem);
+            var from = SheetFor(x);
+            from.Cut(source, DestinationSheet(x, from), destination);
+        }
+
+        private void ReplaceText(ExcelSettings x, ExcelArgs args)
+        {
+            string what = Format.Display(args.Value);
+            if (what.Length == 0) throw new InvalidOperationException("Replace: enter the text to find.");
+            string area = (args.Cell ?? "").Trim();
+            if (area.Length > 0)
             {
-                // Without a destination workbook the copy stays in the workbook of the area; without a destination sheet it goes to that workbook's active sheet.
-                IExcelWorkbook destWorkbook = string.IsNullOrWhiteSpace(x.DestWorkbook) ? WorkbookFor(x) : _host.FindOpenWorkbook(x.DestWorkbook.Trim(), _host.Token);
-                if (string.IsNullOrWhiteSpace(x.DestSheet)) target = destWorkbook.ActiveSheet;
-                else
-                {
-                    int position;
-                    try { position = SheetSelector.Choose(destWorkbook.SheetNames, x.DestSheet.Trim(), 0); }
-                    catch (ArgumentException ex) { throw new InvalidOperationException("The destination sheet name is not a valid regular expression: " + ex.Message); }
-                    if (position == 0)
-                        throw new InvalidOperationException("No sheet with a name matching \"" + x.DestSheet + "\" in " + destWorkbook.Name + " (sheets: " + string.Join(", ", destWorkbook.SheetNames) + ").");
-                    target = destWorkbook.Sheet(position);
-                }
+                string problem = ExcelAddress.Check(area, "area");
+                if (problem != null) throw new InvalidOperationException(problem);
             }
-            from.Copy(source, target, destination, x.ValuesOnly);
+            SheetFor(x).Replace(area, what, x.ReplaceWith ?? "", x.MatchCase, x.WholeCell);
+        }
+
+        /// <summary>The workbook a sheet copy or move goes to (empty = the sheet's own) and where in it.</summary>
+        private IExcelWorkbook SheetTargetWorkbook(ExcelSettings x, IExcelWorkbook own)
+        {
+            return string.IsNullOrWhiteSpace(x.DestWorkbook) ? own : _host.FindOpenWorkbook(x.DestWorkbook.Trim(), _host.Token);
+        }
+
+        private static bool SameWorkbook(IExcelWorkbook a, IExcelWorkbook b)
+        {
+            return string.Equals(a.FullPath, b.FullPath, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private void SheetCopy(ExcelSettings x, ExcelArgs args)
+        {
+            var wb = WorkbookFor(x);
+            var sheet = FindSheet(x, true);
+            var target = SheetTargetWorkbook(x, wb);
+            string name = Format.Display(args.Value).Trim();
+            if (name.Length > 0)
+            {
+                CheckSheetName(name);
+                foreach (string existing in target.SheetNames)
+                    if (string.Equals(existing, name, StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidOperationException("The workbook " + target.Name + " has a sheet named \"" + existing + "\" already.");
+            }
+            var copy = sheet.CopySheet(target, x.Position, x.SelectNew);
+            if (name.Length > 0) copy.Rename(name);
+            if (x.SelectNew && SameWorkbook(target, CurrentWorkbook(_host.Token))) _sheet = copy;
+        }
+
+        private void SheetMove(ExcelSettings x)
+        {
+            var wb = WorkbookFor(x);
+            var sheet = FindSheet(x, true);
+            var target = SheetTargetWorkbook(x, wb);
+            if (!SameWorkbook(target, wb) && wb.SheetNames.Count <= 1)
+                throw new InvalidOperationException("A workbook needs at least one sheet: \"" + sheet.Name + "\" is the only one in " + wb.Name + ", so it cannot be moved out.");
+            sheet.MoveSheet(target, x.Position, x.SelectNew);
+            _sheet = null; // the sheet in use may be the one that moved
+        }
+
+        private void SheetVisible(ExcelSettings x)
+        {
+            var wb = WorkbookFor(x);
+            var sheet = FindSheet(x, true);
+            if (x.Visibility != ExcelVisibility.Visible && wb.VisibleSheetCount <= 1)
+                throw new InvalidOperationException("A workbook needs at least one visible sheet: \"" + sheet.Name + "\" is the only one shown in " + wb.Name + ", so it cannot be hidden.");
+            sheet.SetVisibility(x.Visibility);
+            _sheet = null; // a hidden sheet cannot stay the sheet in use
+        }
+
+        private void HideShowCells(ExcelSettings x, ExcelArgs args, bool hidden)
+        {
+            string at = CellAddress(args, "cell (its row or column is used)");
+            if (x.Target == ExcelTarget.Rows ? ExcelAddress.RowOf(at) <= 0 : ExcelAddress.ColumnOf(at) == null)
+                throw new InvalidOperationException("\"" + at + "\" has no " + (x.Target == ExcelTarget.Rows ? "row number" : "column letters") + ": use a cell such as B5.");
+            SheetFor(x).SetHidden(x.Target, at, Math.Max(1, x.Count), hidden);
         }
 
         private void FormatCells(ExcelSettings x, ExcelArgs args)

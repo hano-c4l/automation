@@ -201,7 +201,8 @@ namespace AutomationTest.Core.Runner
         /// <summary>The Excel actions whose Value field can be an expression.</summary>
         public static bool ExcelValueKind(ExcelKind kind)
         {
-            return kind == ExcelKind.SetCell || kind == ExcelKind.Find || kind == ExcelKind.Evaluate || kind == ExcelKind.RenameSheet || kind == ExcelKind.Copy || kind == ExcelKind.RunMacro;
+            return kind == ExcelKind.SetCell || kind == ExcelKind.Find || kind == ExcelKind.Evaluate || kind == ExcelKind.RenameSheet || kind == ExcelKind.Copy || kind == ExcelKind.RunMacro
+                || kind == ExcelKind.SheetCopy || kind == ExcelKind.CutCells || kind == ExcelKind.ReplaceText;
         }
 
         private void ExecuteExcel(ActionNode node, CancellationToken token)
@@ -258,33 +259,79 @@ namespace AutomationTest.Core.Runner
 
         private sealed class ShutdownIssuedException : Exception { }
 
+        /// <summary>The Utilities kinds that read or list something into a variable (Id).</summary>
+        public static bool CommandKeeps(CommandKind kind)
+        {
+            return kind == CommandKind.FsExists || kind == CommandKind.FsRead || kind == CommandKind.FsList;
+        }
+
+        /// <summary>The Utilities kinds that work on files and folders.</summary>
+        public static bool CommandIsFileSystem(CommandKind kind)
+        {
+            return kind >= CommandKind.FsCopy && kind <= CommandKind.FsList;
+        }
+
         private void ExecuteCommand(ActionNode node, CancellationToken token)
         {
             var c = node.Command;
-            if (c.Kind == CommandKind.Shutdown)
+            switch (c.Kind)
             {
-                Wait(c.TimeMs, token); // stoppable: the Stop key cancels the countdown
-                token.ThrowIfCancellationRequested();
-                Shutdown.Shutdown(c.Force);
-                throw new ShutdownIssuedException();
-            }
-            if (c.Kind == CommandKind.Active)
-            {
-                KeepAwake.Poke(_mouse);
-                Wait(c.DelayMs, token);
-                return;
-            }
-            if (string.IsNullOrWhiteSpace(c.Value))
-                throw new InvalidOperationException("Open: no path is set.");
-            try
-            {
-                Process.Start(new ProcessStartInfo(c.Value.Trim()) { UseShellExecute = true });
-            }
-            catch (Exception ex) when (ex is System.ComponentModel.Win32Exception || ex is InvalidOperationException)
-            {
-                throw new InvalidOperationException("Cannot open \"" + c.Value.Trim() + "\": " + ex.Message);
+                case CommandKind.Shutdown:
+                    Wait(c.TimeMs, token); // stoppable: the Stop key cancels the countdown
+                    token.ThrowIfCancellationRequested();
+                    Shutdown.Shutdown(c.Force);
+                    throw new ShutdownIssuedException();
+
+                case CommandKind.Active:
+                    KeepAwake.Poke(_mouse);
+                    break;
+
+                case CommandKind.Open:
+                    if (string.IsNullOrWhiteSpace(c.Value))
+                        throw new InvalidOperationException("Program Open: no path is set.");
+                    try
+                    {
+                        Process.Start(new ProcessStartInfo(c.Value.Trim()) { UseShellExecute = true });
+                    }
+                    catch (Exception ex) when (ex is System.ComponentModel.Win32Exception || ex is InvalidOperationException)
+                    {
+                        throw new InvalidOperationException("Cannot open \"" + c.Value.Trim() + "\": " + ex.Message);
+                    }
+                    break;
+
+                case CommandKind.Close:
+                    int closed = ProgramActions.Close(c.Match, c.ValueIsExpression ? EvalString(c.Value) : c.Value, c.All, c.Force, c.TimeMs, token);
+                    if (closed == 0) Message?.Invoke("Program Close: no program matches \"" + c.Value.Trim() + "\" (" + c.Match + ").");
+                    break;
+
+                default:
+                    if (!CommandIsFileSystem(c.Kind)) throw new InvalidOperationException("Utilities: the action " + c.Kind + " is not known to this version of the program.");
+                    ExecuteFileSystem(c);
+                    break;
             }
             Wait(c.DelayMs, token);
+        }
+
+        private void ExecuteFileSystem(CommandSettings c)
+        {
+            string id = (c.Id ?? "").Trim();
+            if (CommandKeeps(c.Kind) && !Expression.IsValidId(id)) throw new InvalidOperationException("File/Folder: \"" + c.Id + "\" is not a valid ID.");
+            string path = c.ValueIsExpression ? EvalString(c.Value) : c.Value;
+            string target = c.TargetIsExpression ? EvalString(c.Target) : c.Target;
+            switch (c.Kind)
+            {
+                case CommandKind.FsCopy: FileActions.Copy(path, target, c.Overwrite); break;
+                case CommandKind.FsMove: FileActions.Move(path, target, c.Overwrite); break;
+                case CommandKind.FsRename: FileActions.Rename(path, target); break;
+                case CommandKind.FsDelete:
+                    if (!FileActions.Delete(path, c.Recurse, c.Force)) Message?.Invoke("File/Folder Delete: nothing at \"" + path.Trim() + "\".");
+                    break;
+                case CommandKind.FsCreate: FileActions.CreateFolder(path); break;
+                case CommandKind.FsExists: _vars.Set(id, FileActions.Exists(path)); break;
+                case CommandKind.FsRead: _vars.Set(id, FileActions.Read(path)); break;
+                case CommandKind.FsWrite: FileActions.Write(path, target, c.Append); break;
+                case CommandKind.FsList: _vars.Set(id, FileActions.List(path, c.Recurse)); break;
+            }
         }
 
         /// <summary>Releases keys left pressed by a KeyDown action when the run stops early.</summary>
