@@ -437,14 +437,18 @@ All        both
 Cell is the area, for example A2:D100, or a whole column B:B.");
 
         public static readonly HelpTopic ExcelCopy = new HelpTopic("Copy",
-@"Copies the area (Cell) to the destination (Value, its top-left cell)
-on the same sheet.
+@"Copies the area (Cell) to the destination (Value, its top-left cell).
+To workbook / To sheet (regular expressions on the names, not case
+sensitive) say where the copy goes; empty means the same workbook /
+the same sheet as the area (a workbook given without a sheet: its
+active sheet).
 
 Values only OFF  values, formulas and formatting
 Values only ON   just the values (formulas become their results)
 
-To bring cells to another sheet or workbook as values, use Get Range
-and Set Range.");
+Formatting can only be copied inside one Excel window; between
+workbooks that are open in separate Excel windows turn Values only
+on (or use Get Range and Set Range).");
 
         public static readonly HelpTopic ExcelFormat = new HelpTopic("Format",
 @"Changes only the fields that are filled in; empty fields and Leave
@@ -486,6 +490,18 @@ WARNING: a macro can do anything on this computer. Run only macros
 you trust, and do not run a script from someone else that uses
 this action without reading it. The workbook has to allow macros
 (Workbook, Allow macros), and your Trust Center has to agree.");
+
+        public static readonly HelpTopic ExcelUseTarget = new HelpTopic("In workbook / In sheet",
+@"Optional. Make this action work in another open workbook and/or
+sheet, for this action only: the workbook and sheet that the
+following actions use do not change.
+
+Both are regular expressions on the names, not case sensitive.
+Empty = the workbook / sheet in use (set by Workbook and Select
+Sheet, otherwise the active ones). A workbook given without a sheet
+uses that workbook's active sheet.
+
+The workbook has to be open in Excel already; use Workbook to open it.");
 
         public static readonly HelpTopic ExcelSheet = new HelpTopic("Sheet",
 @"Select Sheet, Delete Sheet: a regular expression for the name of

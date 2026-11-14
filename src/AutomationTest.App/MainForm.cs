@@ -146,6 +146,10 @@ namespace AutomationTest.App
         private readonly ToggleSwitch _xlReadOnly = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
         private readonly ToggleSwitch _xlVisible = new ToggleSwitch { Checked = true, Size = new Size(40, 21) };
         private readonly HintTextBox _xlSheetName = new HintTextBox { Width = 200, Placeholder = "Sheet name (regular expression)" };
+        private readonly HintTextBox _xlUseWorkbook = new HintTextBox { Width = 200, Placeholder = "Workbook (regular expr.; empty = in use)" };
+        private readonly HintTextBox _xlUseSheet = new HintTextBox { Width = 200, Placeholder = "Sheet (regular expr.; empty = in use)" };
+        private readonly HintTextBox _xlDestWorkbook = new HintTextBox { Width = 200, Placeholder = "Workbook (regular expr.; empty = same)" };
+        private readonly HintTextBox _xlDestSheet = new HintTextBox { Width = 200, Placeholder = "Sheet (regular expr.; empty = active)" };
         private readonly NumberBox _xlIndex = new NumberBox { Width = 200, Minimum = 0, Maximum = 100000, Placeholder = "Index (1 = first)" };
         private readonly ComboBox _xlPosition = MakeCombo(typeof(ExcelSheetPosition));
         private readonly ToggleSwitch _xlSelectNew = new ToggleSwitch { Checked = true, Size = new Size(40, 21) };
@@ -468,11 +472,15 @@ namespace AutomationTest.App
             AddRow(xlTable, "Target", _xlTarget, Help.ExcelInsert);
             AddRow(xlTable, "Count", _xlCount, Help.ExcelInsert);
             AddRow(xlTable, "Clear", _xlClearWhat, Help.ExcelClear);
+            AddRow(xlTable, "In workbook", _xlUseWorkbook, Help.ExcelUseTarget);
+            AddRow(xlTable, "In sheet", _xlUseSheet, Help.ExcelUseTarget);
             AddRow(xlTable, "Cell", _xlCell, Help.ExcelCell, null, _xlPick);
             AddRow(xlTable, "Expr. (cell)", _xlCellExpr, Help.ExpressionText);
             AddRow(xlTable, "Write as", _xlAs, Help.ExcelSetAs);
             AddRow(xlTable, "Value", _xlValue, Help.ExcelValue);
             AddRow(xlTable, "Expr. (value)", _xlValueExpr, Help.ExpressionText);
+            AddRow(xlTable, "To workbook", _xlDestWorkbook, Help.ExcelCopy);
+            AddRow(xlTable, "To sheet", _xlDestSheet, Help.ExcelCopy);
             AddRow(xlTable, "Values only", _xlValuesOnly, Help.ExcelCopy);
             AddRow(xlTable, "Num. format", _xlNumberFormat, Help.ExcelFormat);
             AddRow(xlTable, "Bold", _xlBold, Help.ExcelFormat);
@@ -716,6 +724,11 @@ namespace AutomationTest.App
             SetRowVisible(_xlTarget, insertDelete);
             SetRowVisible(_xlCount, insertDelete);
             SetRowVisible(_xlClearWhat, xl == ExcelKind.Clear);
+            bool xlUse = xlCell || xl == ExcelKind.Evaluate || xl == ExcelKind.GetInfo || (xl == ExcelKind.Filter && _xlClearFilter.Checked);
+            SetRowVisible(_xlUseWorkbook, xlUse && !(xl == ExcelKind.GetInfo && xlInfo == ExcelInfoKind.Selection));
+            SetRowVisible(_xlUseSheet, xlUse && !XlWorkbookInfoOnly(xl, xlInfo));
+            SetRowVisible(_xlDestWorkbook, xl == ExcelKind.Copy);
+            SetRowVisible(_xlDestSheet, xl == ExcelKind.Copy);
             SetRowVisible(_xlCell, xlCell);
             SetRowVisible(_xlPick, xlCell);
             _xlCell.Placeholder = xl == ExcelKind.GetRange ? "Area to read (A1:D20)" : xl == ExcelKind.SetRange ? "Top-left cell (A1)"
@@ -912,6 +925,10 @@ namespace AutomationTest.App
                         Visible = _xlVisible.Checked,
                         SheetName = _xlSheetName.Text.Trim(),
                         Index = (int)_xlIndex.Value,
+                        UseWorkbook = XlUses(xk) && !(xk == ExcelKind.GetInfo && (ExcelInfoKind)_xlInfo.SelectedItem == ExcelInfoKind.Selection) ? _xlUseWorkbook.Text.Trim() : "",
+                        UseSheet = XlUses(xk) && !XlWorkbookInfoOnly(xk, (ExcelInfoKind)_xlInfo.SelectedItem) ? _xlUseSheet.Text.Trim() : "",
+                        DestWorkbook = xk == ExcelKind.Copy ? _xlDestWorkbook.Text.Trim() : "",
+                        DestSheet = xk == ExcelKind.Copy ? _xlDestSheet.Text.Trim() : "",
                         Position = (ExcelSheetPosition)_xlPosition.SelectedItem,
                         SelectNew = _xlSelectNew.Checked,
                         Cell = _xlCell.Text.Trim(),
@@ -1129,6 +1146,10 @@ namespace AutomationTest.App
                     _xlVisible.Checked = xs.Visible;
                     _xlSheetName.Text = xs.SheetName;
                     _xlIndex.Text = xs.Index > 0 ? xs.Index.ToString() : "";
+                    _xlUseWorkbook.Text = xs.UseWorkbook;
+                    _xlUseSheet.Text = xs.UseSheet;
+                    _xlDestWorkbook.Text = xs.DestWorkbook;
+                    _xlDestSheet.Text = xs.DestSheet;
                     _xlPosition.SelectedItem = xs.Position;
                     _xlSelectNew.Checked = xs.SelectNew;
                     _xlCell.Text = xs.Cell;
@@ -1397,6 +1418,25 @@ namespace AutomationTest.App
 
         /// <summary>Returns a message if the action could never run (for example a key that is not set), otherwise null.</summary>
         /// <summary>A message when an Excel action could never run (a bad address or pattern, a missing field), otherwise null.</summary>
+        /// <summary>The Excel actions that can work in another workbook or sheet than the one in use (the ones that act on cells).</summary>
+        private static bool XlUses(ExcelKind kind)
+        {
+            switch (kind)
+            {
+                case ExcelKind.GetCell: case ExcelKind.SetCell: case ExcelKind.GetRange: case ExcelKind.SetRange: case ExcelKind.Find:
+                case ExcelKind.GetInfo: case ExcelKind.Evaluate: case ExcelKind.Select: case ExcelKind.InsertCells: case ExcelKind.DeleteCells:
+                case ExcelKind.Clear: case ExcelKind.Copy: case ExcelKind.Format: case ExcelKind.Sort: case ExcelKind.Filter:
+                    return true;
+            }
+            return false;
+        }
+
+        /// <summary>Get Info kinds that read the workbook (not a sheet), where In sheet means nothing.</summary>
+        private static bool XlWorkbookInfoOnly(ExcelKind kind, ExcelInfoKind info)
+        {
+            return kind == ExcelKind.GetInfo && (info == ExcelInfoKind.SheetCount || info == ExcelInfoKind.WorkbookName || info == ExcelInfoKind.WorkbookPath || info == ExcelInfoKind.Selection);
+        }
+
         private static string ValidateExcel(ExcelSettings x)
         {
             string problem;
@@ -1411,6 +1451,8 @@ namespace AutomationTest.App
                 if (expression) { Expression.CheckSyntax(text); return null; }
                 return AutomationTest.Core.Excel.ExcelAddress.Check(text, "cell");
             };
+            foreach (var pattern in new[] { x.UseWorkbook, x.UseSheet, x.DestWorkbook, x.DestSheet })
+                if ((problem = badPattern(pattern)) != null) return problem;
             switch (x.Kind)
             {
                 case ExcelKind.Workbook:
@@ -2143,6 +2185,10 @@ namespace AutomationTest.App
                         case ExcelKind.CloseWorkbook: details = "close the workbook" + (xd.SaveChanges ? " (save changes)" : " (drop changes)"); break;
                         case ExcelKind.CloseExcel: details = "quit Excel" + (xd.SaveChanges ? " (save changes)" : " (drop changes)"); break;
                     }
+                    if (xd.UseWorkbook.Length > 0 || xd.UseSheet.Length > 0)
+                        details = "[" + xd.UseWorkbook + "]" + xd.UseSheet + " " + details;
+                    if (xd.Kind == ExcelKind.Copy && (xd.DestWorkbook.Length > 0 || xd.DestSheet.Length > 0))
+                        details += " to [" + xd.DestWorkbook + "]" + xd.DestSheet;
                     if (xd.Kind == ExcelKind.Workbook || xd.Kind == ExcelKind.CloseExcel) time = TimeBox.Format(xd.TimeMs);
                     delay = TimeBox.Format(xd.DelayMs);
                     break;
