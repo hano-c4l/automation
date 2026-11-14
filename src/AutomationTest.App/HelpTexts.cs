@@ -313,8 +313,187 @@ Close Browser closes ALL windows of the browser, also the ones you
 opened yourself; unsaved forms in them are lost.
 
 Each browser needs the Automation Test extension (Load unpacked:
-the BrowserExtension folder) and only one profile of a browser can
+the AutomationWebHelper folder) and only one profile of a browser can
 be connected at a time.");
+
+        public static readonly HelpTopic ExcelId = new HelpTopic("ID (Excel)",
+@"The variable that receives the result. Use it later as {id} in
+expressions (Variable, Condition, Set Cell, Loop...).
+
+Get Cell, Get Info, Evaluate  the value, as a number, date, true/false
+                              or text
+Find                          Found, Row, Column and Address:
+                              {id.Found}, {id.Row}, {id.Column}, {id.Address}
+
+Letters, digits and _, not starting with a digit.");
+
+        public static readonly HelpTopic ExcelWorkbook = new HelpTopic("Workbook",
+@"Makes a workbook the one the actions use. The actions inside this
+action work in that workbook.
+
+Path    the file. If it is open in Excel already (in any Excel
+        window) the action switches to it; if not, it is opened.
+        Excel is started first when it is not running. Empty:
+        a new workbook is made.
+        Excel cannot have two workbooks with the same file name
+        open, even from different folders: that is reported.
+
+Without a Workbook action the workbook that is active in Excel is
+used. Macros of a file opened here do not run.");
+
+        public static readonly HelpTopic ExcelWorkbookName = new HelpTopic("Name (Workbook)",
+@"Used when Path is empty: a regular expression for the name of a
+workbook that is open already, not case sensitive. It reaches
+workbooks that have no file yet (Book1) and workbooks you opened
+yourself:
+
+^Book1$      the new workbook Book1
+sales        any workbook with sales in its name");
+
+        public static readonly HelpTopic ExcelReadOnly = new HelpTopic("Read only",
+@"Opens the file read-only, so it cannot be changed or locked
+for others. Has no effect when the file is open already.");
+
+        public static readonly HelpTopic ExcelVisible = new HelpTopic("Visible",
+@"Only matters when this action has to start Excel.
+
+ON    Excel is shown and stays open when the script ends
+OFF   Excel runs hidden and is quit when the script ends
+
+An Excel that was running before is never hidden or quit unless
+you use Close Excel.");
+
+        public static readonly HelpTopic ExcelSheet = new HelpTopic("Sheet",
+@"Select Sheet, Delete Sheet: a regular expression for the name of
+the sheet, not case sensitive (empty: only the Index counts).
+Create Sheet: the name of the new sheet (empty: Excel names it).
+
+Sheet names have at most 31 characters and none of : \ / ? * [ ].
+
+Select Sheet makes the sheet the current one; the actions inside it
+work on that sheet. Without it the sheet that is active in the
+workbook is used.");
+
+        public static readonly HelpTopic ExcelIndex = new HelpTopic("Index (Excel)",
+@"The position of the sheet, 1 for the first one. With a sheet name
+it chooses among the sheets that match. A number beyond the last
+one chooses the last. Empty counts as 1 (Select Sheet); for Delete
+Sheet empty means the current sheet.");
+
+        public static readonly HelpTopic ExcelPosition = new HelpTopic("Position",
+@"Where the new sheet goes: at the End, at the Start, or before /
+after the current sheet.");
+
+        public static readonly HelpTopic ExcelSelectNew = new HelpTopic("Select it",
+@"ON    the new sheet becomes the current one
+OFF   the current sheet stays the current one");
+
+        public static readonly HelpTopic ExcelCell = new HelpTopic("Cell",
+@"Get Cell, Set Cell: one cell, for example B2 or $B$2, or a name
+defined in the workbook.
+Find: the area to search, for example A1:D100 (empty: the whole
+sheet).
+Get Info (Last Row, Last Column): any cell in the column or row to
+measure; B7 or B:B for a column, 7:7 for a row.
+
+Pick: select the cell in Excel and press the Pick key.
+
+With Expr. (cell) ON the field is an expression that gives the
+address, so a loop can walk down a column:
+
+    ""B"" + {row}        B2, B3, B4... while the counter row counts");
+
+        public static readonly HelpTopic ExcelGet = new HelpTopic("Get (Get Cell)",
+@"Value         the value, typed: a number, a date, true/false or
+              text. An error cell gives its text (#N/A, #DIV/0!);
+              an empty cell gives empty text.
+Text          the text as Excel shows it, with the number format
+              (also when the column is too narrow and Excel shows ####)
+Formula       the formula, for example =A1*2 (a plain value as is)
+NumberFormat  for example General, 0.00, dd/mm/yyyy, @ (text)
+IsEmpty       true when the cell has nothing in it");
+
+        public static readonly HelpTopic ExcelInfo = new HelpTopic("Info (Get Info)",
+@"LastRow        the last row that has something in the column
+LastColumn     the last column that has something in the row
+               (0 when the column or row is empty)
+UsedRange      for example A1:D20
+SheetCount     how many sheets the workbook has
+SheetName      the name of the current sheet
+WorkbookName   for example report.xlsx
+WorkbookPath   the full path (the name when it has no file yet)
+Selection      the address that is selected in Excel now");
+
+        public static readonly HelpTopic ExcelSetAs = new HelpTopic("Write as",
+@"Auto     as the value is: a number, date or true/false from an
+         expression stays that type. Text is read like typed
+         into the cell: 007 becomes the number 7, 1/2 a date,
+         and text that starts with = is a formula.
+Text     always text: 007 stays 007 (the cell is set to the
+         Text format)
+Formula  the value is a formula, with English function names and
+         commas, as in the formula bar: SUM(A1,B1)");
+
+        public static readonly HelpTopic ExcelValue = new HelpTopic("Value (Excel)",
+@"Set Cell   what to write.
+Find       the text to look for.
+Evaluate   an Excel formula to calculate, for example
+           SUM(A1:A10)   COUNTIF(B:B,""x"")   TODAY()
+           (up to 255 characters; the sheet that is current is
+           the one the formula is calculated on).
+
+With Expr. (value) ON the field is an expression, so a variable
+or a calculation can be used; a number stays a number.");
+
+        public static readonly HelpTopic ExcelFind = new HelpTopic("Find (Excel)",
+@"Looks for the text in the cells (their values, as shown). The first
+match in reading order (row by row) is used. The actions inside run
+when something is found.
+
+Match case   upper and lower case differ
+Whole cell   the whole cell must equal the text; otherwise a part
+             of the cell is enough");
+
+        public static readonly HelpTopic ExcelSave = new HelpTopic("Save",
+@"Save As OFF  saves the workbook to its own file (a workbook that
+              has no file yet needs Save As).
+Save As ON    saves under the New file, which also becomes the
+              file of the workbook. The extension chooses the
+              format: .xlsx .xlsm .xlsb .xls, .csv (UTF-8, only
+              the current sheet) or .pdf (a copy; the workbook
+              keeps its file). An existing file is replaced
+              without asking.");
+
+        public static readonly HelpTopic ExcelSaveChanges = new HelpTopic("Save changes",
+@"Close Workbook   ON saves the workbook first (it needs a file);
+                 OFF drops the changes.
+Close Excel      closes the Excel that holds the current workbook.
+                 ON saves the workbooks that have a file; OFF drops
+                 all changes. A workbook that has no file yet is
+                 never saved by this (use Save As first).
+                 This closes Excel with everything open in it.");
+
+        public static readonly HelpTopic ExcelTimeout = new HelpTopic("Timeout (Excel)",
+@"How long to wait for Excel: to start, to open a file, and while
+Excel is busy (a cell is being edited, a dialog is open). After
+that the action fails.
+
+Can be given in milliseconds, seconds, minutes or hours.");
+
+        public static readonly HelpTopic LoopForId = new HelpTopic("ID (Loop For)",
+@"The variable that holds the counter. Use it in the actions inside
+the loop as {id}, for example in a cell address.");
+
+        public static readonly HelpTopic LoopFor = new HelpTopic("From, To, Step (Loop For)",
+@"Counts from From to To (both included) in steps of Step, and runs
+the actions inside once for each value. Each can be a number or an
+expression:
+
+From 2   To {last}   Step 1        rows 2 to the last row
+From 10  To 1        Step -1       counting down
+
+Step cannot be 0. When the numbers do not lead from From to To
+(From 5, To 1, Step 1) the actions inside do not run.");
 
         public static readonly HelpTopic WebUrl = new HelpTopic("URL (New Tab)",
 @"The address to open in a new tab. https:// is added when missing.

@@ -17,7 +17,9 @@ namespace AutomationTest.Core.Model
         Mouse,
         Keyboard,
         /// <summary>Drives a web browser through the browser extension.</summary>
-        Web
+        Web,
+        /// <summary>Drives Microsoft Excel (workbooks, sheets, cells).</summary>
+        Excel
     }
 
     public enum WebKind
@@ -135,6 +137,69 @@ namespace AutomationTest.Core.Model
         /// <summary>Repeat until the given time has elapsed since the loop started.</summary>
         Duration,
         /// <summary>Repeat until a local date and time is reached.</summary>
-        Until
+        Until,
+        /// <summary>Count from a number to another with a step; the counter is a variable (rows of a sheet, for example).</summary>
+        For
+    }
+
+    public enum ExcelKind
+    {
+        /// <summary>Switches to a workbook (opening the file, or making a new workbook, and starting Excel, when needed). Actions inside it work in that workbook.</summary>
+        Workbook,
+        /// <summary>Makes a sheet the current one. Actions inside it work on that sheet.</summary>
+        SelectSheet,
+        CreateSheet,
+        DeleteSheet,
+        GetCell,
+        SetCell,
+        /// <summary>Looks for text; the actions inside run when it is found.</summary>
+        Find,
+        GetInfo,
+        /// <summary>Calculates an Excel formula.</summary>
+        Evaluate,
+        Save,
+        CloseWorkbook,
+        CloseExcel
+    }
+
+    public enum ExcelGetKind
+    {
+        /// <summary>The value, typed: a number, a date, true/false or text.</summary>
+        Value,
+        /// <summary>The text as Excel shows it (with the number format).</summary>
+        Text,
+        Formula,
+        NumberFormat,
+        /// <summary>true when the cell has nothing in it.</summary>
+        IsEmpty
+    }
+
+    public enum ExcelInfoKind
+    {
+        LastRow,
+        LastColumn,
+        UsedRange,
+        SheetCount,
+        SheetName,
+        WorkbookName,
+        WorkbookPath,
+        Selection
+    }
+
+    public enum ExcelSetKind
+    {
+        /// <summary>As the value is: numbers, dates and true/false are written as such, text like typed into the cell.</summary>
+        Auto,
+        /// <summary>Always as text ("007" stays 007).</summary>
+        Text,
+        Formula
+    }
+
+    public enum ExcelSheetPosition
+    {
+        End,
+        Start,
+        BeforeCurrent,
+        AfterCurrent
     }
 }

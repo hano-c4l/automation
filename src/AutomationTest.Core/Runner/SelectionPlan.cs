@@ -85,8 +85,28 @@ namespace AutomationTest.Core.Runner
             foreach (var child in node.Children) Walk(child, false, defined, needed, needs);
         }
 
+        private static IEnumerable<string> ReadsOf(params string[] texts)
+        {
+            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string text in texts)
+            {
+                if (string.IsNullOrWhiteSpace(text)) continue;
+                try { foreach (string name in Expression.ReferencedVariables(text, false)) names.Add(name); }
+                catch (ExpressionException) { } // a broken expression is reported when it runs
+            }
+            return names;
+        }
+
         private static IEnumerable<string> Reads(ActionNode node)
         {
+            if (node.Category == ActionCategory.Excel)
+            {
+                var x = node.Excel;
+                bool valueKind = x.Kind == ExcelKind.SetCell || x.Kind == ExcelKind.Find || x.Kind == ExcelKind.Evaluate;
+                return ReadsOf(x.CellIsExpression ? x.Cell : null, valueKind && x.ValueIsExpression ? x.Value : null);
+            }
+            if (node.IsKind(ControlKind.Loop) && node.Loop.Mode == LoopType.For) return ReadsOf(node.Loop.ForFrom, node.Loop.ForTo, node.Loop.ForStep);
+
             string text = null;
             bool list = false;
             switch (node.Category)
@@ -113,6 +133,14 @@ namespace AutomationTest.Core.Runner
 
         private static string Defines(ActionNode node)
         {
+            if (node.Category == ActionCategory.Excel)
+            {
+                var x = node.Excel;
+                bool keeps = x.Kind == ExcelKind.GetCell || x.Kind == ExcelKind.GetInfo || x.Kind == ExcelKind.Find || x.Kind == ExcelKind.Evaluate;
+                return keeps && !string.IsNullOrWhiteSpace(x.Id) ? x.Id.Trim() : null;
+            }
+            if (node.IsKind(ControlKind.Loop) && node.Loop.Mode == LoopType.For)
+                return string.IsNullOrWhiteSpace(node.Loop.ForId) ? null : node.Loop.ForId.Trim();
             if (node.Category == ActionCategory.Web)
                 return (node.Web.Kind == WebKind.GetText || node.Web.Kind == WebKind.Script) && !string.IsNullOrWhiteSpace(node.Web.Id) ? node.Web.Id.Trim() : null;
             if (node.Category != ActionCategory.Control) return null;

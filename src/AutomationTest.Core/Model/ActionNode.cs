@@ -320,6 +320,14 @@ namespace AutomationTest.Core.Model
         /// <summary>Mode Until: local date and time as "yyyy-MM-ddTHH:mm:ss"; stored as text to avoid the JSON date format.</summary>
         [DataMember(Order = 4)] public string Until { get; set; }
 
+        /// <summary>Mode For: the variable that holds the counter.</summary>
+        [DataMember(Order = 5)] public string ForId { get; set; } = "";
+
+        /// <summary>Mode For: first value, last value and step; numbers or expressions.</summary>
+        [DataMember(Order = 6)] public string ForFrom { get; set; } = "1";
+        [DataMember(Order = 7)] public string ForTo { get; set; } = "10";
+        [DataMember(Order = 8)] public string ForStep { get; set; } = "1";
+
         [DataMember(Name = "Mode", Order = 1)]
         private string ModeName
         {
@@ -332,6 +340,10 @@ namespace AutomationTest.Core.Model
         {
             Count = 1;
             DurationMs = 10000;
+            ForId = "";
+            ForFrom = "1";
+            ForTo = "10";
+            ForStep = "1";
         }
 
         public DateTime? GetUntil()
@@ -354,6 +366,10 @@ namespace AutomationTest.Core.Model
         {
             if (Count < 0) Count = 0;
             if (DurationMs < 0) DurationMs = 0;
+            if (ForId == null) ForId = "";
+            if (string.IsNullOrWhiteSpace(ForFrom)) ForFrom = "1";
+            if (string.IsNullOrWhiteSpace(ForTo)) ForTo = "10";
+            if (string.IsNullOrWhiteSpace(ForStep)) ForStep = "1";
         }
     }
 
@@ -621,6 +637,7 @@ namespace AutomationTest.Core.Model
         [DataMember(Order = 10, EmitDefaultValue = false)] public VariableSettings Variable { get; set; }
         [DataMember(Order = 11, EmitDefaultValue = false)] public CaseSettings Case { get; set; }
         [DataMember(Order = 12, EmitDefaultValue = false)] public WebSettings Web { get; set; }
+        [DataMember(Order = 13, EmitDefaultValue = false)] public ExcelSettings Excel { get; set; }
 
         public List<ActionNode> Children { get; set; } = new List<ActionNode>();
 
@@ -629,6 +646,7 @@ namespace AutomationTest.Core.Model
             get
             {
                 if (Category == ActionCategory.Web) return Web != null && (Web.Kind == WebKind.NewTab || Web.Kind == WebKind.SwitchTab);
+                if (Category == ActionCategory.Excel) return Excel != null && (Excel.Kind == ExcelKind.Workbook || Excel.Kind == ExcelKind.SelectSheet || Excel.Kind == ExcelKind.Find);
                 return Category == ActionCategory.Control && Control != ControlKind.Variable;
             }
         }
@@ -651,6 +669,11 @@ namespace AutomationTest.Core.Model
         public static ActionNode NewCommand(CommandSettings settings)
         {
             return new ActionNode { Category = ActionCategory.Utilities, Command = settings ?? new CommandSettings() };
+        }
+
+        public static ActionNode NewExcel(ExcelSettings settings)
+        {
+            return new ActionNode { Category = ActionCategory.Excel, Excel = settings ?? new ExcelSettings() };
         }
 
         public static ActionNode NewWeb(WebSettings settings)
@@ -739,6 +762,7 @@ namespace AutomationTest.Core.Model
             copy.Keyboard = Keyboard?.Clone();
             copy.Command = Command?.Clone();
             copy.Web = Web?.Clone();
+            copy.Excel = Excel?.Clone();
             copy.Loop = Loop?.Clone();
             copy.Wait = Wait?.Clone();
             copy.Image = Image?.Clone();
@@ -773,13 +797,14 @@ namespace AutomationTest.Core.Model
             var keyboard = Category == ActionCategory.Keyboard ? (Keyboard ?? new KeyboardSettings()) : null;
             var command = Category == ActionCategory.Utilities ? (Command ?? new CommandSettings()) : null;
             var web = Category == ActionCategory.Web ? (Web ?? new WebSettings()) : null;
+            var excel = Category == ActionCategory.Excel ? (Excel ?? new ExcelSettings()) : null;
             var loop = Category == ActionCategory.Control && Control == ControlKind.Loop ? (Loop ?? new LoopSettings()) : null;
             var wait = Category == ActionCategory.Control && Control == ControlKind.Wait ? (Wait ?? new WaitSettings()) : null;
             var image = Category == ActionCategory.Control && Control == ControlKind.Image ? (Image ?? new ImageSettings()) : null;
             var variable = Category == ActionCategory.Control && Control == ControlKind.Variable ? (Variable ?? new VariableSettings()) : null;
             var caseSettings = Category == ActionCategory.Control && Control == ControlKind.Case ? (Case ?? new CaseSettings()) : null;
-            Mouse = mouse; Keyboard = keyboard; Command = command; Web = web; Loop = loop; Wait = wait; Image = image; Variable = variable; Case = caseSettings;
-            mouse?.Normalize(); keyboard?.Normalize(); command?.Normalize(); web?.Normalize(); loop?.Normalize(); wait?.Normalize(); image?.Normalize();
+            Mouse = mouse; Keyboard = keyboard; Command = command; Web = web; Excel = excel; Loop = loop; Wait = wait; Image = image; Variable = variable; Case = caseSettings;
+            mouse?.Normalize(); keyboard?.Normalize(); command?.Normalize(); web?.Normalize(); excel?.Normalize(); loop?.Normalize(); wait?.Normalize(); image?.Normalize();
             variable?.Normalize(); caseSettings?.Normalize();
 
             if (!IsContainer) Children.Clear();

@@ -469,6 +469,14 @@ namespace AutomationTest.Core.Expressions
                         if (n == "position") return r.Position;
                         if (n == "size") return r.Size;
                         break;
+                    case CellValue c:
+                        if (n == "found") return c.Found;
+                        if (n == "row" || n == "column" || n == "address")
+                        {
+                            if (!c.Found) throw new ExpressionException("The text was not found, so it has no " + name + "; check {...}.Found first.");
+                            return n == "row" ? (object)(double)c.Row : n == "column" ? (double)c.Column : c.Address;
+                        }
+                        break;
                     case ImageValue i:
                         if (n == "found") return i.Found;
                         if (n == "position" || n == "size")

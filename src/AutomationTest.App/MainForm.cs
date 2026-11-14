@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using AutomationTest.Core.Excel;
 using AutomationTest.Core.Expressions;
 using AutomationTest.Core.Imaging;
 using AutomationTest.Core.Input;
@@ -133,6 +134,40 @@ namespace AutomationTest.App
         private readonly ToggleSwitch _webAccept = new ToggleSwitch { Checked = true, Size = new Size(40, 21) };
         private readonly TimeBox _webTime = new TimeBox(10000);
         private readonly TimeBox _webDelay = new TimeBox(0);
+        // Editor: excel
+        private readonly ComboBox _xlKind = MakeCombo(typeof(ExcelKind));
+        private readonly HintTextBox _xlId = new HintTextBox { Width = 200, Placeholder = "Variable ID" };
+        private readonly HintTextBox _xlPath = new HintTextBox { Width = 200, Placeholder = "File path (empty = new workbook)" };
+        private readonly HintTextBox _xlName = new HintTextBox { Width = 200, Placeholder = "Open workbook name (regular expr.)" };
+        private readonly ToggleSwitch _xlReadOnly = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
+        private readonly ToggleSwitch _xlVisible = new ToggleSwitch { Checked = true, Size = new Size(40, 21) };
+        private readonly HintTextBox _xlSheetName = new HintTextBox { Width = 200, Placeholder = "Sheet name (regular expression)" };
+        private readonly NumberBox _xlIndex = new NumberBox { Width = 200, Minimum = 0, Maximum = 100000, Placeholder = "Index (1 = first)" };
+        private readonly ComboBox _xlPosition = MakeCombo(typeof(ExcelSheetPosition));
+        private readonly ToggleSwitch _xlSelectNew = new ToggleSwitch { Checked = true, Size = new Size(40, 21) };
+        private readonly HintTextBox _xlCell = new HintTextBox { Width = 200, Placeholder = "Cell (B2)" };
+        private readonly ToggleSwitch _xlCellExpr = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
+        private readonly ComboBox _xlGet = MakeCombo(typeof(ExcelGetKind));
+        private readonly ComboBox _xlInfo = MakeCombo(typeof(ExcelInfoKind));
+        private readonly ComboBox _xlAs = MakeCombo(typeof(ExcelSetKind));
+        private readonly HintTextBox _xlValue = new HintTextBox { Width = 200, Placeholder = "Value" };
+        private readonly ToggleSwitch _xlValueExpr = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
+        private readonly ToggleSwitch _xlMatchCase = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
+        private readonly ToggleSwitch _xlWholeCell = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
+        private readonly ToggleSwitch _xlSaveAs = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
+        private readonly HintTextBox _xlSavePath = new HintTextBox { Width = 200, Placeholder = "New file (.xlsx .xlsm .xlsb .xls .csv .pdf)" };
+        private readonly ToggleSwitch _xlSaveChanges = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
+        private readonly TimeBox _xlTime = new TimeBox(30000);
+        private readonly TimeBox _xlDelay = new TimeBox(0);
+        private Button _xlPick;
+        private readonly GroupBox _excelBox = new GroupBox { Text = "Excel", Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8) };
+
+        // Editor: loop For
+        private readonly HintTextBox _forId = new HintTextBox { Width = 200, Placeholder = "Counter variable ID" };
+        private readonly HintTextBox _forFrom = new HintTextBox { Width = 200, Placeholder = "From (number or expression)", Text = "1" };
+        private readonly HintTextBox _forTo = new HintTextBox { Width = 200, Placeholder = "To (number or expression)", Text = "10" };
+        private readonly HintTextBox _forStep = new HintTextBox { Width = 200, Placeholder = "Step (1, -1, 0.5...)", Text = "1" };
+
         private readonly GroupBox _webBox = new GroupBox { Text = "Web", Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8) };
 
         // Editor: control (loop, wait)
@@ -327,6 +362,7 @@ namespace AutomationTest.App
             AddRow(common, "Action", _kbAction);
             AddRow(common, "Action", _cmdKind);
             AddRow(common, "Action", _webKind);
+            AddRow(common, "Action", _xlKind);
             AddRow(common, "Action", _controlKind);
 
             // Every field is FieldWidth wide; a unit text and a Pick button go in a second fixed column and the "?" in a
@@ -387,12 +423,44 @@ namespace AutomationTest.App
             AddRow(webTable, "Delay", _webDelay, Help.KeyDelay);
             _webBox.Controls.Add(webTable);
 
+            // Excel
+            var xlTable = NewTable();
+            AddRow(xlTable, "ID", _xlId, Help.ExcelId); // an ID is always the first field of its group
+            AddRow(xlTable, "Path", _xlPath, Help.ExcelWorkbook, null, MakeButton("Browse", (s, e) => BrowseExcelFile(_xlPath, false)));
+            AddRow(xlTable, "Name", _xlName, Help.ExcelWorkbookName);
+            AddRow(xlTable, "Read only", _xlReadOnly, Help.ExcelReadOnly);
+            AddRow(xlTable, "Visible", _xlVisible, Help.ExcelVisible);
+            AddRow(xlTable, "Sheet", _xlSheetName, Help.ExcelSheet);
+            AddRow(xlTable, "Index", _xlIndex, Help.ExcelIndex);
+            AddRow(xlTable, "Position", _xlPosition, Help.ExcelPosition);
+            AddRow(xlTable, "Select it", _xlSelectNew, Help.ExcelSelectNew);
+            AddRow(xlTable, "Get", _xlGet, Help.ExcelGet);
+            AddRow(xlTable, "Info", _xlInfo, Help.ExcelInfo);
+            _xlPick = MakeButton("Pick", (s, e) => PickExcelCell());
+            AddRow(xlTable, "Cell", _xlCell, Help.ExcelCell, null, _xlPick);
+            AddRow(xlTable, "Expr. (cell)", _xlCellExpr, Help.ExpressionText);
+            AddRow(xlTable, "Write as", _xlAs, Help.ExcelSetAs);
+            AddRow(xlTable, "Value", _xlValue, Help.ExcelValue);
+            AddRow(xlTable, "Expr. (value)", _xlValueExpr, Help.ExpressionText);
+            AddRow(xlTable, "Match case", _xlMatchCase, Help.ExcelFind);
+            AddRow(xlTable, "Whole cell", _xlWholeCell, Help.ExcelFind);
+            AddRow(xlTable, "Save As", _xlSaveAs, Help.ExcelSave);
+            AddRow(xlTable, "New file", _xlSavePath, Help.ExcelSave, null, MakeButton("Browse", (s, e) => BrowseExcelFile(_xlSavePath, true)));
+            AddRow(xlTable, "Save changes", _xlSaveChanges, Help.ExcelSaveChanges);
+            AddRow(xlTable, "Timeout", _xlTime, Help.ExcelTimeout);
+            AddRow(xlTable, "Delay", _xlDelay, Help.KeyDelay);
+            _excelBox.Controls.Add(xlTable);
+
             // Control
             var controlTable = NewTable();
+            AddRow(controlTable, "ID", _forId, Help.LoopForId); // an ID is always the first field of its group
             AddRow(controlTable, "Type", _loopType);
             AddRow(controlTable, "Times", _loopCount, Help.Count);
             AddRow(controlTable, "Duration", _loopDuration);
             AddRow(controlTable, "Until", _loopUntil);
+            AddRow(controlTable, "From", _forFrom, Help.LoopFor);
+            AddRow(controlTable, "To", _forTo, Help.LoopFor);
+            AddRow(controlTable, "Step", _forStep, Help.LoopFor);
             AddRow(controlTable, "Process", _waitProcessName, null, null, _waitPick);
             AddRow(controlTable, "", _waitProcessTitle, Help.TitleRegex);
             AddRow(controlTable, "Timeout", _waitTime, Help.WaitTime);
@@ -443,6 +511,7 @@ namespace AutomationTest.App
             // Docked top-to-bottom: the control added last is docked first.
             _editArea.Controls.Add(_controlBox);
             _editArea.Controls.Add(_webBox);
+            _editArea.Controls.Add(_excelBox);
             _editArea.Controls.Add(_commandBox);
             _editArea.Controls.Add(_keyboardBox);
             _editArea.Controls.Add(_mouseBox);
@@ -491,6 +560,9 @@ namespace AutomationTest.App
             _cmdKind.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
             _webKind.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
             _webGet.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
+            _xlKind.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
+            _xlInfo.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
+            _xlSaveAs.CheckedChanged += (s, e) => UpdateEditorVisibility();
             _controlKind.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
             _loopType.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
             _processName.TextChanged += (s, e) => UpdateEditorVisibility();
@@ -550,6 +622,44 @@ namespace AutomationTest.App
             _webText.Placeholder = web == WebKind.Dialog ? "Answer of a prompt box" : "Text";
             SetRowVisible(_webText, web == WebKind.Input || web == WebKind.Dialog);
             SetRowVisible(_webTextExpr, web == WebKind.Input || web == WebKind.Dialog || web == WebKind.Script);
+            // Excel
+            _excelBox.Visible = category == ActionCategory.Excel;
+            var xl = _xlKind.SelectedItem as ExcelKind? ?? ExcelKind.Workbook;
+            var xlInfo = _xlInfo.SelectedItem as ExcelInfoKind? ?? ExcelInfoKind.LastRow;
+            bool xlOn = category == ActionCategory.Excel;
+            bool infoCell = xl == ExcelKind.GetInfo && (xlInfo == ExcelInfoKind.LastRow || xlInfo == ExcelInfoKind.LastColumn);
+            bool xlCell = xl == ExcelKind.GetCell || xl == ExcelKind.SetCell || xl == ExcelKind.Find || infoCell;
+            bool xlValue = xl == ExcelKind.SetCell || xl == ExcelKind.Find || xl == ExcelKind.Evaluate;
+            SetRowVisible(_xlKind, xlOn);
+            SetRowVisible(_xlId, xl == ExcelKind.GetCell || xl == ExcelKind.GetInfo || xl == ExcelKind.Find || xl == ExcelKind.Evaluate);
+            _xlId.Placeholder = xl == ExcelKind.Find || xl == ExcelKind.Evaluate ? "Variable ID (optional)" : "Variable ID";
+            SetRowVisible(_xlPath, xl == ExcelKind.Workbook);
+            SetRowVisible(_xlName, xl == ExcelKind.Workbook);
+            SetRowVisible(_xlReadOnly, xl == ExcelKind.Workbook);
+            SetRowVisible(_xlVisible, xl == ExcelKind.Workbook);
+            SetRowVisible(_xlSheetName, xl == ExcelKind.SelectSheet || xl == ExcelKind.CreateSheet || xl == ExcelKind.DeleteSheet);
+            _xlSheetName.Placeholder = xl == ExcelKind.CreateSheet ? "Name of the new sheet (optional)" : "Sheet name (regular expression)";
+            SetRowVisible(_xlIndex, xl == ExcelKind.SelectSheet || xl == ExcelKind.DeleteSheet);
+            _xlIndex.Placeholder = xl == ExcelKind.DeleteSheet ? "Index (empty = the current sheet)" : "Index (1 = first)";
+            SetRowVisible(_xlPosition, xl == ExcelKind.CreateSheet);
+            SetRowVisible(_xlSelectNew, xl == ExcelKind.CreateSheet);
+            SetRowVisible(_xlGet, xl == ExcelKind.GetCell);
+            SetRowVisible(_xlInfo, xl == ExcelKind.GetInfo);
+            SetRowVisible(_xlCell, xlCell);
+            SetRowVisible(_xlPick, xlCell);
+            _xlCell.Placeholder = xl == ExcelKind.Find ? "Area to search (empty = whole sheet)" : xl == ExcelKind.GetInfo ? (xlInfo == ExcelInfoKind.LastRow ? "A cell in the column (B1)" : "A cell in the row (B1)") : "Cell (B2)";
+            SetRowVisible(_xlCellExpr, xlCell);
+            SetRowVisible(_xlAs, xl == ExcelKind.SetCell);
+            SetRowVisible(_xlValue, xlValue);
+            _xlValue.Placeholder = xl == ExcelKind.Find ? "Text to find" : xl == ExcelKind.Evaluate ? "Formula, for example SUM(A1:A10)" : "Value";
+            SetRowVisible(_xlValueExpr, xlValue);
+            SetRowVisible(_xlMatchCase, xl == ExcelKind.Find);
+            SetRowVisible(_xlWholeCell, xl == ExcelKind.Find);
+            SetRowVisible(_xlSaveAs, xl == ExcelKind.Save);
+            SetRowVisible(_xlSavePath, xl == ExcelKind.Save && _xlSaveAs.Checked);
+            SetRowVisible(_xlSaveChanges, xl == ExcelKind.CloseWorkbook || xl == ExcelKind.CloseExcel);
+            SetRowVisible(_xlTime, xlOn);
+            SetRowVisible(_xlDelay, xlOn);
             SetRowVisible(_mouseAction, category == ActionCategory.Mouse);
             SetRowVisible(_kbAction, category == ActionCategory.Keyboard);
             SetRowVisible(_cmdKind, category == ActionCategory.Utilities);
@@ -593,6 +703,10 @@ namespace AutomationTest.App
             SetRowVisible(_loopCount, loop && loopType == LoopType.Times);
             SetRowVisible(_loopDuration, loop && loopType == LoopType.Duration);
             SetRowVisible(_loopUntil, loop && loopType == LoopType.Until);
+            SetRowVisible(_forId, loop && loopType == LoopType.For);
+            SetRowVisible(_forFrom, loop && loopType == LoopType.For);
+            SetRowVisible(_forTo, loop && loopType == LoopType.For);
+            SetRowVisible(_forStep, loop && loopType == LoopType.For);
             SetRowVisible(_waitProcessName, wait);
             SetRowVisible(_waitProcessTitle, wait);
             SetRowVisible(_waitTime, wait);
@@ -693,6 +807,36 @@ namespace AutomationTest.App
                         Force = (CommandKind)_cmdKind.SelectedItem == CommandKind.Shutdown && _cmdForce.Checked
                     });
 
+                case ActionCategory.Excel:
+                    var xk = (ExcelKind)_xlKind.SelectedItem;
+                    return ActionNode.NewExcel(new ExcelSettings
+                    {
+                        Kind = xk,
+                        Path = _xlPath.Text.Trim(),
+                        Name = _xlName.Text.Trim(),
+                        ReadOnly = _xlReadOnly.Checked,
+                        Visible = _xlVisible.Checked,
+                        SheetName = _xlSheetName.Text.Trim(),
+                        Index = (int)_xlIndex.Value,
+                        Position = (ExcelSheetPosition)_xlPosition.SelectedItem,
+                        SelectNew = _xlSelectNew.Checked,
+                        Cell = _xlCell.Text.Trim(),
+                        CellIsExpression = _xlCellExpr.Checked,
+                        Get = (ExcelGetKind)_xlGet.SelectedItem,
+                        Info = (ExcelInfoKind)_xlInfo.SelectedItem,
+                        As = (ExcelSetKind)_xlAs.SelectedItem,
+                        Value = xk == ExcelKind.SetCell ? _xlValue.Text : _xlValue.Text.Trim(), // spaces count in a value that is written
+                        ValueIsExpression = _xlValueExpr.Checked,
+                        MatchCase = _xlMatchCase.Checked,
+                        WholeCell = _xlWholeCell.Checked,
+                        SaveAs = _xlSaveAs.Checked,
+                        SavePath = _xlSavePath.Text.Trim(),
+                        SaveChanges = _xlSaveChanges.Checked,
+                        Id = _xlId.Text.Trim(),
+                        TimeMs = _xlTime.Milliseconds,
+                        DelayMs = _xlDelay.Milliseconds
+                    });
+
                 case ActionCategory.Web:
                     return ActionNode.NewWeb(new WebSettings
                     {
@@ -741,7 +885,11 @@ namespace AutomationTest.App
                     {
                         Mode = (LoopType)_loopType.SelectedItem,
                         Count = (long)_loopCount.Value,
-                        DurationMs = _loopDuration.Milliseconds
+                        DurationMs = _loopDuration.Milliseconds,
+                        ForId = _forId.Text.Trim(),
+                        ForFrom = _forFrom.Text.Trim(),
+                        ForTo = _forTo.Text.Trim(),
+                        ForStep = _forStep.Text.Trim()
                     };
                     loop.SetUntil(_loopUntil.Value);
                     return ActionNode.NewLoop(loop);
@@ -856,6 +1004,34 @@ namespace AutomationTest.App
                     _kbDelay.Milliseconds = k.DelayMs;
                     break;
 
+                case ActionCategory.Excel:
+                    var xs = node.Excel;
+                    _xlKind.SelectedItem = xs.Kind;
+                    _xlPath.Text = xs.Path;
+                    _xlName.Text = xs.Name;
+                    _xlReadOnly.Checked = xs.ReadOnly;
+                    _xlVisible.Checked = xs.Visible;
+                    _xlSheetName.Text = xs.SheetName;
+                    _xlIndex.Text = xs.Index > 0 ? xs.Index.ToString() : "";
+                    _xlPosition.SelectedItem = xs.Position;
+                    _xlSelectNew.Checked = xs.SelectNew;
+                    _xlCell.Text = xs.Cell;
+                    _xlCellExpr.Checked = xs.CellIsExpression;
+                    _xlGet.SelectedItem = xs.Get;
+                    _xlInfo.SelectedItem = xs.Info;
+                    _xlAs.SelectedItem = xs.As;
+                    _xlValue.Text = xs.Value;
+                    _xlValueExpr.Checked = xs.ValueIsExpression;
+                    _xlMatchCase.Checked = xs.MatchCase;
+                    _xlWholeCell.Checked = xs.WholeCell;
+                    _xlSaveAs.Checked = xs.SaveAs;
+                    _xlSavePath.Text = xs.SavePath;
+                    _xlSaveChanges.Checked = xs.SaveChanges;
+                    _xlId.Text = xs.Id;
+                    _xlTime.Milliseconds = xs.TimeMs;
+                    _xlDelay.Milliseconds = xs.DelayMs;
+                    break;
+
                 case ActionCategory.Web:
                     var web = node.Web;
                     _webKind.SelectedItem = web.Kind;
@@ -915,6 +1091,10 @@ namespace AutomationTest.App
                             _loopType.SelectedItem = node.Loop.Mode;
                             _loopCount.Value = (decimal)Math.Min(node.Loop.Count, (long)_loopCount.Maximum);
                             _loopDuration.Milliseconds = node.Loop.DurationMs;
+                            _forId.Text = node.Loop.ForId;
+                            _forFrom.Text = node.Loop.ForFrom;
+                            _forTo.Text = node.Loop.ForTo;
+                            _forStep.Text = node.Loop.ForStep;
                             var until = node.Loop.GetUntil();
                             if (until.HasValue && until.Value >= _loopUntil.MinDate && until.Value <= _loopUntil.MaxDate) _loopUntil.Value = until.Value;
                             break;
@@ -1078,6 +1258,71 @@ namespace AutomationTest.App
         }
 
         /// <summary>Returns a message if the action could never run (for example a key that is not set), otherwise null.</summary>
+        /// <summary>A message when an Excel action could never run (a bad address or pattern, a missing field), otherwise null.</summary>
+        private static string ValidateExcel(ExcelSettings x)
+        {
+            string problem;
+            Func<string, string> badPattern = pattern =>
+            {
+                if (pattern.Trim().Length == 0) return null;
+                try { new System.Text.RegularExpressions.Regex(pattern); return null; }
+                catch (ArgumentException ex) { return "\"" + pattern + "\" is not a valid regular expression: " + ex.Message; }
+            };
+            Func<string, bool, string> cellProblem = (text, expression) =>
+            {
+                if (expression) { Expression.CheckSyntax(text); return null; }
+                return AutomationTest.Core.Excel.ExcelAddress.Check(text, "cell");
+            };
+            switch (x.Kind)
+            {
+                case ExcelKind.Workbook:
+                    if (x.Path.Length == 0 && x.Name.Length > 0 && (problem = badPattern(x.Name)) != null) return problem;
+                    break;
+                case ExcelKind.SelectSheet:
+                case ExcelKind.DeleteSheet:
+                    if ((problem = badPattern(x.SheetName)) != null) return problem;
+                    break;
+                case ExcelKind.CreateSheet:
+                    if (x.SheetName.Length > 31 || x.SheetName.IndexOfAny(new[] { ':', '\\', '/', '?', '*', '[', ']' }) >= 0)
+                        return "A sheet name has at most 31 characters and none of : \\ / ? * [ ].";
+                    break;
+                case ExcelKind.GetCell:
+                case ExcelKind.SetCell:
+                    if ((problem = cellProblem(x.Cell, x.CellIsExpression)) != null) return problem;
+                    break;
+                case ExcelKind.GetInfo:
+                    if ((x.Info == ExcelInfoKind.LastRow || x.Info == ExcelInfoKind.LastColumn) && (problem = cellProblem(x.Cell, x.CellIsExpression)) != null) return problem;
+                    break;
+                case ExcelKind.Find:
+                    if (x.Value.Length == 0) return "Enter the text to find.";
+                    if (x.Cell.Length > 0)
+                    {
+                        if (x.CellIsExpression) Expression.CheckSyntax(x.Cell);
+                        else if ((problem = AutomationTest.Core.Excel.ExcelAddress.Check(x.Cell, "area")) != null) return problem;
+                    }
+                    break;
+                case ExcelKind.Evaluate:
+                    if (x.Value.Trim().Length == 0) return "Enter the formula to calculate, for example SUM(A1:A10).";
+                    break;
+                case ExcelKind.Save:
+                    if (x.SaveAs)
+                    {
+                        if (x.SavePath.Length == 0) return "Enter the path of the new file.";
+                        string extension = System.IO.Path.GetExtension(x.SavePath).ToLowerInvariant();
+                        if (extension != ".xlsx" && extension != ".xlsm" && extension != ".xlsb" && extension != ".xls" && extension != ".csv" && extension != ".pdf")
+                            return "The new file must end with .xlsx, .xlsm, .xlsb, .xls, .csv or .pdf.";
+                    }
+                    break;
+            }
+            if ((x.Kind == ExcelKind.SetCell || x.Kind == ExcelKind.Find || x.Kind == ExcelKind.Evaluate) && x.ValueIsExpression) Expression.CheckSyntax(x.Value);
+            bool needsId = x.Kind == ExcelKind.GetCell || x.Kind == ExcelKind.GetInfo;
+            bool hasId = x.Kind == ExcelKind.Find || x.Kind == ExcelKind.Evaluate || needsId;
+            if (hasId && (needsId || x.Id.Length > 0) && !Expression.IsValidId(x.Id))
+                return needsId ? "Enter an ID for the value: letters, digits and _, not starting with a digit (and not true, false, now, today)."
+                               : "The ID may have letters, digits and _, not starting with a digit (and not true, false, now, today); or leave it empty.";
+            return null;
+        }
+
         private static string Validate(ActionNode node)
         {
             try
@@ -1099,6 +1344,9 @@ namespace AutomationTest.App
                         else if (k.ValueIsExpression) Expression.CheckSyntax(k.Value);
                         else if (k.Value.Length == 0) return "Type the text to send first.";
                         break;
+
+                    case ActionCategory.Excel:
+                        return ValidateExcel(node.Excel);
 
                     case ActionCategory.Web:
                         var web = node.Web;
@@ -1128,7 +1376,18 @@ namespace AutomationTest.App
                         break;
 
                     case ActionCategory.Control:
-                        if (node.IsKind(ControlKind.Image))
+                        if (node.IsKind(ControlKind.Loop) && node.Loop.Mode == LoopType.For)
+                        {
+                            var lf = node.Loop;
+                            if (!Expression.IsValidId(lf.ForId))
+                                return "Enter an ID for the counter: letters, digits and _, not starting with a digit (and not true, false, now, today).";
+                            Expression.CheckSyntax(lf.ForFrom);
+                            Expression.CheckSyntax(lf.ForTo);
+                            Expression.CheckSyntax(lf.ForStep);
+                            if (double.TryParse(lf.ForStep, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double stepNumber) && stepNumber == 0)
+                                return "Step cannot be 0.";
+                        }
+                        else if (node.IsKind(ControlKind.Image))
                         {
                             if (!node.Image.HasImage) return "Capture or load a picture first.";
                             if ((node.Image.RangeWidth > 0) != (node.Image.RangeHeight > 0))
@@ -1612,6 +1871,31 @@ namespace AutomationTest.App
                     delay = TimeBox.Format(k.DelayMs);
                     break;
 
+                case ActionCategory.Excel:
+                    var xd = n.Excel;
+                    action = xd.Kind.ToString();
+                    switch (xd.Kind)
+                    {
+                        case ExcelKind.Workbook:
+                            details = xd.Path.Length > 0 ? xd.Path : xd.Name.Length > 0 ? "open workbook /" + xd.Name + "/" : "(new workbook)";
+                            if (xd.ReadOnly && xd.Path.Length > 0) details += " (read only)";
+                            break;
+                        case ExcelKind.SelectSheet: details = "sheet " + (xd.SheetName.Length > 0 ? "/" + xd.SheetName + "/ " : "") + "#" + Math.Max(1, xd.Index); break;
+                        case ExcelKind.CreateSheet: details = "new sheet " + (xd.SheetName.Length > 0 ? "\"" + xd.SheetName + "\" " : "") + "(" + xd.Position + ")"; break;
+                        case ExcelKind.DeleteSheet: details = xd.SheetName.Length == 0 && xd.Index <= 0 ? "the current sheet" : "sheet " + (xd.SheetName.Length > 0 ? "/" + xd.SheetName + "/ " : "") + "#" + Math.Max(1, xd.Index); break;
+                        case ExcelKind.GetCell: details = xd.Cell + " " + xd.Get + " -> " + xd.Id; break;
+                        case ExcelKind.SetCell: details = xd.Cell + " = " + xd.Value + (xd.As != ExcelSetKind.Auto ? " (" + xd.As + ")" : ""); break;
+                        case ExcelKind.Find: details = "find \"" + xd.Value + "\"" + (xd.Cell.Length > 0 ? " in " + xd.Cell : "") + (xd.Id.Length > 0 ? " -> " + xd.Id : ""); break;
+                        case ExcelKind.GetInfo: details = xd.Info + (xd.Info == ExcelInfoKind.LastRow || xd.Info == ExcelInfoKind.LastColumn ? " of " + xd.Cell : "") + " -> " + xd.Id; break;
+                        case ExcelKind.Evaluate: details = xd.Value + (xd.Id.Length > 0 ? " -> " + xd.Id : ""); break;
+                        case ExcelKind.Save: details = xd.SaveAs ? "save as " + xd.SavePath : "save"; break;
+                        case ExcelKind.CloseWorkbook: details = "close the workbook" + (xd.SaveChanges ? " (save changes)" : " (drop changes)"); break;
+                        case ExcelKind.CloseExcel: details = "quit Excel" + (xd.SaveChanges ? " (save changes)" : " (drop changes)"); break;
+                    }
+                    if (xd.Kind == ExcelKind.Workbook || xd.Kind == ExcelKind.CloseExcel) time = TimeBox.Format(xd.TimeMs);
+                    delay = TimeBox.Format(xd.DelayMs);
+                    break;
+
                 case ActionCategory.Web:
                     var wb = n.Web;
                     action = wb.Kind.ToString();
@@ -1702,6 +1986,7 @@ namespace AutomationTest.App
                             {
                                 case LoopType.Duration: details = "for " + TimeBox.Format(n.Loop.DurationMs); break;
                                 case LoopType.Until: details = "until " + (n.Loop.GetUntil()?.ToString(UntilFormat) ?? "?"); break;
+                                case LoopType.For: details = "for " + n.Loop.ForId + " = " + n.Loop.ForFrom + " to " + n.Loop.ForTo + (n.Loop.ForStep.Trim() == "1" ? "" : " step " + n.Loop.ForStep); break;
                                 default: details = n.Loop.Count == 0 ? "forever" : n.Loop.Count + " time(s)"; break;
                             }
                             // The time one pass over the actions inside takes (their Time and Delay added up).
@@ -1822,13 +2107,13 @@ namespace AutomationTest.App
         /// Waits, with this window out of the way, until the Pick key is pressed or "Freeze now" is clicked (neither takes the focus away
         /// from the program being picked); Esc or Cancel gives up. False when cancelled.
         /// </summary>
-        private bool WaitForFreeze(string what)
+        private bool WaitForFreeze(string what, string instruction = null)
         {
             _freezeSignal = 0;
             SetToggleHotKey(false); // the Start, Start Selected and Record keys must not start anything meanwhile
             bool pickKey = HotKeyNative.RegisterHotKey(Handle, HotKeyFreezeId, HotKeyNative.MOD_NOREPEAT, (uint)_settings.PickCode);
             HotKeyNative.RegisterHotKey(Handle, HotKeyFreezeCancelId, HotKeyNative.MOD_NOREPEAT, (uint)Keys.Escape);
-            var hint = new FreezeHintForm(what + ": get the program into the state you want to pick on, then press " + _settings.Pick + " to take the picture.", pickKey, _settings.Pick);
+            var hint = new FreezeHintForm(instruction ?? (what + ": get the program into the state you want to pick on, then press " + _settings.Pick + " to take the picture."), pickKey, _settings.Pick);
             hint.FreezeClicked += () => _freezeSignal = 1;
             hint.CancelClicked += () => _freezeSignal = 2;
             try
@@ -1968,6 +2253,44 @@ namespace AutomationTest.App
                 }
                 catch (InvalidOperationException) { }
             });
+        }
+
+        private void BrowseExcelFile(HintTextBox target, bool save)
+        {
+            FileDialog dialog = save
+                ? (FileDialog)new SaveFileDialog { Filter = "Excel workbook (*.xlsx)|*.xlsx|Macro-enabled workbook (*.xlsm)|*.xlsm|Binary workbook (*.xlsb)|*.xlsb|Excel 97-2003 (*.xls)|*.xls|CSV UTF-8 (*.csv)|*.csv|PDF (*.pdf)|*.pdf" }
+                : new OpenFileDialog { Filter = "Excel files (*.xlsx;*.xlsm;*.xlsb;*.xls;*.csv)|*.xlsx;*.xlsm;*.xlsb;*.xls;*.csv|All files (*.*)|*.*" };
+            using (dialog)
+            {
+                if (dialog.ShowDialog(this) == DialogResult.OK) target.Text = dialog.FileName;
+            }
+        }
+
+        /// <summary>Lets the user select a cell (or area) in Excel; its address fills the Cell field.</summary>
+        private void PickExcelCell()
+        {
+            IExcelHost host;
+            try { host = AutomationTest.Core.Excel.ExcelSession.Shared.Host; }
+            catch (InvalidOperationException ex) { SetStatus(ex.Message); return; }
+            Minimize(); // this window gets out of the way (and the Start, Start Selected and Record keys are off while waiting)
+            bool shown;
+            try { shown = host.BringToFront(); }
+            catch (InvalidOperationException ex) { Restore(); SetStatus(ex.Message); return; }
+            if (!shown)
+            {
+                Restore();
+                SetStatus("Excel has no workbook open: open the workbook first (a Workbook action, or in Excel), then Pick.");
+                return;
+            }
+            bool taken = WaitForFreeze("Pick a cell", "Select the cell (or area) in Excel, then press " + _settings.Pick + " (or click Freeze now). Esc cancels.");
+            string sheet = "", address = "";
+            bool read = taken && host.TryGetSelection(out sheet, out address);
+            Restore();
+            if (!taken) { SetStatus("Pick cancelled."); return; }
+            if (!read || address.Length == 0) { SetStatus("Excel has no cell selected (a picture or chart is selected, or the workbook was closed)."); return; }
+            _xlCell.Text = address;
+            _xlCellExpr.Checked = false;
+            SetStatus("Picked " + address + " (sheet " + sheet + ")");
         }
 
         private void BrowseCommandPath()
@@ -2814,6 +3137,7 @@ namespace AutomationTest.App
             {
                 // Windows is shutting down (possibly because of a Shutdown action): never ask, never block it.
                 _cts?.Cancel();
+                AutomationTest.Core.Excel.ExcelSession.SharedIfCreated?.Dispose(); // an Excel started hidden is not left behind
                 if (SettingsEnabled) SaveWindowSettings();
                 base.OnFormClosing(e);
                 return;
@@ -2828,6 +3152,7 @@ namespace AutomationTest.App
                 return;
             }
             _cts?.Cancel();
+            AutomationTest.Core.Excel.ExcelSession.SharedIfCreated?.Dispose(); // an Excel started hidden is not left behind
             if (SettingsEnabled) SaveWindowSettings();
             base.OnFormClosing(e);
         }

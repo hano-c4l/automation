@@ -116,7 +116,7 @@ namespace AutomationTest.Core.Web
 
         private string ExtensionMissing(BrowserKind browser)
         {
-            return "The Automation Test extension of " + browser + " did not connect. Install it in " + browser + " (Load unpacked: the BrowserExtension folder), make sure it is enabled, " +
+            return "The Automation Test extension of " + browser + " did not connect. Install it in " + browser + " (Load unpacked: the AutomationWebHelper folder), make sure it is enabled, " +
                 "and check that " + browser + " is not connected twice (another profile)." + (string.IsNullOrEmpty(_bridge.LastRejection) ? "" : " Last refusal: " + _bridge.LastRejection + ".");
         }
 

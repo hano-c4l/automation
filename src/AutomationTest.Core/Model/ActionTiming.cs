@@ -40,6 +40,10 @@ namespace AutomationTest.Core.Model
                     return (held ? k.TimeMs : 0) + k.DelayMs;
                 case ActionCategory.Utilities:
                     return node.Command.Kind == CommandKind.Shutdown ? node.Command.TimeMs : node.Command.DelayMs;
+                case ActionCategory.Excel:
+                    if (!node.IsContainer) return node.Excel.DelayMs;
+                    long? within = SumChildren(node);
+                    return within.HasValue ? within.Value + node.Excel.DelayMs : (long?)null;
                 case ActionCategory.Web:
                     if (!node.IsContainer) return node.Web.DelayMs;
                     long? inside = SumChildren(node);
@@ -56,6 +60,16 @@ namespace AutomationTest.Core.Model
                     var loop = node.Loop;
                     if (loop.Mode == LoopType.Times && loop.Count > 0) return inner.Value * loop.Count;
                     if (loop.Mode == LoopType.Duration) return loop.DurationMs;
+                    if (loop.Mode == LoopType.For)
+                    {
+                        // Known only when the numbers are plain (no expression).
+                        if (!double.TryParse(loop.ForFrom, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double from)
+                            || !double.TryParse(loop.ForTo, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double to)
+                            || !double.TryParse(loop.ForStep, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double step)
+                            || step == 0) return null;
+                        double passes = Math.Floor((to - from) / step) + 1;
+                        return passes <= 0 ? 0 : inner.Value * (long)passes;
+                    }
                     return null; // forever, or until a time of day
                 case ControlKind.Condition:
                     long longest = 0;
