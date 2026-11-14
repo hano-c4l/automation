@@ -48,6 +48,23 @@ namespace AutomationTest.Core.Expressions
         public SizeValue Size { get; }
     }
 
+    /// <summary>What a Find action of Excel stores: whether the text was found and where (Row, Column, Address such as B7).</summary>
+    public sealed class CellValue
+    {
+        public CellValue(bool found, int row, int column, string address)
+        {
+            Found = found;
+            Row = row;
+            Column = column;
+            Address = address;
+        }
+
+        public bool Found { get; }
+        public int Row { get; }
+        public int Column { get; }
+        public string Address { get; }
+    }
+
     /// <summary>The variables of one run. Names are case-insensitive. Types: double, string, bool, DateTime, PointValue, RangeValue, ImageValue.</summary>
     public sealed class VariableStore
     {
@@ -97,6 +114,7 @@ namespace AutomationTest.Core.Expressions
                 case SizeValue z: return Number(z.Width) + "," + Number(z.Height);
                 case RangeValue r: return Number(r.X) + "," + Number(r.Y) + "," + Number(r.Width) + "," + Number(r.Height);
                 case ImageValue i: return i.Found ? Number(i.Position.X) + "," + Number(i.Position.Y) : "not found";
+                case CellValue c: return c.Found ? c.Address : "not found";
                 default: return Convert.ToString(value, CultureInfo.InvariantCulture);
             }
         }
@@ -113,6 +131,7 @@ namespace AutomationTest.Core.Expressions
                 case RangeValue _: return "Range";
                 case SizeValue _: return "Size";
                 case ImageValue _: return "Image";
+                case CellValue _: return "Cell";
                 default: return value == null ? "nothing" : value.GetType().Name;
             }
         }

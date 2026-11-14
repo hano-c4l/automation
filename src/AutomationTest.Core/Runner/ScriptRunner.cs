@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
+using AutomationTest.Core.Excel;
 using AutomationTest.Core.Expressions;
 using AutomationTest.Core.Imaging;
 using AutomationTest.Core.Input;
@@ -29,6 +30,9 @@ namespace AutomationTest.Core.Runner
             _mouse = mouse ?? throw new ArgumentNullException(nameof(mouse));
             _keyboard = keyboard ?? new KeyboardController();
         }
+
+        /// <summary>The Excel the Excel actions drive; the program-wide session when not set.</summary>
+        public ExcelSession ExcelSession { get; set; }
 
         /// <summary>The browser the Web actions drive; the program-wide session when not set.</summary>
         public AutomationTest.Core.Web.WebSession WebSession { get; set; }
@@ -58,6 +62,7 @@ namespace AutomationTest.Core.Runner
             _windowCache.Clear();
             _vars.Clear();
             (WebSession ?? AutomationTest.Core.Web.WebSession.SharedIfCreated)?.ResetTab(); // every run starts on the tab that is in front
+            (ExcelSession ?? AutomationTest.Core.Excel.ExcelSession.SharedIfCreated)?.Reset(); // and on the workbook and sheet that are active
             if (variables != null)
                 foreach (var pair in variables) _vars.Set(pair.Key, pair.Value);
             // 1 ms timer resolution so short delays and the per-iteration yield are not rounded up to ~15 ms.
@@ -75,6 +80,7 @@ namespace AutomationTest.Core.Runner
                 ReleaseHeldButtons();
                 ReleaseHeldKeys();
                 NativeMethods.timeEndPeriod(1);
+                (ExcelSession ?? AutomationTest.Core.Excel.ExcelSession.SharedIfCreated)?.EndRun(); // Excel started hidden by this run is quit
             }
         }
 
@@ -104,6 +110,9 @@ namespace AutomationTest.Core.Runner
                     break;
                 case ActionCategory.Web:
                     ExecuteWeb(node, token);
+                    break;
+                case ActionCategory.Excel:
+                    ExecuteExcel(node, token);
                     break;
                 case ActionCategory.Control:
                     switch (node.Control)
@@ -173,6 +182,63 @@ namespace AutomationTest.Core.Runner
             // New Tab and Switch Tab hold the actions that work in that tab (and browser).
             if (node.IsContainer) ExecuteList(node.Children, token);
             Wait(w.DelayMs, token);
+        }
+
+        private object EvalObject(string text)
+        {
+            try { return Expression.Evaluate(text, _vars); }
+            catch (ExpressionException ex) { throw new InvalidOperationException(ex.Message); }
+        }
+
+        private void ExecuteExcel(ActionNode node, CancellationToken token)
+        {
+            var x = node.Excel;
+            var args = new ExcelArgs { Cell = x.CellIsExpression ? EvalString(x.Cell) : x.Cell };
+            if (x.Kind == ExcelKind.SetCell || x.Kind == ExcelKind.Find || x.Kind == ExcelKind.Evaluate)
+                args.Value = x.ValueIsExpression ? EvalObject(x.Value) : x.Value;
+
+            bool keeps = x.Kind == ExcelKind.GetCell || x.Kind == ExcelKind.GetInfo || x.Kind == ExcelKind.Find || x.Kind == ExcelKind.Evaluate;
+            string id = (x.Id ?? "").Trim();
+            if (keeps && id.Length > 0 && !Expression.IsValidId(id)) throw new InvalidOperationException("\"" + x.Id + "\" is not a valid ID.");
+
+            object result = (ExcelSession ?? AutomationTest.Core.Excel.ExcelSession.Shared).Execute(x, args, token);
+            if (keeps && id.Length > 0) _vars.Set(id, result ?? "");
+
+            if (x.Kind == ExcelKind.Find)
+            {
+                var found = result as CellValue;
+                if (found != null && found.Found) ExecuteList(node.Children, token);
+                else Message?.Invoke("Not found in Excel: " + Format.Display(args.Value));
+            }
+            else if (node.IsContainer) ExecuteList(node.Children, token); // Workbook and Select Sheet hold the actions that work there
+            Wait(x.DelayMs, token);
+        }
+
+        /// <summary>Counts from a number to another; the counter is a variable that the actions inside can read (a row number, for example).</summary>
+        private void ExecuteFor(ActionNode loop, CancellationToken token)
+        {
+            var s = loop.Loop;
+            string id = (s.ForId ?? "").Trim();
+            if (!Expression.IsValidId(id)) throw new InvalidOperationException("Loop (For): \"" + s.ForId + "\" is not a valid ID for the counter.");
+            double from = ForNumber(s.ForFrom, "From"), to = ForNumber(s.ForTo, "To"), step = ForNumber(s.ForStep, "Step");
+            if (step == 0) throw new InvalidOperationException("Loop (For): Step cannot be 0.");
+            if (step > 0 ? from > to : from < to)
+            {
+                Message?.Invoke("Loop skipped: it counts from " + Format.Display(from) + " to " + Format.Display(to) + " with a step of " + Format.Display(step) + ".");
+                return;
+            }
+            for (double i = from; step > 0 ? i <= to : i >= to; i += step)
+            {
+                _vars.Set(id, i);
+                Iterate(loop, token);
+            }
+        }
+
+        private double ForNumber(string text, string what)
+        {
+            object value = EvalObject(text);
+            if (value is double d) return d;
+            throw new InvalidOperationException("Loop (For): " + what + " must be a number, but \"" + text.Trim() + "\" gives " + Format.TypeName(value) + ".");
         }
 
         private sealed class ShutdownIssuedException : Exception { }
@@ -385,6 +451,10 @@ namespace AutomationTest.Core.Runner
                     }
                     while (DateTime.Now < until.Value)
                         Iterate(loop, token);
+                    break;
+
+                case LoopType.For:
+                    ExecuteFor(loop, token);
                     break;
             }
         }
