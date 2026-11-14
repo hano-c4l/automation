@@ -137,8 +137,7 @@ namespace AutomationTest.Core.Web
         /// <summary>Forgets the tab each browser was using: the next action that needs one uses the tab that is in front then.</summary>
         public void ResetTab()
         {
-            lock (_tabs) _tabs.Clear();
-            lock (_childLock) { _children.Clear(); _autoAttached.Clear(); }
+            lock (_tabs) _tabs.Clear(); // the child targets stay known: they belong to the page, and a run on the same page needs them
         }
 
         /// <summary>Runs one Web action.</summary>
@@ -330,6 +329,66 @@ namespace AutomationTest.Core.Web
             }
         }
 
+        private void ForgetChild(BrowserKind browser, int tab, string sessionId)
+        {
+            lock (_childLock)
+            {
+                if (_children.TryGetValue(TabKey(browser, tab), out var list)) list.RemoveAll(c => c.SessionId == sessionId);
+            }
+        }
+
+        /// <summary>Asks the browser to attach the child targets again (a new attachedToTarget event for each).</summary>
+        private void RefreshAutoAttach(BrowserKind browser, int tab, string session, CancellationToken token)
+        {
+            lock (_childLock) _autoAttached.Remove(TabKey(browser, tab) + ":" + session);
+            try
+            {
+                Cdp(browser, tab, "Target.setAutoAttach", new Dictionary<string, object>
+                {
+                    { "autoAttach", false }, { "waitForDebuggerOnStart", false }, { "flatten", true }
+                }, token, CallTimeoutMs, session);
+            }
+            catch (InvalidOperationException) { /* nothing was attached */ }
+            EnsureAutoAttach(browser, tab, session, token);
+        }
+
+        /// <summary>
+        /// The session of the child target that holds the frame. A session that was noted earlier may be dead (the debugger was detached,
+        /// the page reloaded): it is tried, and when it is gone or never comes the browser is asked to attach again before giving up.
+        /// </summary>
+        private ChildTarget AcquireChild(BrowserKind browser, int tab, string parentSession, string frameId, string frameName, int budgetMs, CancellationToken token)
+        {
+            var watch = Stopwatch.StartNew();
+            bool refreshed = false;
+            while (true)
+            {
+                token.ThrowIfCancellationRequested();
+                var child = FindChild(browser, tab, frameId);
+                bool stale = false;
+                if (child != null)
+                {
+                    try
+                    {
+                        Evaluate(browser, tab, child.SessionId, "1", true, token);
+                        return child;
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        ForgetChild(browser, tab, child.SessionId);
+                        stale = true;
+                    }
+                }
+                if (watch.ElapsedMilliseconds >= budgetMs)
+                    throw new InvalidOperationException("The frame \"" + frameName + "\" is from another site and the browser did not hand it over (is it still loading?).");
+                if (!refreshed && (stale || watch.ElapsedMilliseconds >= 1500))
+                {
+                    refreshed = true;
+                    RefreshAutoAttach(browser, tab, parentSession, token);
+                }
+                Thread.Sleep(100);
+            }
+        }
+
         private ChildTarget FindChild(BrowserKind browser, int tab, string targetId)
         {
             lock (_childLock)
@@ -367,15 +426,7 @@ namespace AutomationTest.Core.Web
                 if (string.IsNullOrEmpty(frameId)) throw new InvalidOperationException("The browser did not say which frame \"" + segments[cross].Trim() + "\" is.");
 
                 EnsureAutoAttach(w.Browser, tab, session, token);
-                var watch = Stopwatch.StartNew();
-                ChildTarget child;
-                while ((child = FindChild(w.Browser, tab, frameId)) == null)
-                {
-                    token.ThrowIfCancellationRequested();
-                    if (watch.ElapsedMilliseconds >= Math.Min(w.TimeMs, 10000))
-                        throw new InvalidOperationException("The frame \"" + segments[cross].Trim() + "\" is from another site and the browser did not hand it over (is it still loading?).");
-                    Thread.Sleep(100);
-                }
+                var child = AcquireChild(w.Browser, tab, session, frameId, segments[cross].Trim(), (int)Math.Max(3000, Math.Min(w.TimeMs, 10000)), token);
                 ox += Convert.ToDouble(probe["ox"]); oy += Convert.ToDouble(probe["oy"]);
                 session = child.SessionId;
                 remaining = string.Join(">>>", segments, cross + 1, segments.Length - cross - 1).Trim();
@@ -509,7 +560,8 @@ namespace AutomationTest.Core.Web
             string key = TabKey(w.Browser, tab);
             lock (_dragLock) _dragData.Remove(key);
             // A page that uses the browser's own drag and drop (draggable=true) only sees it when the drag is taken over and replayed.
-            Cdp(w.Browser, tab, "Input.setInterceptDrags", new Dictionary<string, object> { { "enabled", true } }, token);
+            try { Cdp(w.Browser, tab, "Input.setInterceptDrags", new Dictionary<string, object> { { "enabled", true } }, token); }
+            catch (InvalidOperationException) { /* a browser without it: the page's drag events are played below */ }
             try
             {
                 Func<string, double, double, int, Dictionary<string, object>> mouse = (type, x, y, buttons) => new Dictionary<string, object>

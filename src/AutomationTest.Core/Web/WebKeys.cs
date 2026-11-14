@@ -105,7 +105,8 @@ namespace AutomationTest.Core.Web
                         VirtualKey = char.ToUpperInvariant(c),
                         Text = typed ? (upper ? char.ToUpperInvariant(c).ToString() : lower.ToString()) : null
                     };
-                    if ((modifiers & Ctrl) != 0 && (modifiers & (Alt | Meta)) == 0 && EditCommands.TryGetValue(lower, out string command)) key.Command = command;
+                    if ((modifiers & Ctrl) != 0 && (modifiers & (Alt | Meta)) == 0 && EditCommands.TryGetValue(lower, out string command))
+                        key.Command = lower == 'z' && (modifiers & Shift) != 0 ? "redo" : command; // Ctrl+Shift+Z is redo
                     return null;
                 }
                 if (char.IsDigit(c))
