@@ -635,9 +635,19 @@ namespace AutomationTest.App
             _list.ColumnWidthChanging += (s, e) => { if (e.NewWidth < MinColumnWidth) e.NewWidth = MinColumnWidth; };
             _list.ColumnWidthChanged += (s, e) => { if (_list.Columns[e.ColumnIndex].Width < MinColumnWidth) _list.Columns[e.ColumnIndex].Width = MinColumnWidth; };
             _list.MouseDown += (s, e) => ListMouseDown(e);
+            _list.AllowDrop = true;
+            _list.ItemDrag += (s, e) => ListItemDrag(e);
+            _list.DragOver += (s, e) => ListDragOver(e);
+            _list.DragDrop += (s, e) => ListDragDrop(e);
+            _list.DragLeave += (s, e) => _dropLine.Visible = false;
             _list.KeyDown += (s, e) =>
             {
                 if (e.KeyCode == Keys.Delete) DeleteActions();
+                else if (e.Control && e.KeyCode == Keys.C) { CopyActions(false); e.SuppressKeyPress = true; }
+                else if (e.Control && e.KeyCode == Keys.X) { CopyActions(true); e.SuppressKeyPress = true; }
+                else if (e.Control && e.KeyCode == Keys.V) { PasteActions(); e.SuppressKeyPress = true; }
+                else if (e.Control && e.KeyCode == Keys.Z && !e.Shift) { UndoAction(); e.SuppressKeyPress = true; }
+                else if (e.Control && (e.KeyCode == Keys.Y || (e.KeyCode == Keys.Z && e.Shift))) { RedoAction(); e.SuppressKeyPress = true; }
                 else if (e.KeyCode == Keys.Left || e.KeyCode == Keys.Right)
                 {
                     // Like a tree: Left collapses, Right expands the selected action.
@@ -1448,6 +1458,241 @@ namespace AutomationTest.App
         // ---------------------------------------------------------------- tree editing
 
         /// <summary>The Condition that the single selected line belongs to (its Begin/End line, a case, the else, or anything inside), if any.</summary>
+        // ---------------------------------------------------------------- undo, redo, copy, paste and drag and drop
+
+        private const int UndoLimit = 50;
+        private readonly List<string> _undo = new List<string>();
+        private readonly List<string> _redo = new List<string>();
+        private List<ActionNode> _dragNodes;
+        private readonly Panel _dropLine = new Panel { Height = 2, BackColor = Color.FromArgb(0, 120, 215), Visible = false };
+
+        /// <summary>The script as text, to go back to it.</summary>
+        private string Snapshot()
+        {
+            return ScriptSerializer.ToJson(_script);
+        }
+
+        /// <summary>Runs a change of the script; when it really changed something, the script as it was before can be got back with Undo.</summary>
+        private void Edit(Action change)
+        {
+            string before = Snapshot();
+            change();
+            if (Snapshot() == before) return;
+            _undo.Add(before);
+            if (_undo.Count > UndoLimit) _undo.RemoveAt(0);
+            _redo.Clear();
+        }
+
+        private void ClearHistory()
+        {
+            _undo.Clear();
+            _redo.Clear();
+        }
+
+        /// <summary>Puts back the script as it was before the last change.</summary>
+        private void UndoAction()
+        {
+            if (_running || _recording) return;
+            if (_undo.Count == 0) { SetStatus("Nothing to undo."); return; }
+            _redo.Add(Snapshot());
+            RestoreSnapshot(_undo[_undo.Count - 1]);
+            _undo.RemoveAt(_undo.Count - 1);
+            SetStatus("Undone.");
+        }
+
+        private void RedoAction()
+        {
+            if (_running || _recording) return;
+            if (_redo.Count == 0) { SetStatus("Nothing to redo."); return; }
+            _undo.Add(Snapshot());
+            RestoreSnapshot(_redo[_redo.Count - 1]);
+            _redo.RemoveAt(_redo.Count - 1);
+            SetStatus("Redone.");
+        }
+
+        private void RestoreSnapshot(string json)
+        {
+            _script = ScriptSerializer.FromJson(json);
+            _collapsed.Clear();
+            RefreshList(null);
+        }
+
+        /// <summary>The selected actions that are not inside another selected action (what a copy takes: the inside comes with them).</summary>
+        private List<ActionNode> SelectedRoots(out string problem)
+        {
+            problem = null;
+            var rows = SelectedRows().Where(r => !r.IsEnd).ToList();
+            var chosen = new HashSet<ActionNode>(rows.Select(r => r.Node));
+            var roots = new List<ActionNode>();
+            foreach (var row in rows)
+            {
+                if (IsBranch(row.Node)) { problem = "Copy the whole Condition or Try, not one of its case, else or catch lines."; return null; }
+                bool inside = false;
+                for (var p = row.Parent; p != null && !inside; p = ParentOf(p)) inside = chosen.Contains(p);
+                if (!inside) roots.Add(row.Node);
+            }
+            return roots;
+        }
+
+        private void CopyActions(bool cut)
+        {
+            if (_running || _recording) return;
+            string problem;
+            var roots = SelectedRoots(out problem);
+            if (roots == null) { SetStatus(problem); return; }
+            if (roots.Count == 0) { SetStatus("Select the actions to " + (cut ? "cut" : "copy") + " first."); return; }
+            try { ActionClipboard.Copy(roots); }
+            catch (System.Runtime.InteropServices.ExternalException) { SetStatus("The clipboard is in use by another program."); return; }
+            if (cut) Edit(DeleteActionsCore);
+            SetStatus((cut ? "Cut " : "Copied ") + roots.Count + " action(s).");
+        }
+
+        /// <summary>Paste: like Add, the actions go inside the selected container, otherwise after the selected action, otherwise at the end.</summary>
+        private void PasteActions()
+        {
+            if (_running || _recording) return;
+            List<ActionNode> nodes;
+            try { nodes = ActionClipboard.Paste(); }
+            catch (System.Runtime.InteropServices.ExternalException) { SetStatus("The clipboard is in use by another program."); return; }
+            if (nodes.Count == 0) { SetStatus("There are no copied actions to paste."); return; }
+            var selected = SelectedRows();
+            if (selected.Count == 1 && selected[0].Node.IsKind(ControlKind.Condition))
+            {
+                SetStatus("A Condition holds cases: select a case or the else to paste actions inside it.");
+                return;
+            }
+            if (selected.Count > 1 || (selected.Count == 1 && !selected[0].Node.IsContainer))
+            {
+                var last = selected[selected.Count - 1];
+                if (IsBranch(last.Node)) { SetStatus("Select a single case, else or catch to paste actions inside it."); return; }
+            }
+            Edit(() => InsertNodes(nodes, selected));
+            RefreshList(nodes);
+            SetStatus("Pasted " + nodes.Count + " action(s).");
+        }
+
+        private enum DropWhere { Before, After, Into }
+
+        /// <summary>
+        /// Moves (or copies) actions next to or inside another action. Returns a message when that is not allowed, otherwise null.
+        /// Cases, else and catch lines stay where they are; nothing goes inside itself; a Condition only holds cases.
+        /// </summary>
+        private string MoveNodesTo(List<ActionNode> nodes, ActionNode target, DropWhere where, bool copy)
+        {
+            if (nodes.Count == 0) return "Nothing to move.";
+            foreach (var n in nodes)
+            {
+                if (IsBranch(n)) return "Cases, else and catch lines stay inside their Condition or Try.";
+                if (ReferenceEquals(n, target) || Contains(n, target)) return "An action cannot be moved into itself.";
+            }
+            ActionNode parent = where == DropWhere.Into ? target : ParentOf(target);
+            if (where == DropWhere.Into)
+            {
+                if (target.IsKind(ControlKind.Condition)) return "A Condition holds cases: drop into a case or the else.";
+                if (!target.IsContainer) return "That action cannot hold other actions.";
+            }
+            else
+            {
+                if (parent != null && parent.IsKind(ControlKind.Condition)) return "A Condition holds cases: drop into a case or the else.";
+                if (IsTail(target) && where == DropWhere.After) return "The else and catch lines always stay last.";
+            }
+
+            var moving = copy ? nodes.Select(n => n.Clone()).ToList() : nodes;
+            if (!copy) foreach (var n in nodes) FindList(n).Remove(n);
+            if (where == DropWhere.Into) AddInside(target, moving);
+            else
+            {
+                var list = FindList(target);
+                list.InsertRange(list.IndexOf(target) + (where == DropWhere.After ? 1 : 0), moving);
+            }
+            RefreshList(moving);
+            return null;
+        }
+
+        private static bool Contains(ActionNode root, ActionNode wanted)
+        {
+            foreach (var child in root.Children)
+                if (ReferenceEquals(child, wanted) || Contains(child, wanted)) return true;
+            return false;
+        }
+
+        /// <summary>Where a drop at this point of the list would go: the row under it and the place relative to the row (null when over nothing).</summary>
+        private Tuple<ActionNode, DropWhere> DropTargetAt(Point clientPoint)
+        {
+            var item = _list.GetItemAt(8, clientPoint.Y);
+            if (item == null) return null;
+            var row = _rows[item.Index];
+            var bounds = item.GetBounds(ItemBoundsPortion.Entire);
+            double fraction = (clientPoint.Y - bounds.Top) / (double)Math.Max(1, bounds.Height);
+            if (row.IsEnd) return Tuple.Create(row.Node, DropWhere.After); // the End line of a Condition: after the whole Condition
+            bool canHold = row.Node.IsContainer && !row.Node.IsKind(ControlKind.Condition);
+            if (canHold && fraction >= 0.25 && fraction <= 0.75) return Tuple.Create(row.Node, DropWhere.Into);
+            return Tuple.Create(row.Node, fraction < 0.5 ? DropWhere.Before : DropWhere.After);
+        }
+
+        private void ListItemDrag(ItemDragEventArgs e)
+        {
+            if (_running || _recording) return;
+            string problem;
+            // Dragging a row that is not selected selects just that row first, like Explorer does.
+            if (e.Item is ListViewItem dragged && !dragged.Selected)
+            {
+                _list.SelectedItems.Clear();
+                dragged.Selected = true;
+            }
+            var roots = SelectedRoots(out problem);
+            if (roots == null) { SetStatus(problem); return; }
+            if (roots.Count == 0) return;
+            _dragNodes = roots;
+            _list.DoDragDrop(new DataObject("AutomationTest.DragRows", "rows"), DragDropEffects.Move | DragDropEffects.Copy);
+            _dragNodes = null;
+            _dropLine.Visible = false;
+        }
+
+        private void ListDragOver(DragEventArgs e)
+        {
+            if (_dragNodes == null) { e.Effect = DragDropEffects.None; return; }
+            var point = _list.PointToClient(new Point(e.X, e.Y));
+            // Near the top or bottom edge the list scrolls, so a far away place can be reached.
+            if (_list.TopItem != null)
+            {
+                if (point.Y < 24 && _list.TopItem.Index > 0) _list.EnsureVisible(_list.TopItem.Index - 1);
+                else if (point.Y > _list.ClientSize.Height - 24)
+                {
+                    var below = _list.GetItemAt(8, _list.ClientSize.Height - 2);
+                    if (below != null && below.Index + 1 < _list.Items.Count) _list.EnsureVisible(below.Index + 1);
+                }
+            }
+            var target = DropTargetAt(point);
+            bool copy = (e.KeyState & 8) != 0; // Ctrl held: copy instead of move
+            e.Effect = target == null ? DragDropEffects.None : copy ? DragDropEffects.Copy : DragDropEffects.Move;
+            if (target == null) { _dropLine.Visible = false; return; }
+            var item = _list.Items[_rows.FindIndex(r => ReferenceEquals(r.Node, target.Item1) && (!r.IsEnd || target.Item2 == DropWhere.After))];
+            var bounds = item.GetBounds(ItemBoundsPortion.Entire);
+            if (target.Item2 == DropWhere.Into) { _dropLine.SetBounds(bounds.Left, bounds.Top, bounds.Width, bounds.Height); _dropLine.BackColor = Color.FromArgb(90, 0, 120, 215); }
+            else
+            {
+                int y = target.Item2 == DropWhere.Before ? bounds.Top : bounds.Bottom - 2;
+                _dropLine.SetBounds(bounds.Left, y, bounds.Width, 2);
+                _dropLine.BackColor = Color.FromArgb(0, 120, 215);
+            }
+            if (_dropLine.Parent != _list) _list.Controls.Add(_dropLine);
+            _dropLine.Visible = true;
+            _dropLine.BringToFront();
+        }
+
+        private void ListDragDrop(DragEventArgs e)
+        {
+            _dropLine.Visible = false;
+            if (_dragNodes == null) return;
+            var target = DropTargetAt(_list.PointToClient(new Point(e.X, e.Y)));
+            if (target == null) return;
+            bool copy = (e.KeyState & 8) != 0;
+            string problem = null;
+            Edit(() => problem = MoveNodesTo(_dragNodes, target.Item1, target.Item2, copy));
+            SetStatus(problem ?? (copy ? "Copied." : "Moved."));
+        }
+
         private ActionNode ConditionScopeNode()
         {
             if (_list.SelectedIndices.Count != 1) return null;
@@ -1555,7 +1800,9 @@ namespace AutomationTest.App
         /// Add: inside the selected container (Loop, Wait, Image, a Condition's case or else), otherwise right after the
         /// selected action, otherwise at the end. A Case goes into the selected Condition, just before its else.
         /// </summary>
-        private void AddAction()
+        private void AddAction() { Edit(AddActionCore); }
+
+        private void AddActionCore()
         {
             var node = ReadEditor();
             string problem = Validate(node);
@@ -1947,7 +2194,9 @@ namespace AutomationTest.App
             return null;
         }
 
-        private void UpdateAction()
+        private void UpdateAction() { Edit(UpdateActionCore); }
+
+        private void UpdateActionCore()
         {
             var row = SingleSelectedRow();
             if (row == null) { SetStatus("Select exactly one action to update."); return; }
@@ -1998,7 +2247,9 @@ namespace AutomationTest.App
             return _rows.FirstOrDefault(r => !r.IsEnd && ReferenceEquals(r.Node, node))?.Parent;
         }
 
-        private void DeleteActions()
+        private void DeleteActions() { Edit(DeleteActionsCore); }
+
+        private void DeleteActionsCore()
         {
             var selected = SelectedRows();
             if (selected.Count == 0) return;
@@ -2032,7 +2283,9 @@ namespace AutomationTest.App
         }
 
         /// <summary>Moves the selected actions one place up (-1) or down (1) within their list; they must share one parent.</summary>
-        private void MoveUpDown(int delta)
+        private void MoveUpDown(int delta) { Edit(() => MoveUpDownCore(delta)); }
+
+        private void MoveUpDownCore(int delta)
         {
             var selected = SelectedRows();
             if (selected.Count == 0) return;
@@ -2056,7 +2309,9 @@ namespace AutomationTest.App
         }
 
         /// <summary>Up to Top / Down to End: moves the selected actions (keeping their order) to the start or the end of their list. An else stays last.</summary>
-        private void MoveToEdge(bool top)
+        private void MoveToEdge(bool top) { Edit(() => MoveToEdgeCore(top)); }
+
+        private void MoveToEdgeCore(bool top)
         {
             var selected = SelectedRows();
             if (selected.Count == 0) return;
@@ -2100,7 +2355,9 @@ namespace AutomationTest.App
         }
 
         /// <summary>In: moves the selected actions to the end of the Loop, Wait or Image right before them.</summary>
-        private void MoveIn()
+        private void MoveIn() { Edit(MoveInCore); }
+
+        private void MoveInCore()
         {
             var selected = SelectedRows();
             if (selected.Count == 0) return;
@@ -2134,7 +2391,9 @@ namespace AutomationTest.App
         }
 
         /// <summary>Out: moves the selected actions out of their container, right after it (after the Condition when they are in a case or else).</summary>
-        private void MoveOut()
+        private void MoveOut() { Edit(MoveOutCore); }
+
+        private void MoveOutCore()
         {
             var selected = SelectedRows();
             if (selected.Count == 0) return;
@@ -3223,6 +3482,7 @@ namespace AutomationTest.App
             _script = new AutomationScript();
             _category.SelectedItem = ActionCategory.Mouse; // a new script starts the editor on Mouse again
             _collapsed.Clear();
+            ClearHistory();
             _currentPath = null;
             RefreshList();
             UpdateTitle();
@@ -3245,6 +3505,7 @@ namespace AutomationTest.App
                 {
                     _script = ScriptSerializer.Load(dialog.FileName);
                     _collapsed.Clear();
+                    ClearHistory();
                     _currentPath = dialog.FileName;
                     RefreshList(_script.Actions.Take(1));
                     UpdateTitle();
@@ -3363,7 +3624,7 @@ namespace AutomationTest.App
             var nodes = RecordConverter.Build(events, InputRecorder.CharOf);
             if (nodes.Count > 0)
             {
-                InsertNodes(nodes, _recordTarget);
+                Edit(() => InsertNodes(nodes, _recordTarget));
                 RefreshList(nodes);
             }
             ApplyBusyState();

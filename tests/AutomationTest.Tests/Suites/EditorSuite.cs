@@ -14,20 +14,26 @@ namespace AutomationTest.Tests.Suites
     {
         private const BindingFlags Private = BindingFlags.NonPublic | BindingFlags.Instance;
 
-        private sealed class Editor
+        internal sealed class Editor
         {
             public MainForm Form;
-            private readonly System.Collections.IList _actions;
+            // The script object changes when a script is opened or an Undo puts one back: always ask for the current one.
+            private System.Collections.IList _actions
+            {
+                get
+                {
+                    var script = Field("_script");
+                    return (System.Collections.IList)script.GetType().GetProperty("Actions").GetValue(script);
+                }
+            }
             private readonly ListView _list;
             private readonly MethodInfo _load, _build, _refresh;
 
             public Editor()
             {
-                Form = new MainForm { HotKeysEnabled = false }; // never take the hotkeys of a program the user may have open
+                Form = new MainForm { HotKeysEnabled = false, ConfirmSave = message => DialogResult.No }; // a question about unsaved changes must never block a test // never take the hotkeys of a program the user may have open
                 var h = Form.Handle; // the list needs a window handle to select rows
                 foreach (Control c in Form.Controls) { var h2 = c.Handle; }
-                var script = Field("_script");
-                _actions = (System.Collections.IList)script.GetType().GetProperty("Actions").GetValue(script);
                 _list = (ListView)Field("_list");
                 _load = typeof(MainForm).GetMethod("LoadSelectedIntoEditor", Private);
                 _build = typeof(MainForm).GetMethod("BuildNode", Private);
