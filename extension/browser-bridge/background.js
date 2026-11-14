@@ -93,6 +93,21 @@ async function run(cmd, args) {
       const t = await chrome.tabs.get(args.tabId);
       return { url: t.url || "", title: t.title || "" };
     }
+    case "closeTab": {
+      attached.delete(args.tabId);
+      await chrome.tabs.remove(args.tabId);
+      return {};
+    }
+    case "closeBrowser": {
+      // Answer first: closing the last window may stop this extension before the answer is sent.
+      setTimeout(async () => {
+        try {
+          const windows = await chrome.windows.getAll();
+          for (const win of windows) await chrome.windows.remove(win.id);
+        } catch (e) { }
+      }, 200);
+      return {};
+    }
     case "tabExists": {
       try { await chrome.tabs.get(args.tabId); return { exists: true }; } catch (e) { return { exists: false }; }
     }

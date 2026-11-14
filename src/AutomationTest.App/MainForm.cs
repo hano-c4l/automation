@@ -542,6 +542,7 @@ namespace AutomationTest.App
             SetRowVisible(_webIndex, (webSelects && !(web == WebKind.GetText && get == WebGetKind.Count)) || web == WebKind.SwitchTab);
             SetRowVisible(_webAttribute, web == WebKind.GetText && get == WebGetKind.Attribute);
             SetRowVisible(_webAccept, web == WebKind.Dialog);
+            SetRowVisible(_webTime, web != WebKind.CloseTab && web != WebKind.CloseBrowser); // closing has nothing to wait for
             SetRowVisible(_webId, web == WebKind.GetText || web == WebKind.Script);
             _webId.Placeholder = web == WebKind.Script ? "Variable ID (optional)" : "Variable ID";
             SetRowVisible(_webRequired, web == WebKind.GetText && !pageGet && get != WebGetKind.Count);
@@ -1624,6 +1625,8 @@ namespace AutomationTest.App
                             details = (wb.Get == WebGetKind.PageUrl || wb.Get == WebGetKind.PageTitle ? "" : wb.Selector + (wb.Index > 1 ? " #" + wb.Index : "") + " ")
                                 + wb.Get + (wb.Get == WebGetKind.Attribute ? " " + wb.Attribute : "") + " -> " + wb.Id + (wb.Required || wb.Get == WebGetKind.Count ? "" : " (optional)");
                             break;
+                        case WebKind.CloseTab: details = "close the tab the script is using"; break;
+                        case WebKind.CloseBrowser: details = "close all " + wb.Browser + " windows"; break;
                         case WebKind.Script:
                             details = (wb.TextIsExpression ? "(expression) " : "") + (wb.Script.Replace("\r", " ").Replace("\n", " ").Trim()) + (wb.Id.Length > 0 ? " -> " + wb.Id : "");
                             break;
@@ -1639,7 +1642,7 @@ namespace AutomationTest.App
                     }
                     if (wb.Frame.Length > 0 && wb.Kind != WebKind.NewTab && wb.Kind != WebKind.SwitchTab && wb.Kind != WebKind.Script) details = "[" + wb.Frame + "] " + details;
                     if (wb.Kind != WebKind.SwitchTab && wb.Kind != WebKind.GetText && wb.Index > 1) details += " #" + wb.Index;
-                    time = TimeBox.Format(wb.TimeMs);
+                    if (wb.Kind != WebKind.CloseTab && wb.Kind != WebKind.CloseBrowser) time = TimeBox.Format(wb.TimeMs);
                     delay = TimeBox.Format(wb.DelayMs);
                     break;
 
