@@ -20,6 +20,34 @@ namespace AutomationTest.Core.Runner
         [DllImport("user32.dll")]
         private static extern bool PostMessage(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam);
 
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern IntPtr OpenProcess(uint access, bool inherit, int processId);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool CloseHandle(IntPtr handle);
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern bool QueryFullProcessImageName(IntPtr process, int flags, System.Text.StringBuilder name, ref int size);
+
+        private const uint ProcessQueryLimitedInformation = 0x1000;
+
+        /// <summary>
+        /// The full path of the program file of a process; null when Windows does not tell (a protected process). Works across 32 and
+        /// 64 bit and for most programs that run as administrator, which Process.MainModule does not.
+        /// </summary>
+        public static string ImagePath(int processId)
+        {
+            IntPtr handle = OpenProcess(ProcessQueryLimitedInformation, false, processId);
+            if (handle == IntPtr.Zero) return null;
+            try
+            {
+                var sb = new System.Text.StringBuilder(1024);
+                int size = sb.Capacity;
+                return QueryFullProcessImageName(handle, 0, sb, ref size) ? sb.ToString() : null;
+            }
+            finally { CloseHandle(handle); }
+        }
+
         /// <summary>A running program that matched, and the windows that matched (Title) or all its visible windows.</summary>
         public sealed class Match : IDisposable
         {
@@ -123,9 +151,8 @@ namespace AutomationTest.Core.Runner
                     else if (match == ProgramMatch.Name) hit = string.Equals(p.ProcessName, name, StringComparison.OrdinalIgnoreCase);
                     else
                     {
-                        try { hit = string.Equals(p.MainModule.FileName, path, StringComparison.OrdinalIgnoreCase); }
-                        catch (Win32Exception) { hit = false; } // a protected process or one of another bitness: cannot be looked at
-                        catch (InvalidOperationException) { hit = false; }
+                        string image = ImagePath(p.Id); // null for a protected process that Windows does not describe
+                        hit = image != null && string.Equals(image, path, StringComparison.OrdinalIgnoreCase);
                     }
                 }
                 catch (InvalidOperationException) { hit = false; } // it ended while we looked

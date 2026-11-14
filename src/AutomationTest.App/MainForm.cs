@@ -113,6 +113,7 @@ namespace AutomationTest.App
         // Editor: command
         private readonly ComboBox _cmdKind = MakeCombo(typeof(CommandKind));
         private readonly HintTextBox _cmdValue = new HintTextBox { Width = 200, Placeholder = "Process Path" };
+        private Button _cmdBrowse;
         private readonly ComboBox _cmdGroup = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 120 };
         private readonly ToggleSwitch _cmdValueExpr = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
         private readonly ComboBox _cmdMatch = MakeCombo(typeof(ProgramMatch));
@@ -445,7 +446,8 @@ namespace AutomationTest.App
             var cmdTable = NewTable();
             AddRow(cmdTable, "ID", _cmdId, Help.CommandId); // an ID is always the first field of its group
             AddRow(cmdTable, "Match", _cmdMatch, Help.CloseMatch);
-            AddRow(cmdTable, "Path", _cmdValue, null, null, MakeButton("Browse", (s, e) => BrowseCommandPath()));
+            _cmdBrowse = MakeButton("Browse", (s, e) => BrowseCommandPath());
+            AddRow(cmdTable, "Path", _cmdValue, null, null, _cmdBrowse);
             AddRow(cmdTable, "Expr. (path)", _cmdValueExpr, Help.ExpressionText);
             AddRow(cmdTable, "Destination", _cmdTarget, Help.FileTarget);
             AddRow(cmdTable, "Expr. (dest.)", _cmdTargetExpr, Help.ExpressionText);
@@ -649,6 +651,7 @@ namespace AutomationTest.App
             _cmdGroup.SelectedIndexChanged += (s, e) => { FillCmdKinds(); if (!_grouping) UpdateEditorVisibility(); };
             _cmdKind.SelectedIndexChanged += (s, e) => { if (!_grouping) UpdateEditorVisibility(); };
             _cmdMatch.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
+            _cmdKill.CheckedChanged += (s, e) => UpdateEditorVisibility(); // Timeout means nothing when the program is ended at once
             InitGroups();
             _webGroup.SelectedIndexChanged += (s, e) => { FillWebKinds(); if (!_grouping) UpdateEditorVisibility(); };
             _xlGroup.SelectedIndexChanged += (s, e) => { FillXlKinds(); if (!_grouping) UpdateEditorVisibility(); };
@@ -698,6 +701,7 @@ namespace AutomationTest.App
             _cmdValue.Placeholder = cmdKind == CommandKind.Open ? "Program or document to open"
                 : close ? (cmdMatch == ProgramMatch.Title ? "Window title (regular expression)" : cmdMatch == ProgramMatch.Name ? "Process name, e.g. notepad" : cmdMatch == ProgramMatch.Path ? "Full path of the program file" : "Process id (a number)")
                 : cmdKind == CommandKind.FsCreate ? "Folder to make" : cmdKind == CommandKind.FsList ? "Folder to list" : "File or folder";
+            _cmdBrowse.Visible = cmdKind == CommandKind.Open || (close && cmdMatch == ProgramMatch.Path) || fs; // a title, a name or an id is typed
             SetRowVisible(_cmdValueExpr, close || fs);
             SetRowVisible(_cmdMatch, close);
             SetRowVisible(_cmdAll, close);
@@ -2784,6 +2788,13 @@ namespace AutomationTest.App
 
         private void BrowseCommandPath()
         {
+            var kind = _cmdKind.SelectedItem as CommandKind? ?? CommandKind.Open;
+            if (kind == CommandKind.FsCreate || kind == CommandKind.FsList)
+            {
+                using (var folder = new FolderBrowserDialog())
+                    if (folder.ShowDialog(this) == DialogResult.OK) _cmdValue.Text = folder.SelectedPath;
+                return;
+            }
             using (var dialog = new OpenFileDialog { Filter = "All files (*.*)|*.*" })
             {
                 if (dialog.ShowDialog(this) == DialogResult.OK) _cmdValue.Text = dialog.FileName;
