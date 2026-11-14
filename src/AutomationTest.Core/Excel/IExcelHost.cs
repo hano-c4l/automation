@@ -21,6 +21,21 @@ namespace AutomationTest.Core.Excel
         public string Address { get; }
     }
 
+    /// <summary>What a Format action changes; null / empty means "leave it".</summary>
+    public sealed class ExcelFormat
+    {
+        public string NumberFormat;
+        public bool? Bold;
+        public bool? Italic;
+        /// <summary>Excel colour numbers (red + green x 256 + blue x 65536).</summary>
+        public int? FontColor;
+        public int? FillColor;
+        /// <summary>"auto" or a number as text.</summary>
+        public string ColumnWidth;
+
+        public bool IsEmpty => string.IsNullOrEmpty(NumberFormat) && Bold == null && Italic == null && FontColor == null && FillColor == null && string.IsNullOrEmpty(ColumnWidth);
+    }
+
     /// <summary>
     /// What the Excel actions need from Excel. The real one (COM, in the program) drives Microsoft Excel; a fake one stands in for it
     /// in tests. Every method fails with an <see cref="InvalidOperationException"/> that says what went wrong (Excel busy, a missing
@@ -39,7 +54,7 @@ namespace AutomationTest.Core.Excel
         /// makes a new workbook; with an empty path and a name pattern an open workbook with a matching name is switched to.
         /// Starts Excel first when it is not running.
         /// </summary>
-        IExcelWorkbook OpenWorkbook(string path, string namePattern, bool readOnly, bool visible, int timeoutMs, CancellationToken token);
+        IExcelWorkbook OpenWorkbook(string path, string namePattern, bool readOnly, bool visible, bool allowMacros, int timeoutMs, CancellationToken token);
 
         /// <summary>The workbook that is active in Excel now; null when Excel is not running or has no workbook.</summary>
         IExcelWorkbook ActiveWorkbook(int timeoutMs, CancellationToken token);
@@ -70,6 +85,10 @@ namespace AutomationTest.Core.Excel
         IExcelSheet AddSheet(string name, ExcelSheetPosition position, IExcelSheet current, bool select);
         void DeleteSheet(int index);
         void Activate();
+        /// <summary>Refreshes data connections and pivot tables and waits until they are done.</summary>
+        void RefreshAll();
+        /// <summary>Runs a macro of an open workbook with no argument or one; returns what it returns (null for a Sub).</summary>
+        object RunMacro(string macro, object argument, bool hasArgument);
         void Save();
         void SaveAs(string path);
         void Close(bool save);
@@ -81,6 +100,19 @@ namespace AutomationTest.Core.Excel
         /// <summary>Position in the workbook, 1 = first.</summary>
         int Index { get; }
         void Activate();
+        void Rename(string newName);
+        void Select(string area);
+
+        void InsertCells(ExcelTarget target, string at, int count);
+        void DeleteCells(ExcelTarget target, string at, int count);
+        void Clear(string area, ExcelClearKind what);
+        /// <summary>Copies the area to the destination (its top-left cell), with its formatting or only the values.</summary>
+        void Copy(string source, string destination, bool valuesOnly);
+        void FormatCells(string area, ExcelFormat format);
+        /// <param name="key">The column to sort by, letters.</param>
+        void Sort(string area, string key, bool descending, bool hasHeader);
+        /// <summary>Filters the area on one of its columns; clear removes the filter of the sheet.</summary>
+        void Filter(string area, int field, string criteria, bool clear);
 
         /// <summary>The value, typed (double, string, bool, DateTime; an error cell as its text such as #N/A; an empty cell as null).</summary>
         object GetValue(string address);

@@ -365,6 +365,79 @@ OFF   Excel runs hidden and is quit when the script ends
 An Excel that was running before is never hidden or quit unless
 you use Close Excel.");
 
+        public static readonly HelpTopic ExcelAllowMacros = new HelpTopic("Allow macros",
+@"OFF (default)  the macros of the file never run, whatever the file
+                or the script says.
+ON              the Trust Center of your Excel decides: macros run
+                only if it allows them for this file (a trusted
+                location, or a setting that enables all macros).
+                Use it only for files you trust, and for a Run Macro.");
+
+        public static readonly HelpTopic ExcelInsert = new HelpTopic("Insert / Delete rows or columns",
+@"Target   rows or columns
+Count    how many
+Cell     any cell in the first row (or column) to insert at or to
+         delete; B5 with Rows and Count 2 is rows 5 and 6.
+
+Insert pushes the existing rows down (columns to the right) and
+leaves the new ones empty. Delete removes them and pulls up the
+rest; what was in them is lost.");
+
+        public static readonly HelpTopic ExcelClear = new HelpTopic("Clear",
+@"Contents   values and formulas go; the formatting stays
+Formats    the formatting goes; the values stay
+All        both
+
+Cell is the area, for example A2:D100, or a whole column B:B.");
+
+        public static readonly HelpTopic ExcelCopy = new HelpTopic("Copy",
+@"Copies the area (Cell) to the destination (Value, its top-left cell)
+on the same sheet.
+
+Values only OFF  values, formulas and formatting
+Values only ON   just the values (formulas become their results)
+
+To bring cells to another sheet or workbook as values, use Get Range
+and Set Range.");
+
+        public static readonly HelpTopic ExcelFormat = new HelpTopic("Format",
+@"Changes only the fields that are filled in; empty fields and Leave
+keep what the cells have.
+
+Num. format   0.00   #,##0   dd/mm/yyyy   hh:mm   0%   @ (text)
+              (the names of the formats are those of English Excel)
+Bold, Italic  Yes, No, or Leave
+Colours       #RRGGBB, for example #FF0000 red, #FFFF00 yellow
+Col. width    a number (characters), or auto to fit the content");
+
+        public static readonly HelpTopic ExcelSort = new HelpTopic("Sort",
+@"Sorts the rows of the area by one column.
+
+Cell        the area, for example A1:D100
+Sort by     the letters of the column, for example C (it has to be
+            inside the area)
+Descending  large to small, Z to A
+Has header  the first row of the area is a header and stays on top");
+
+        public static readonly HelpTopic ExcelFilter = new HelpTopic("Filter",
+@"Cell         the area with its header row, for example A1:D100
+Filter col.  which column of the area, 1 for its first column
+Criterion    >5   <=10   =Hanoi   <>   (not empty)   *text*   =
+
+The rows that do not match are hidden, not deleted. Another Filter
+on a different column narrows it further. Clear filter removes the
+filter of the sheet and shows every row again.");
+
+        public static readonly HelpTopic ExcelMacro = new HelpTopic("Run Macro",
+@"Runs a macro (a Sub or Function) of a workbook that is open, for
+example Module1.Report or 'sales.xlsm'!Report. One argument can be
+given in Value. What a Function returns goes into the variable ID.
+
+WARNING: a macro can do anything on this computer. Run only macros
+you trust, and do not run a script from someone else that uses
+this action without reading it. The workbook has to allow macros
+(Workbook, Allow macros), and your Trust Center has to agree.");
+
         public static readonly HelpTopic ExcelSheet = new HelpTopic("Sheet",
 @"Select Sheet, Delete Sheet: a regular expression for the name of
 the sheet, not case sensitive (empty: only the Index counts).

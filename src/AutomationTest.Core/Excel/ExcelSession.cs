@@ -99,6 +99,17 @@ namespace AutomationTest.Core.Excel
                 case ExcelKind.DeleteSheet: DeleteSheet(x); return null;
                 case ExcelKind.GetCell: return GetCell(x, args);
                 case ExcelKind.SetCell: SetCell(x, args); return null;
+                case ExcelKind.RenameSheet: RenameSheet(x, args); return null;
+                case ExcelKind.Select: CurrentSheet().Select(CellAddress(args, "cell")); return null;
+                case ExcelKind.InsertCells: InsertDelete(x, args, true); return null;
+                case ExcelKind.DeleteCells: InsertDelete(x, args, false); return null;
+                case ExcelKind.Clear: CurrentSheet().Clear(CellAddress(args, "area"), x.ClearWhat); return null;
+                case ExcelKind.Copy: CopyCells(x, args); return null;
+                case ExcelKind.Format: FormatCells(x, args); return null;
+                case ExcelKind.Sort: SortCells(x, args); return null;
+                case ExcelKind.Filter: FilterCells(x, args); return null;
+                case ExcelKind.Refresh: CurrentWorkbook(token).RefreshAll(); return null;
+                case ExcelKind.RunMacro: return RunMacro(x, args);
                 case ExcelKind.GetRange: return GetRange(x, args);
                 case ExcelKind.SetRange: SetRange(x, args); return null;
                 case ExcelKind.Find: return Find(x, args);
@@ -132,7 +143,7 @@ namespace AutomationTest.Core.Excel
         private void OpenWorkbook(ExcelSettings x, CancellationToken token)
         {
             string path = string.IsNullOrWhiteSpace(x.Path) ? "" : Path.GetFullPath(Environment.ExpandEnvironmentVariables(x.Path.Trim()));
-            _workbook = _host.OpenWorkbook(path, x.Name, x.ReadOnly, x.Visible, (int)Math.Min(Math.Max(x.TimeMs, 1000), int.MaxValue), token);
+            _workbook = _host.OpenWorkbook(path, x.Name, x.ReadOnly, x.Visible, x.AllowMacros, (int)Math.Min(Math.Max(x.TimeMs, 1000), int.MaxValue), token);
             _sheet = _workbook.ActiveSheet;
         }
 
@@ -220,6 +231,100 @@ namespace AutomationTest.Core.Excel
                     else sheet.SetValue(address, Format.Display(value));
                     break;
             }
+        }
+
+        private static void CheckSheetName(string name)
+        {
+            if (name.Length == 0) throw new InvalidOperationException("Enter the new name of the sheet.");
+            if (name.Length > 31 || name.IndexOfAny(new[] { ':', '\\', '/', '?', '*', '[', ']' }) >= 0)
+                throw new InvalidOperationException("\"" + name + "\" cannot be a sheet name: at most 31 characters, none of : \\ / ? * [ ].");
+        }
+
+        private void RenameSheet(ExcelSettings x, ExcelArgs args)
+        {
+            var wb = CurrentWorkbook(_host.Token);
+            var sheet = FindSheet(x, true);
+            string name = Format.Display(args.Value).Trim();
+            CheckSheetName(name);
+            foreach (string existing in wb.SheetNames)
+                if (string.Equals(existing, name, StringComparison.OrdinalIgnoreCase) && !string.Equals(existing, sheet.Name, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException("The workbook " + wb.Name + " has a sheet named \"" + existing + "\" already.");
+            sheet.Rename(name);
+        }
+
+        private void InsertDelete(ExcelSettings x, ExcelArgs args, bool insert)
+        {
+            string at = CellAddress(args, "cell (its row or column is used)");
+            if (x.Target == ExcelTarget.Rows ? ExcelAddress.RowOf(at) <= 0 : ExcelAddress.ColumnOf(at) == null)
+                throw new InvalidOperationException("\"" + at + "\" has no " + (x.Target == ExcelTarget.Rows ? "row number" : "column letters") + ": use a cell such as B5.");
+            int count = Math.Max(1, x.Count);
+            if (insert) CurrentSheet().InsertCells(x.Target, at, count);
+            else CurrentSheet().DeleteCells(x.Target, at, count);
+        }
+
+        private void CopyCells(ExcelSettings x, ExcelArgs args)
+        {
+            string source = CellAddress(args, "area to copy");
+            string destination = Format.Display(args.Value).Trim();
+            string problem = ExcelAddress.Check(destination, "destination cell");
+            if (problem != null) throw new InvalidOperationException(problem);
+            CurrentSheet().Copy(source, destination, x.ValuesOnly);
+        }
+
+        private void FormatCells(ExcelSettings x, ExcelArgs args)
+        {
+            string area = CellAddress(args, "area");
+            var format = new ExcelFormat
+            {
+                NumberFormat = (x.NumberFormat ?? "").Trim(),
+                Bold = x.Bold == ExcelFlag.Leave ? (bool?)null : x.Bold == ExcelFlag.Yes,
+                Italic = x.Italic == ExcelFlag.Leave ? (bool?)null : x.Italic == ExcelFlag.Yes,
+                ColumnWidth = (x.ColumnWidth ?? "").Trim()
+            };
+            if (!string.IsNullOrWhiteSpace(x.FontColor))
+            {
+                if (!ExcelColors.IsValid(x.FontColor)) throw new InvalidOperationException("The font colour must be written as #RRGGBB (for example #FF0000), not \"" + x.FontColor + "\".");
+                format.FontColor = ExcelColors.ToExcel(x.FontColor);
+            }
+            if (!string.IsNullOrWhiteSpace(x.FillColor))
+            {
+                if (!ExcelColors.IsValid(x.FillColor)) throw new InvalidOperationException("The fill colour must be written as #RRGGBB (for example #FFFF00), not \"" + x.FillColor + "\".");
+                format.FillColor = ExcelColors.ToExcel(x.FillColor);
+            }
+            if (format.ColumnWidth.Length > 0 && !string.Equals(format.ColumnWidth, "auto", StringComparison.OrdinalIgnoreCase)
+                && !(double.TryParse(format.ColumnWidth, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double width) && width >= 0 && width <= 255))
+                throw new InvalidOperationException("The column width is a number from 0 to 255, or auto, not \"" + format.ColumnWidth + "\".");
+            if (format.IsEmpty) throw new InvalidOperationException("Format: nothing to change. Fill in at least one of the format fields.");
+            CurrentSheet().FormatCells(area, format);
+        }
+
+        private void SortCells(ExcelSettings x, ExcelArgs args)
+        {
+            string area = CellAddress(args, "area");
+            string key = (x.SortBy ?? "").Trim().TrimStart('$');
+            if (key.Length == 0 || key.Length > 3 || ExcelAddress.ColumnOf(key) != key.ToUpperInvariant())
+                throw new InvalidOperationException("Sort by: enter the column letters, for example C.");
+            CurrentSheet().Sort(area, key.ToUpperInvariant(), x.Descending, x.HasHeader);
+        }
+
+        private void FilterCells(ExcelSettings x, ExcelArgs args)
+        {
+            if (x.ClearFilter)
+            {
+                CurrentSheet().Filter((args.Cell ?? "").Trim(), 0, null, true);
+                return;
+            }
+            string area = CellAddress(args, "area (with its header row)");
+            if (string.IsNullOrWhiteSpace(x.Criteria)) throw new InvalidOperationException("Filter: enter the criterion, for example >5 or =Hanoi.");
+            CurrentSheet().Filter(area, Math.Max(1, x.FilterField), x.Criteria.Trim(), false);
+        }
+
+        private object RunMacro(ExcelSettings x, ExcelArgs args)
+        {
+            string macro = (x.Macro ?? "").Trim();
+            if (macro.Length == 0) throw new InvalidOperationException("Run Macro: enter the name of the macro.");
+            bool hasArgument = !(args.Value == null || (args.Value is string text && text.Length == 0));
+            return ExcelValues.ForVariable(CurrentWorkbook(_host.Token).RunMacro(macro, hasArgument ? args.Value : null, hasArgument));
         }
 
         private object GetRange(ExcelSettings x, ExcelArgs args)

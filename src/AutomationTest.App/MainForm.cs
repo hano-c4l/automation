@@ -157,6 +157,24 @@ namespace AutomationTest.App
         private readonly ToggleSwitch _xlSaveAs = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
         private readonly HintTextBox _xlSavePath = new HintTextBox { Width = 200, Placeholder = "New file (.xlsx .xlsm .xlsb .xls .csv .pdf)" };
         private readonly ToggleSwitch _xlSaveChanges = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
+        private readonly ToggleSwitch _xlAllowMacros = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
+        private readonly ComboBox _xlTarget = MakeCombo(typeof(ExcelTarget));
+        private readonly NumberBox _xlCount = new NumberBox { Width = 200, Minimum = 1, Maximum = 100000, Placeholder = "How many", Text = "1" };
+        private readonly ComboBox _xlClearWhat = MakeCombo(typeof(ExcelClearKind));
+        private readonly HintTextBox _xlNumberFormat = new HintTextBox { Width = 200, Placeholder = "Number format (0.00, dd/mm/yyyy, @)" };
+        private readonly ComboBox _xlBold = MakeCombo(typeof(ExcelFlag));
+        private readonly ComboBox _xlItalic = MakeCombo(typeof(ExcelFlag));
+        private readonly HintTextBox _xlFontColor = new HintTextBox { Width = 200, Placeholder = "Font colour (#RRGGBB)" };
+        private readonly HintTextBox _xlFillColor = new HintTextBox { Width = 200, Placeholder = "Fill colour (#RRGGBB)" };
+        private readonly HintTextBox _xlColumnWidth = new HintTextBox { Width = 200, Placeholder = "Column width (a number, or auto)" };
+        private readonly HintTextBox _xlSortBy = new HintTextBox { Width = 200, Placeholder = "Column to sort by (letters, C)" };
+        private readonly ToggleSwitch _xlDescending = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
+        private readonly ToggleSwitch _xlHasHeader = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
+        private readonly NumberBox _xlFilterField = new NumberBox { Width = 200, Minimum = 1, Maximum = 16384, Placeholder = "Column of the area (1 = first)", Text = "1" };
+        private readonly HintTextBox _xlCriteria = new HintTextBox { Width = 200, Placeholder = "Criterion (>5, =Hanoi, <>, *text*)" };
+        private readonly ToggleSwitch _xlClearFilter = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
+        private readonly ToggleSwitch _xlValuesOnly = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
+        private readonly HintTextBox _xlMacro = new HintTextBox { Width = 200, Placeholder = "Macro (Module1.Report)" };
         private readonly TimeBox _xlTime = new TimeBox(30000);
         private readonly TimeBox _xlDelay = new TimeBox(0);
         private Button _xlPick;
@@ -430,6 +448,7 @@ namespace AutomationTest.App
             AddRow(xlTable, "Name", _xlName, Help.ExcelWorkbookName);
             AddRow(xlTable, "Read only", _xlReadOnly, Help.ExcelReadOnly);
             AddRow(xlTable, "Visible", _xlVisible, Help.ExcelVisible);
+            AddRow(xlTable, "Allow macros", _xlAllowMacros, Help.ExcelAllowMacros);
             AddRow(xlTable, "Sheet", _xlSheetName, Help.ExcelSheet);
             AddRow(xlTable, "Index", _xlIndex, Help.ExcelIndex);
             AddRow(xlTable, "Position", _xlPosition, Help.ExcelPosition);
@@ -437,11 +456,28 @@ namespace AutomationTest.App
             AddRow(xlTable, "Get", _xlGet, Help.ExcelGet);
             AddRow(xlTable, "Info", _xlInfo, Help.ExcelInfo);
             _xlPick = MakeButton("Pick", (s, e) => PickExcelCell());
+            AddRow(xlTable, "Macro", _xlMacro, Help.ExcelMacro);
+            AddRow(xlTable, "Target", _xlTarget, Help.ExcelInsert);
+            AddRow(xlTable, "Count", _xlCount, Help.ExcelInsert);
+            AddRow(xlTable, "Clear", _xlClearWhat, Help.ExcelClear);
             AddRow(xlTable, "Cell", _xlCell, Help.ExcelCell, null, _xlPick);
             AddRow(xlTable, "Expr. (cell)", _xlCellExpr, Help.ExpressionText);
             AddRow(xlTable, "Write as", _xlAs, Help.ExcelSetAs);
             AddRow(xlTable, "Value", _xlValue, Help.ExcelValue);
             AddRow(xlTable, "Expr. (value)", _xlValueExpr, Help.ExpressionText);
+            AddRow(xlTable, "Values only", _xlValuesOnly, Help.ExcelCopy);
+            AddRow(xlTable, "Num. format", _xlNumberFormat, Help.ExcelFormat);
+            AddRow(xlTable, "Bold", _xlBold, Help.ExcelFormat);
+            AddRow(xlTable, "Italic", _xlItalic, Help.ExcelFormat);
+            AddRow(xlTable, "Font colour", _xlFontColor, Help.ExcelFormat);
+            AddRow(xlTable, "Fill colour", _xlFillColor, Help.ExcelFormat);
+            AddRow(xlTable, "Col. width", _xlColumnWidth, Help.ExcelFormat);
+            AddRow(xlTable, "Sort by", _xlSortBy, Help.ExcelSort);
+            AddRow(xlTable, "Descending", _xlDescending, Help.ExcelSort);
+            AddRow(xlTable, "Has header", _xlHasHeader, Help.ExcelSort);
+            AddRow(xlTable, "Clear filter", _xlClearFilter, Help.ExcelFilter);
+            AddRow(xlTable, "Filter col.", _xlFilterField, Help.ExcelFilter);
+            AddRow(xlTable, "Criterion", _xlCriteria, Help.ExcelFilter);
             AddRow(xlTable, "Match case", _xlMatchCase, Help.ExcelFind);
             AddRow(xlTable, "Whole cell", _xlWholeCell, Help.ExcelFind);
             AddRow(xlTable, "Save As", _xlSaveAs, Help.ExcelSave);
@@ -563,6 +599,7 @@ namespace AutomationTest.App
             _xlKind.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
             _xlInfo.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
             _xlSaveAs.CheckedChanged += (s, e) => UpdateEditorVisibility();
+            _xlClearFilter.CheckedChanged += (s, e) => UpdateEditorVisibility();
             _controlKind.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
             _loopType.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
             _processName.TextChanged += (s, e) => UpdateEditorVisibility();
@@ -628,31 +665,61 @@ namespace AutomationTest.App
             var xlInfo = _xlInfo.SelectedItem as ExcelInfoKind? ?? ExcelInfoKind.LastRow;
             bool xlOn = category == ActionCategory.Excel;
             bool infoCell = xl == ExcelKind.GetInfo && (xlInfo == ExcelInfoKind.LastRow || xlInfo == ExcelInfoKind.LastColumn);
-            bool xlCell = xl == ExcelKind.GetCell || xl == ExcelKind.SetCell || xl == ExcelKind.GetRange || xl == ExcelKind.SetRange || xl == ExcelKind.Find || infoCell;
-            bool xlValue = xl == ExcelKind.SetCell || xl == ExcelKind.SetRange || xl == ExcelKind.Find || xl == ExcelKind.Evaluate;
+            bool xlArea = xl == ExcelKind.Select || xl == ExcelKind.Clear || xl == ExcelKind.Copy || xl == ExcelKind.Format || xl == ExcelKind.Sort
+                || (xl == ExcelKind.Filter && !_xlClearFilter.Checked) || xl == ExcelKind.InsertCells || xl == ExcelKind.DeleteCells;
+            bool xlCell = xl == ExcelKind.GetCell || xl == ExcelKind.SetCell || xl == ExcelKind.GetRange || xl == ExcelKind.SetRange || xl == ExcelKind.Find || infoCell || xlArea;
+            bool xlValue = ScriptRunner.ExcelValueKind(xl) || xl == ExcelKind.SetRange;
+            bool insertDelete = xl == ExcelKind.InsertCells || xl == ExcelKind.DeleteCells;
             SetRowVisible(_xlKind, xlOn);
-            SetRowVisible(_xlId, xl == ExcelKind.GetCell || xl == ExcelKind.GetRange || xl == ExcelKind.GetInfo || xl == ExcelKind.Find || xl == ExcelKind.Evaluate);
-            _xlId.Placeholder = xl == ExcelKind.Find || xl == ExcelKind.Evaluate ? "Variable ID (optional)" : "Variable ID";
+            SetRowVisible(_xlId, xl == ExcelKind.GetCell || xl == ExcelKind.GetRange || xl == ExcelKind.GetInfo || xl == ExcelKind.Find || xl == ExcelKind.Evaluate || xl == ExcelKind.RunMacro);
+            _xlId.Placeholder = xl == ExcelKind.Find || xl == ExcelKind.Evaluate || xl == ExcelKind.RunMacro ? "Variable ID (optional)" : "Variable ID";
             SetRowVisible(_xlPath, xl == ExcelKind.Workbook);
             SetRowVisible(_xlName, xl == ExcelKind.Workbook);
             SetRowVisible(_xlReadOnly, xl == ExcelKind.Workbook);
             SetRowVisible(_xlVisible, xl == ExcelKind.Workbook);
-            SetRowVisible(_xlSheetName, xl == ExcelKind.SelectSheet || xl == ExcelKind.CreateSheet || xl == ExcelKind.DeleteSheet);
-            _xlSheetName.Placeholder = xl == ExcelKind.CreateSheet ? "Name of the new sheet (optional)" : "Sheet name (regular expression)";
-            SetRowVisible(_xlIndex, xl == ExcelKind.SelectSheet || xl == ExcelKind.DeleteSheet);
-            _xlIndex.Placeholder = xl == ExcelKind.DeleteSheet ? "Index (empty = the current sheet)" : "Index (1 = first)";
+            SetRowVisible(_xlAllowMacros, xl == ExcelKind.Workbook);
+            SetRowVisible(_xlSheetName, xl == ExcelKind.SelectSheet || xl == ExcelKind.CreateSheet || xl == ExcelKind.DeleteSheet || xl == ExcelKind.RenameSheet);
+            _xlSheetName.Placeholder = xl == ExcelKind.CreateSheet ? "Name of the new sheet (optional)" : xl == ExcelKind.RenameSheet ? "Sheet to rename (regular expr.; empty = this one)" : "Sheet name (regular expression)";
+            SetRowVisible(_xlIndex, xl == ExcelKind.SelectSheet || xl == ExcelKind.DeleteSheet || xl == ExcelKind.RenameSheet);
+            _xlIndex.Placeholder = xl == ExcelKind.DeleteSheet || xl == ExcelKind.RenameSheet ? "Index (empty = the current sheet)" : "Index (1 = first)";
             SetRowVisible(_xlPosition, xl == ExcelKind.CreateSheet);
             SetRowVisible(_xlSelectNew, xl == ExcelKind.CreateSheet);
             SetRowVisible(_xlGet, xl == ExcelKind.GetCell || xl == ExcelKind.GetRange);
             SetRowVisible(_xlInfo, xl == ExcelKind.GetInfo);
+            SetRowVisible(_xlTarget, insertDelete);
+            SetRowVisible(_xlCount, insertDelete);
+            SetRowVisible(_xlClearWhat, xl == ExcelKind.Clear);
             SetRowVisible(_xlCell, xlCell);
             SetRowVisible(_xlPick, xlCell);
-            _xlCell.Placeholder = xl == ExcelKind.GetRange ? "Area to read (A1:D20)" : xl == ExcelKind.SetRange ? "Top-left cell (A1)" : xl == ExcelKind.Find ? "Area to search (empty = whole sheet)" : xl == ExcelKind.GetInfo ? (xlInfo == ExcelInfoKind.LastRow ? "A cell in the column (B1)" : "A cell in the row (B1)") : "Cell (B2)";
+            _xlCell.Placeholder = xl == ExcelKind.GetRange ? "Area to read (A1:D20)" : xl == ExcelKind.SetRange ? "Top-left cell (A1)"
+                : xl == ExcelKind.Find ? "Area to search (empty = whole sheet)"
+                : xl == ExcelKind.GetInfo ? (xlInfo == ExcelInfoKind.LastRow ? "A cell in the column (B1)" : "A cell in the row (B1)")
+                : insertDelete ? "A cell in the first row or column (B5)"
+                : xl == ExcelKind.Select ? "Cell or area to select"
+                : xl == ExcelKind.Clear ? "Area to clear"
+                : xl == ExcelKind.Copy ? "Area to copy (A1:C5)"
+                : xl == ExcelKind.Format || xl == ExcelKind.Sort || xl == ExcelKind.Filter ? "Area (A1:D100)" : "Cell (B2)";
             SetRowVisible(_xlCellExpr, xlCell);
             SetRowVisible(_xlAs, xl == ExcelKind.SetCell || xl == ExcelKind.SetRange);
             SetRowVisible(_xlValue, xlValue);
-            _xlValue.Placeholder = xl == ExcelKind.SetRange ? "Table variable, for example {t}" : xl == ExcelKind.Find ? "Text to find" : xl == ExcelKind.Evaluate ? "Formula, for example SUM(A1:A10)" : "Value";
+            _xlValue.Placeholder = xl == ExcelKind.SetRange ? "Table variable, for example {t}" : xl == ExcelKind.Find ? "Text to find"
+                : xl == ExcelKind.Evaluate ? "Formula, for example SUM(A1:A10)" : xl == ExcelKind.RenameSheet ? "New name of the sheet"
+                : xl == ExcelKind.Copy ? "Destination (its top-left cell)" : xl == ExcelKind.RunMacro ? "Argument (optional)" : "Value";
             SetRowVisible(_xlValueExpr, xlValue && xl != ExcelKind.SetRange); // Set Range always takes a variable
+            SetRowVisible(_xlValuesOnly, xl == ExcelKind.Copy);
+            SetRowVisible(_xlNumberFormat, xl == ExcelKind.Format);
+            SetRowVisible(_xlBold, xl == ExcelKind.Format);
+            SetRowVisible(_xlItalic, xl == ExcelKind.Format);
+            SetRowVisible(_xlFontColor, xl == ExcelKind.Format);
+            SetRowVisible(_xlFillColor, xl == ExcelKind.Format);
+            SetRowVisible(_xlColumnWidth, xl == ExcelKind.Format);
+            SetRowVisible(_xlSortBy, xl == ExcelKind.Sort);
+            SetRowVisible(_xlDescending, xl == ExcelKind.Sort);
+            SetRowVisible(_xlHasHeader, xl == ExcelKind.Sort);
+            SetRowVisible(_xlClearFilter, xl == ExcelKind.Filter);
+            SetRowVisible(_xlFilterField, xl == ExcelKind.Filter && !_xlClearFilter.Checked);
+            SetRowVisible(_xlCriteria, xl == ExcelKind.Filter && !_xlClearFilter.Checked);
+            SetRowVisible(_xlMacro, xl == ExcelKind.RunMacro);
             SetRowVisible(_xlMatchCase, xl == ExcelKind.Find);
             SetRowVisible(_xlWholeCell, xl == ExcelKind.Find);
             SetRowVisible(_xlSaveAs, xl == ExcelKind.Save);
@@ -832,6 +899,24 @@ namespace AutomationTest.App
                         SaveAs = _xlSaveAs.Checked,
                         SavePath = _xlSavePath.Text.Trim(),
                         SaveChanges = _xlSaveChanges.Checked,
+                        Target = (ExcelTarget)_xlTarget.SelectedItem,
+                        Count = Math.Max(1, (int)_xlCount.Value),
+                        ClearWhat = (ExcelClearKind)_xlClearWhat.SelectedItem,
+                        NumberFormat = _xlNumberFormat.Text.Trim(),
+                        Bold = (ExcelFlag)_xlBold.SelectedItem,
+                        Italic = (ExcelFlag)_xlItalic.SelectedItem,
+                        FontColor = _xlFontColor.Text.Trim(),
+                        FillColor = _xlFillColor.Text.Trim(),
+                        ColumnWidth = _xlColumnWidth.Text.Trim(),
+                        SortBy = _xlSortBy.Text.Trim(),
+                        Descending = _xlDescending.Checked,
+                        HasHeader = _xlHasHeader.Checked,
+                        FilterField = Math.Max(1, (int)_xlFilterField.Value),
+                        Criteria = _xlCriteria.Text.Trim(),
+                        ClearFilter = _xlClearFilter.Checked,
+                        ValuesOnly = _xlValuesOnly.Checked,
+                        Macro = _xlMacro.Text.Trim(),
+                        AllowMacros = _xlAllowMacros.Checked,
                         Id = _xlId.Text.Trim(),
                         TimeMs = _xlTime.Milliseconds,
                         DelayMs = _xlDelay.Milliseconds
@@ -1027,6 +1112,24 @@ namespace AutomationTest.App
                     _xlSaveAs.Checked = xs.SaveAs;
                     _xlSavePath.Text = xs.SavePath;
                     _xlSaveChanges.Checked = xs.SaveChanges;
+                    _xlTarget.SelectedItem = xs.Target;
+                    _xlCount.Text = xs.Count.ToString();
+                    _xlClearWhat.SelectedItem = xs.ClearWhat;
+                    _xlNumberFormat.Text = xs.NumberFormat;
+                    _xlBold.SelectedItem = xs.Bold;
+                    _xlItalic.SelectedItem = xs.Italic;
+                    _xlFontColor.Text = xs.FontColor;
+                    _xlFillColor.Text = xs.FillColor;
+                    _xlColumnWidth.Text = xs.ColumnWidth;
+                    _xlSortBy.Text = xs.SortBy;
+                    _xlDescending.Checked = xs.Descending;
+                    _xlHasHeader.Checked = xs.HasHeader;
+                    _xlFilterField.Text = xs.FilterField.ToString();
+                    _xlCriteria.Text = xs.Criteria;
+                    _xlClearFilter.Checked = xs.ClearFilter;
+                    _xlValuesOnly.Checked = xs.ValuesOnly;
+                    _xlMacro.Text = xs.Macro;
+                    _xlAllowMacros.Checked = xs.AllowMacros;
                     _xlId.Text = xs.Id;
                     _xlTime.Milliseconds = xs.TimeMs;
                     _xlDelay.Milliseconds = xs.DelayMs;
@@ -1293,6 +1396,56 @@ namespace AutomationTest.App
                 case ExcelKind.GetInfo:
                     if ((x.Info == ExcelInfoKind.LastRow || x.Info == ExcelInfoKind.LastColumn) && (problem = cellProblem(x.Cell, x.CellIsExpression)) != null) return problem;
                     break;
+                case ExcelKind.RenameSheet:
+                    if ((problem = badPattern(x.SheetName)) != null) return problem;
+                    if (x.Value.Trim().Length == 0) return "Enter the new name of the sheet.";
+                    if (!x.ValueIsExpression && (x.Value.Trim().Length > 31 || x.Value.IndexOfAny(new[] { ':', '\\', '/', '?', '*', '[', ']' }) >= 0))
+                        return "A sheet name has at most 31 characters and none of : \\ / ? * [ ].";
+                    break;
+                case ExcelKind.Select:
+                    if ((problem = cellProblem(x.Cell, x.CellIsExpression)) != null) return problem;
+                    break;
+                case ExcelKind.InsertCells:
+                case ExcelKind.DeleteCells:
+                    if ((problem = cellProblem(x.Cell, x.CellIsExpression)) != null) return problem;
+                    break;
+                case ExcelKind.Clear:
+                    if (x.CellIsExpression) Expression.CheckSyntax(x.Cell);
+                    else if ((problem = AutomationTest.Core.Excel.ExcelAddress.Check(x.Cell, "area")) != null) return problem;
+                    break;
+                case ExcelKind.Copy:
+                    if (x.CellIsExpression) Expression.CheckSyntax(x.Cell);
+                    else if ((problem = AutomationTest.Core.Excel.ExcelAddress.Check(x.Cell, "area to copy")) != null) return problem;
+                    if (x.Value.Trim().Length == 0) return "Enter the destination cell.";
+                    if (!x.ValueIsExpression && (problem = AutomationTest.Core.Excel.ExcelAddress.Check(x.Value, "destination cell")) != null) return problem;
+                    break;
+                case ExcelKind.Format:
+                    if (x.CellIsExpression) Expression.CheckSyntax(x.Cell);
+                    else if ((problem = AutomationTest.Core.Excel.ExcelAddress.Check(x.Cell, "area")) != null) return problem;
+                    if (x.NumberFormat.Length == 0 && x.Bold == ExcelFlag.Leave && x.Italic == ExcelFlag.Leave && x.FontColor.Length == 0 && x.FillColor.Length == 0 && x.ColumnWidth.Length == 0)
+                        return "Nothing to change: fill in a number format, bold, italic, a colour or a column width.";
+                    if (x.FontColor.Length > 0 && !AutomationTest.Core.Excel.ExcelColors.IsValid(x.FontColor)) return "Write the font colour as #RRGGBB, for example #FF0000.";
+                    if (x.FillColor.Length > 0 && !AutomationTest.Core.Excel.ExcelColors.IsValid(x.FillColor)) return "Write the fill colour as #RRGGBB, for example #FFFF00.";
+                    if (x.ColumnWidth.Length > 0 && !string.Equals(x.ColumnWidth, "auto", StringComparison.OrdinalIgnoreCase)
+                        && !(double.TryParse(x.ColumnWidth, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double width) && width >= 0 && width <= 255))
+                        return "The column width is a number from 0 to 255, or auto.";
+                    break;
+                case ExcelKind.Sort:
+                    if (x.CellIsExpression) Expression.CheckSyntax(x.Cell);
+                    else if ((problem = AutomationTest.Core.Excel.ExcelAddress.Check(x.Cell, "area")) != null) return problem;
+                    if (!System.Text.RegularExpressions.Regex.IsMatch(x.SortBy.TrimStart('$'), "^[A-Za-z]{1,3}$")) return "Sort by: enter the column letters, for example C.";
+                    break;
+                case ExcelKind.Filter:
+                    if (!x.ClearFilter)
+                    {
+                        if (x.CellIsExpression) Expression.CheckSyntax(x.Cell);
+                        else if ((problem = AutomationTest.Core.Excel.ExcelAddress.Check(x.Cell, "area (with its header row)")) != null) return problem;
+                        if (x.Criteria.Length == 0) return "Enter the criterion, for example >5 or =Hanoi.";
+                    }
+                    break;
+                case ExcelKind.RunMacro:
+                    if (x.Macro.Length == 0) return "Enter the name of the macro, for example Module1.Report.";
+                    break;
                 case ExcelKind.GetRange:
                     if (x.CellIsExpression) Expression.CheckSyntax(x.Cell);
                     else if ((problem = AutomationTest.Core.Excel.ExcelAddress.Check(x.Cell, "area")) != null) return problem;
@@ -1325,9 +1478,9 @@ namespace AutomationTest.App
                     }
                     break;
             }
-            if ((x.Kind == ExcelKind.SetCell || x.Kind == ExcelKind.Find || x.Kind == ExcelKind.Evaluate) && x.ValueIsExpression) Expression.CheckSyntax(x.Value);
+            if (ScriptRunner.ExcelValueKind(x.Kind) && x.ValueIsExpression) Expression.CheckSyntax(x.Value);
             bool needsId = x.Kind == ExcelKind.GetCell || x.Kind == ExcelKind.GetRange || x.Kind == ExcelKind.GetInfo;
-            bool hasId = x.Kind == ExcelKind.Find || x.Kind == ExcelKind.Evaluate || needsId;
+            bool hasId = x.Kind == ExcelKind.Find || x.Kind == ExcelKind.Evaluate || x.Kind == ExcelKind.RunMacro || needsId;
             if (hasId && (needsId || x.Id.Length > 0) && !Expression.IsValidId(x.Id))
                 return needsId ? "Enter an ID for the value: letters, digits and _, not starting with a digit (and not true, false, now, today)."
                                : "The ID may have letters, digits and _, not starting with a digit (and not true, false, now, today); or leave it empty.";
@@ -1896,6 +2049,27 @@ namespace AutomationTest.App
                         case ExcelKind.DeleteSheet: details = xd.SheetName.Length == 0 && xd.Index <= 0 ? "the current sheet" : "sheet " + (xd.SheetName.Length > 0 ? "/" + xd.SheetName + "/ " : "") + "#" + Math.Max(1, xd.Index); break;
                         case ExcelKind.GetCell: details = xd.Cell + " " + xd.Get + " -> " + xd.Id; break;
                         case ExcelKind.SetCell: details = xd.Cell + " = " + xd.Value + (xd.As != ExcelSetKind.Auto ? " (" + xd.As + ")" : ""); break;
+                        case ExcelKind.RenameSheet: details = (xd.SheetName.Length == 0 && xd.Index <= 0 ? "this sheet" : "sheet " + (xd.SheetName.Length > 0 ? "/" + xd.SheetName + "/ " : "") + "#" + Math.Max(1, xd.Index)) + " -> " + xd.Value; break;
+                        case ExcelKind.Select: details = "select " + xd.Cell; break;
+                        case ExcelKind.InsertCells: details = "insert " + xd.Count + " " + xd.Target.ToString().ToLowerInvariant() + " at " + xd.Cell; break;
+                        case ExcelKind.DeleteCells: details = "delete " + xd.Count + " " + xd.Target.ToString().ToLowerInvariant() + " at " + xd.Cell; break;
+                        case ExcelKind.Clear: details = "clear " + xd.ClearWhat.ToString().ToLowerInvariant() + " of " + xd.Cell; break;
+                        case ExcelKind.Copy: details = xd.Cell + " -> " + xd.Value + (xd.ValuesOnly ? " (values only)" : ""); break;
+                        case ExcelKind.Format:
+                            details = xd.Cell + ": " + string.Join(", ", new[]
+                            {
+                                xd.NumberFormat.Length > 0 ? "format " + xd.NumberFormat : null,
+                                xd.Bold != ExcelFlag.Leave ? "bold " + xd.Bold : null,
+                                xd.Italic != ExcelFlag.Leave ? "italic " + xd.Italic : null,
+                                xd.FontColor.Length > 0 ? "font " + xd.FontColor : null,
+                                xd.FillColor.Length > 0 ? "fill " + xd.FillColor : null,
+                                xd.ColumnWidth.Length > 0 ? "width " + xd.ColumnWidth : null
+                            }.Where(p => p != null));
+                            break;
+                        case ExcelKind.Sort: details = xd.Cell + " by " + xd.SortBy + (xd.Descending ? " descending" : " ascending") + (xd.HasHeader ? " (header)" : ""); break;
+                        case ExcelKind.Filter: details = xd.ClearFilter ? "remove the filter" : xd.Cell + " column " + xd.FilterField + " " + xd.Criteria; break;
+                        case ExcelKind.Refresh: details = "refresh data connections and pivot tables"; break;
+                        case ExcelKind.RunMacro: details = xd.Macro + (xd.Value.Length > 0 ? "(" + xd.Value + ")" : "") + (xd.Id.Length > 0 ? " -> " + xd.Id : ""); break;
                         case ExcelKind.GetRange: details = xd.Cell + " " + xd.Get + " -> table " + xd.Id; break;
                         case ExcelKind.SetRange: details = xd.Value + " -> " + xd.Cell + (xd.As != ExcelSetKind.Auto ? " (" + xd.As + ")" : ""); break;
                         case ExcelKind.Find: details = "find \"" + xd.Value + "\"" + (xd.Cell.Length > 0 ? " in " + xd.Cell : "") + (xd.Id.Length > 0 ? " -> " + xd.Id : ""); break;
@@ -1905,7 +2079,7 @@ namespace AutomationTest.App
                         case ExcelKind.CloseWorkbook: details = "close the workbook" + (xd.SaveChanges ? " (save changes)" : " (drop changes)"); break;
                         case ExcelKind.CloseExcel: details = "quit Excel" + (xd.SaveChanges ? " (save changes)" : " (drop changes)"); break;
                     }
-                    if (xd.Kind == ExcelKind.Workbook || xd.Kind == ExcelKind.CloseExcel) time = TimeBox.Format(xd.TimeMs);
+                    if (xd.Kind == ExcelKind.Workbook || xd.Kind == ExcelKind.CloseExcel || xd.Kind == ExcelKind.Refresh || xd.Kind == ExcelKind.RunMacro) time = TimeBox.Format(xd.TimeMs);
                     delay = TimeBox.Format(xd.DelayMs);
                     break;
 

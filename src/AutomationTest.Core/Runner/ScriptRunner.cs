@@ -190,15 +190,21 @@ namespace AutomationTest.Core.Runner
             catch (ExpressionException ex) { throw new InvalidOperationException(ex.Message); }
         }
 
+        /// <summary>The Excel actions whose Value field can be an expression.</summary>
+        public static bool ExcelValueKind(ExcelKind kind)
+        {
+            return kind == ExcelKind.SetCell || kind == ExcelKind.Find || kind == ExcelKind.Evaluate || kind == ExcelKind.RenameSheet || kind == ExcelKind.Copy || kind == ExcelKind.RunMacro;
+        }
+
         private void ExecuteExcel(ActionNode node, CancellationToken token)
         {
             var x = node.Excel;
             var args = new ExcelArgs { Cell = x.CellIsExpression ? EvalString(x.Cell) : x.Cell };
             if (x.Kind == ExcelKind.SetRange) args.Value = EvalObject(x.Value); // a table can only come from a variable
-            else if (x.Kind == ExcelKind.SetCell || x.Kind == ExcelKind.Find || x.Kind == ExcelKind.Evaluate)
+            else if (ExcelValueKind(x.Kind))
                 args.Value = x.ValueIsExpression ? EvalObject(x.Value) : x.Value;
 
-            bool keeps = x.Kind == ExcelKind.GetCell || x.Kind == ExcelKind.GetRange || x.Kind == ExcelKind.GetInfo || x.Kind == ExcelKind.Find || x.Kind == ExcelKind.Evaluate;
+            bool keeps = x.Kind == ExcelKind.GetCell || x.Kind == ExcelKind.GetRange || x.Kind == ExcelKind.GetInfo || x.Kind == ExcelKind.Find || x.Kind == ExcelKind.Evaluate || x.Kind == ExcelKind.RunMacro;
             string id = (x.Id ?? "").Trim();
             if (keeps && id.Length > 0 && !Expression.IsValidId(id)) throw new InvalidOperationException("\"" + x.Id + "\" is not a valid ID.");
 
