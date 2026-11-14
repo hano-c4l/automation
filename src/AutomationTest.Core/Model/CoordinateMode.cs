@@ -152,6 +152,10 @@ namespace AutomationTest.Core.Model
         DeleteSheet,
         GetCell,
         SetCell,
+        /// <summary>Reads the cells of an area into a table variable ({t.Rows}, {t.Columns}, {t[row, column]}).</summary>
+        GetRange,
+        /// <summary>Writes a table variable into the cells from a top-left cell.</summary>
+        SetRange,
         /// <summary>Looks for text; the actions inside run when it is found.</summary>
         Find,
         GetInfo,

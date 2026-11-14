@@ -606,6 +606,51 @@ namespace AutomationTest.App
                 _host.Com(() => range.Formula = formula); // English function names and commas, as in the formula bar of any Excel
             }
 
+            public object[,] GetRange(string area, ExcelGetKind kind)
+            {
+                if (kind != ExcelGetKind.Value && kind != ExcelGetKind.Text && kind != ExcelGetKind.Formula)
+                    throw new InvalidOperationException("Get Range reads the Value, the Text or the Formula of the cells (not " + kind + ").");
+                return _host.Com(() =>
+                {
+                    dynamic range = Sheet.Range[area];
+                    int rows = (int)range.Rows.Count, columns = (int)range.Columns.Count;
+                    var result = new object[rows, columns];
+                    if (kind == ExcelGetKind.Text)
+                    {
+                        // Excel gives the text of one cell at a time only.
+                        if ((long)rows * columns > 100000)
+                            throw new InvalidOperationException("Get Range with Text reads cell by cell: at most 100000 cells (" + area + " is " + ((long)rows * columns) + "). Use Value or Formula for a large area.");
+                        for (int r = 1; r <= rows; r++)
+                            for (int c = 1; c <= columns; c++)
+                                result[r - 1, c - 1] = (string)range.Cells[r, c].Text;
+                        return result;
+                    }
+                    object data = kind == ExcelGetKind.Formula ? (object)range.Formula : (object)range.Value; // one call for the whole area
+                    if (data is Array array && array.Rank == 2)
+                    {
+                        int r0 = array.GetLowerBound(0), c0 = array.GetLowerBound(1);
+                        for (int r = 0; r < rows; r++)
+                            for (int c = 0; c < columns; c++)
+                                result[r, c] = array.GetValue(r0 + r, c0 + c);
+                    }
+                    else result[0, 0] = data; // an area of one cell comes as the value itself
+                    return result;
+                });
+            }
+
+            public void SetRange(string topLeft, object[,] values, ExcelSetKind how)
+            {
+                int rows = values.GetLength(0), columns = values.GetLength(1);
+                _host.Com(() =>
+                {
+                    dynamic start = Sheet.Range[topLeft];
+                    dynamic target = start.Resize[rows, columns];
+                    if (how == ExcelSetKind.Text) target.NumberFormat = "@"; // before the values go in, so 007 stays 007
+                    if (how == ExcelSetKind.Formula) target.Formula = values;
+                    else target.Value = values;                                  // one call for the whole block
+                });
+            }
+
             public CellMatch Find(string area, string what, bool matchCase, bool wholeCell)
             {
                 return _host.Com(() =>

@@ -322,6 +322,8 @@ expressions (Variable, Condition, Set Cell, Loop...).
 
 Get Cell, Get Info, Evaluate  the value, as a number, date, true/false
                               or text
+Get Range                     a table: {id.Rows}, {id.Columns},
+                              {id[row, column]} (see the ? of Value)
 Find                          Found, Row, Column and Address:
                               {id.Found}, {id.Row}, {id.Column}, {id.Address}
 
@@ -393,6 +395,8 @@ OFF   the current sheet stays the current one");
 defined in the workbook.
 Find: the area to search, for example A1:D100 (empty: the whole
 sheet).
+Get Range: the area to read (A1:D100). Set Range: the top-left cell
+where the table is written (if an area is given, its first cell).
 Get Info (Last Row, Last Column): any cell in the column or row to
 measure; B7 or B:B for a column, 7:7 for a row.
 
@@ -434,16 +438,33 @@ Text     always text: 007 stays 007 (the cell is set to the
 Formula  the value is a formula, with English function names and
          commas, as in the formula bar: SUM(A1,B1)");
 
-        public static readonly HelpTopic ExcelValue = new HelpTopic("Value (Excel)",
+        public static readonly HelpTopic ExcelValue = new HelpTopic("Value (Excel) and tables",
 @"Set Cell   what to write.
 Find       the text to look for.
+Set Range  the table variable to write, for example {t}
+           (always an expression); see Tables below.
 Evaluate   an Excel formula to calculate, for example
            SUM(A1:A10)   COUNTIF(B:B,""x"")   TODAY()
            (up to 255 characters; the sheet that is current is
            the one the formula is calculated on).
 
 With Expr. (value) ON the field is an expression, so a variable
-or a calculation can be used; a number stays a number.");
+or a calculation can be used; a number stays a number.
+
+Tables: Get Range -> {t}; {t.Rows}, {t.Columns}, {t[row, column]}
+(counted from 1). Set Range writes {t} (or a copy of any table
+variable) from a top-left cell. Get (Value, Text or Formula) says
+what is read; Write as says how it is written.
+
+Walk down a table with a Loop of type For:
+
+    Get Range  A1:D100  -> t
+    Loop For   row = 1 to {t.Rows}
+        Set Cell  ""F"" + {row}  =  {t[row, 2]} * {t[row, 3]}
+
+A table is a copy: changing the sheet later does not change it.
+Copy a block to another sheet or workbook: Get Range, then
+Select Sheet / Workbook, then Set Range.");
 
         public static readonly HelpTopic ExcelFind = new HelpTopic("Find (Excel)",
 @"Looks for the text in the cells (their values, as shown). The first

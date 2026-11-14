@@ -194,10 +194,11 @@ namespace AutomationTest.Core.Runner
         {
             var x = node.Excel;
             var args = new ExcelArgs { Cell = x.CellIsExpression ? EvalString(x.Cell) : x.Cell };
-            if (x.Kind == ExcelKind.SetCell || x.Kind == ExcelKind.Find || x.Kind == ExcelKind.Evaluate)
+            if (x.Kind == ExcelKind.SetRange) args.Value = EvalObject(x.Value); // a table can only come from a variable
+            else if (x.Kind == ExcelKind.SetCell || x.Kind == ExcelKind.Find || x.Kind == ExcelKind.Evaluate)
                 args.Value = x.ValueIsExpression ? EvalObject(x.Value) : x.Value;
 
-            bool keeps = x.Kind == ExcelKind.GetCell || x.Kind == ExcelKind.GetInfo || x.Kind == ExcelKind.Find || x.Kind == ExcelKind.Evaluate;
+            bool keeps = x.Kind == ExcelKind.GetCell || x.Kind == ExcelKind.GetRange || x.Kind == ExcelKind.GetInfo || x.Kind == ExcelKind.Find || x.Kind == ExcelKind.Evaluate;
             string id = (x.Id ?? "").Trim();
             if (keeps && id.Length > 0 && !Expression.IsValidId(id)) throw new InvalidOperationException("\"" + x.Id + "\" is not a valid ID.");
 

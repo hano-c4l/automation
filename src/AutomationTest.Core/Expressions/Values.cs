@@ -48,6 +48,37 @@ namespace AutomationTest.Core.Expressions
         public SizeValue Size { get; }
     }
 
+    /// <summary>
+    /// A block of values (rows and columns), such as the cells of an Excel area. In expressions {t.Rows}, {t.Columns} and {t[row, column]}
+    /// (both counted from 1) read it. It cannot be changed: a new table is made by reading the cells again.
+    /// </summary>
+    public sealed class TableValue
+    {
+        private readonly object[,] _cells; // typed values (double, string, bool, DateTime), 0-based
+
+        public TableValue(object[,] cells)
+        {
+            _cells = cells ?? throw new ArgumentNullException(nameof(cells));
+        }
+
+        public int Rows => _cells.GetLength(0);
+        public int Columns => _cells.GetLength(1);
+
+        /// <summary>The value at that row and column, counted from 1.</summary>
+        public object Get(int row, int column)
+        {
+            if (row < 1 || row > Rows || column < 1 || column > Columns)
+                throw new ExpressionException("The table has " + Rows + " row(s) and " + Columns + " column(s), so there is no row " + row + ", column " + column + ".");
+            return _cells[row - 1, column - 1];
+        }
+
+        /// <summary>A copy of the values (0-based), for writing them somewhere.</summary>
+        public object[,] ToArray()
+        {
+            return (object[,])_cells.Clone();
+        }
+    }
+
     /// <summary>What a Find action of Excel stores: whether the text was found and where (Row, Column, Address such as B7).</summary>
     public sealed class CellValue
     {
@@ -115,6 +146,7 @@ namespace AutomationTest.Core.Expressions
                 case RangeValue r: return Number(r.X) + "," + Number(r.Y) + "," + Number(r.Width) + "," + Number(r.Height);
                 case ImageValue i: return i.Found ? Number(i.Position.X) + "," + Number(i.Position.Y) : "not found";
                 case CellValue c: return c.Found ? c.Address : "not found";
+                case TableValue tv: return "table " + tv.Rows + "x" + tv.Columns;
                 default: return Convert.ToString(value, CultureInfo.InvariantCulture);
             }
         }
@@ -132,6 +164,7 @@ namespace AutomationTest.Core.Expressions
                 case SizeValue _: return "Size";
                 case ImageValue _: return "Image";
                 case CellValue _: return "Cell";
+                case TableValue _: return "Table";
                 default: return value == null ? "nothing" : value.GetType().Name;
             }
         }
