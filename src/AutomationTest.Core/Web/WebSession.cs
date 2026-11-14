@@ -41,6 +41,28 @@ namespace AutomationTest.Core.Web
             get { lock (SharedLock) return _shared; }
         }
 
+        /// <summary>A frame of another site (or another child target) that the browser attached to a tab for us.</summary>
+        private sealed class ChildTarget
+        {
+            public string SessionId;
+            public string TargetId;
+            public string Type;
+            public string Url;
+        }
+
+        /// <summary>Where an element is: in which session its page runs, the iframe chain still to walk there, and where its document starts in the tab.</summary>
+        private sealed class Located
+        {
+            public string Session;
+            public string Frame = "";
+            public double OffsetX, OffsetY;
+            public double X, Y;
+        }
+
+        private readonly object _childLock = new object();
+        private readonly Dictionary<string, List<ChildTarget>> _children = new Dictionary<string, List<ChildTarget>>();
+        private readonly HashSet<string> _autoAttached = new HashSet<string>();
+
         private readonly BrowserBridge _bridge;
         private readonly bool _ownsBridge;
         // The tab the script is using, per browser (tab ids belong to one browser).
@@ -50,6 +72,7 @@ namespace AutomationTest.Core.Web
         {
             _ownsBridge = bridge == null;
             _bridge = bridge ?? new BrowserBridge();
+            _bridge.EventReceived += OnBridgeEvent;
             if (_ownsBridge)
             {
                 try { _bridge.Start(); }
@@ -59,6 +82,42 @@ namespace AutomationTest.Core.Web
                         " (another copy of the program may be running): " + ex.Message);
                 }
             }
+        }
+
+        private static string TabKey(BrowserKind browser, int tab)
+        {
+            return browser + ":" + tab;
+        }
+
+        /// <summary>Notes the child targets (frames of another site) the browser attaches and drops.</summary>
+        private void OnBridgeEvent(BrowserKind browser, Dictionary<string, object> ev)
+        {
+            try
+            {
+                if (!ev.TryGetValue("method", out object m) || !ev.TryGetValue("params", out object p) || !(p is Dictionary<string, object> parameters)) return;
+                string method = Convert.ToString(m);
+                string key = TabKey(browser, Convert.ToInt32(ev["tabId"]));
+                lock (_childLock)
+                {
+                    if (method == "Target.attachedToTarget" && parameters["targetInfo"] is Dictionary<string, object> info)
+                    {
+                        if (!_children.TryGetValue(key, out var list)) _children[key] = list = new List<ChildTarget>();
+                        list.RemoveAll(c => c.SessionId == Convert.ToString(parameters["sessionId"]));
+                        list.Add(new ChildTarget
+                        {
+                            SessionId = Convert.ToString(parameters["sessionId"]),
+                            TargetId = Convert.ToString(info["targetId"]),
+                            Type = Convert.ToString(info["type"]),
+                            Url = Convert.ToString(info["url"])
+                        });
+                    }
+                    else if (method == "Target.detachedFromTarget" && _children.TryGetValue(key, out var gone))
+                    {
+                        gone.RemoveAll(c => c.SessionId == Convert.ToString(parameters["sessionId"]));
+                    }
+                }
+            }
+            catch (Exception ex) when (ex is KeyNotFoundException || ex is FormatException || ex is InvalidCastException) { /* an event of another shape: ignored */ }
         }
 
         /// <summary>True while the extension of that browser is connected.</summary>
@@ -71,6 +130,7 @@ namespace AutomationTest.Core.Web
         public void ResetTab()
         {
             lock (_tabs) _tabs.Clear();
+            lock (_childLock) { _children.Clear(); _autoAttached.Clear(); }
         }
 
         /// <summary>Runs one Web action.</summary>
@@ -80,7 +140,7 @@ namespace AutomationTest.Core.Web
             switch (w.Kind)
             {
                 case WebKind.NewTab: NewTab(w, token); break;
-                case WebKind.WaitElement: FindElement(w, token); break;
+                case WebKind.WaitElement: Locate(w, token); break;
                 case WebKind.Input: Input(w, text, token); break;
                 case WebKind.Click: Click(w, token); break;
                 case WebKind.Dialog: Dialog(w, token); break;
@@ -209,38 +269,156 @@ namespace AutomationTest.Core.Web
         }
 
         /// <summary>The arguments of the page scripts for an element: selector, frame and which match (1 = first).</summary>
-        private static string ElementArgs(WebSettings w)
+        private static string ElementArgs(WebSettings w, string frame)
         {
-            return MiniJson.Write(w.Selector.Trim()) + "," + MiniJson.Write((w.Frame ?? "").Trim()) + "," + Math.Max(1, w.Index);
+            return MiniJson.Write(w.Selector.Trim()) + "," + MiniJson.Write(frame ?? "") + "," + Math.Max(1, w.Index);
         }
 
-        private object Cdp(BrowserKind browser, int tab, string method, Dictionary<string, object> parameters, CancellationToken token, int timeoutMs = CallTimeoutMs)
+        private object Cdp(BrowserKind browser, int tab, string method, Dictionary<string, object> parameters, CancellationToken token, int timeoutMs = CallTimeoutMs, string session = null)
         {
-            return Call(browser, "cdp", new Dictionary<string, object> { { "tabId", tab }, { "method", method }, { "params", parameters ?? new Dictionary<string, object>() } }, token, timeoutMs);
+            var args = new Dictionary<string, object> { { "tabId", tab }, { "method", method }, { "params", parameters ?? new Dictionary<string, object>() } };
+            if (!string.IsNullOrEmpty(session)) args["sessionId"] = session; // a frame of another site
+            return Call(browser, "cdp", args, token, timeoutMs);
         }
 
-        /// <summary>Waits until the element is on the page and visible; returns where its centre is (in page pixels).</summary>
-        private double[] FindElement(WebSettings w, CancellationToken token, bool failIfMissing = true, bool requireVisible = true)
+        /// <summary>Runs a script in the page of a session (null = the tab itself) and returns the "result" of the reply.</summary>
+        private Dictionary<string, object> Evaluate(BrowserKind browser, int tab, string session, string expression, bool byValue, CancellationToken token)
+        {
+            var reply = (Dictionary<string, object>)Cdp(browser, tab, "Runtime.evaluate",
+                new Dictionary<string, object> { { "expression", expression }, { "returnByValue", byValue } }, token, CallTimeoutMs, session);
+            if (reply.TryGetValue("exceptionDetails", out object ex) && ex != null)
+                throw new InvalidOperationException("The page could not be searched: " + MiniJson.Write(ex));
+            return (Dictionary<string, object>)reply["result"];
+        }
+
+        private Dictionary<string, object> EvaluateValue(BrowserKind browser, int tab, string session, string expression, CancellationToken token)
+        {
+            var result = Evaluate(browser, tab, session, expression, true, token);
+            return result.TryGetValue("value", out object value) ? value as Dictionary<string, object> : null;
+        }
+
+        /// <summary>Asks the browser to attach the frames of other sites that this page (or child) holds; they arrive as child targets.</summary>
+        private void EnsureAutoAttach(BrowserKind browser, int tab, string session, CancellationToken token)
+        {
+            string key = TabKey(browser, tab) + ":" + session;
+            lock (_childLock) { if (!_autoAttached.Add(key)) return; }
+            try
+            {
+                Cdp(browser, tab, "Target.setAutoAttach", new Dictionary<string, object>
+                {
+                    { "autoAttach", true }, { "waitForDebuggerOnStart", false }, { "flatten", true }
+                }, token, CallTimeoutMs, session);
+            }
+            catch (InvalidOperationException)
+            {
+                lock (_childLock) _autoAttached.Remove(key);
+                throw;
+            }
+        }
+
+        private ChildTarget FindChild(BrowserKind browser, int tab, string targetId)
+        {
+            lock (_childLock)
+            {
+                return _children.TryGetValue(TabKey(browser, tab), out var list) ? list.Find(c => c.TargetId == targetId) : null;
+            }
+        }
+
+        /// <summary>
+        /// Works out in which session the elements of the Frame chain live. Frames of the same site are entered by script; a frame of
+        /// another site is a child target of the browser: its session is found and the rest of the chain is walked there.
+        /// </summary>
+        private Located ResolveFrames(WebSettings w, int tab, CancellationToken token, out bool frameMissing)
+        {
+            frameMissing = false;
+            var located = new Located { Frame = (w.Frame ?? "").Trim() };
+            string session = null;
+            double ox = 0, oy = 0;
+            string remaining = located.Frame;
+            while (remaining.Length > 0)
+            {
+                var probe = EvaluateValue(w.Browser, tab, session, WebScripts.ProbeFrames + "(" + MiniJson.Write(remaining) + ")", token);
+                if (probe == null) { frameMissing = true; return located; }
+                if (probe.ContainsKey("missing")) { frameMissing = true; return located; }
+                int cross = Convert.ToInt32(probe["cross"]);
+                if (cross < 0) break;
+
+                // The frame 'cross' is of another site: ask the browser which frame it is and find the target that holds it.
+                string[] segments = remaining.Split(new[] { ">>>" }, StringSplitOptions.None);
+                var element = Evaluate(w.Browser, tab, session, WebScripts.FrameElement + "(" + MiniJson.Write(remaining) + "," + cross + ")", false, token);
+                if (!element.TryGetValue("objectId", out object objectId)) { frameMissing = true; return located; }
+                var node = (Dictionary<string, object>)((Dictionary<string, object>)Cdp(w.Browser, tab, "DOM.describeNode",
+                    new Dictionary<string, object> { { "objectId", objectId } }, token, CallTimeoutMs, session))["node"];
+                string frameId = node.TryGetValue("frameId", out object fid) ? Convert.ToString(fid) : null;
+                if (string.IsNullOrEmpty(frameId)) throw new InvalidOperationException("The browser did not say which frame \"" + segments[cross].Trim() + "\" is.");
+
+                EnsureAutoAttach(w.Browser, tab, session, token);
+                var watch = Stopwatch.StartNew();
+                ChildTarget child;
+                while ((child = FindChild(w.Browser, tab, frameId)) == null)
+                {
+                    token.ThrowIfCancellationRequested();
+                    if (watch.ElapsedMilliseconds >= Math.Min(w.TimeMs, 10000))
+                        throw new InvalidOperationException("The frame \"" + segments[cross].Trim() + "\" is from another site and the browser did not hand it over (is it still loading?).");
+                    Thread.Sleep(100);
+                }
+                ox += Convert.ToDouble(probe["ox"]); oy += Convert.ToDouble(probe["oy"]);
+                session = child.SessionId;
+                remaining = string.Join(">>>", segments, cross + 1, segments.Length - cross - 1).Trim();
+            }
+            located.Session = session;
+            located.Frame = remaining;
+            located.OffsetX = ox;
+            located.OffsetY = oy;
+            return located;
+        }
+
+        /// <summary>Waits until the element is on the page (and visible); returns where it is. Null when it never came and failIfMissing is false.</summary>
+        private Located Locate(WebSettings w, CancellationToken token, bool failIfMissing = true, bool requireVisible = true)
         {
             if (string.IsNullOrWhiteSpace(w.Selector)) throw new InvalidOperationException(w.Kind + ": no selector is set.");
             int tab = CurrentTab(w.Browser, token);
-            string script = WebScripts.Locate + "(" + ElementArgs(w) + ")";
+            var context = new Located { Frame = (w.Frame ?? "").Trim() };
+            bool resolved = context.Frame.Length == 0; // no frame: nothing to resolve
             var watch = Stopwatch.StartNew();
             while (true)
             {
                 token.ThrowIfCancellationRequested();
-                var reply = (Dictionary<string, object>)Cdp(w.Browser, tab, "Runtime.evaluate",
-                    new Dictionary<string, object> { { "expression", script }, { "returnByValue", true } }, token);
-                if (reply.TryGetValue("exceptionDetails", out object ex) && ex != null)
-                    throw new InvalidOperationException("The page could not be searched: " + MiniJson.Write(ex));
-                var value = (Dictionary<string, object>)((Dictionary<string, object>)reply["result"])["value"];
-                if (value.TryGetValue("error", out object error)) throw new InvalidOperationException(error.ToString());
-                if (value["found"] is bool found && found && (!requireVisible || (value["visible"] is bool visible && visible)))
-                    return new[] { Convert.ToDouble(value["x"]), Convert.ToDouble(value["y"]) };
+                var value = EvaluateValue(w.Browser, tab, context.Session, WebScripts.Locate + "(" + ElementArgs(w, context.Frame) + ")", token);
+                if (value != null && value.TryGetValue("error", out object error))
+                {
+                    if (value.TryGetValue("cross", out object cross) && cross is bool isCross && isCross && !resolved)
+                    {
+                        // A frame of another site: find its session once, then look in there.
+                        context = ResolveFrames(w, tab, token, out bool missing);
+                        resolved = !missing;
+                        if (missing)
+                        {
+                            if (watch.ElapsedMilliseconds >= w.TimeMs)
+                            {
+                                if (!failIfMissing) return null;
+                                throw new InvalidOperationException(w.Kind + ": the frame \"" + w.Frame.Trim() + "\" was not found on the page within " + w.TimeMs + " ms.");
+                            }
+                            Thread.Sleep(150);
+                        }
+                        continue;
+                    }
+                    throw new InvalidOperationException(error.ToString());
+                }
+                if (value != null && value["found"] is bool found && found && (!requireVisible || (value["visible"] is bool visible && visible)))
+                    return new Located
+                    {
+                        Session = context.Session,
+                        Frame = context.Frame,
+                        OffsetX = context.OffsetX,
+                        OffsetY = context.OffsetY,
+                        X = Convert.ToDouble(value["x"]) + context.OffsetX,
+                        Y = Convert.ToDouble(value["y"]) + context.OffsetY
+                    };
                 if (watch.ElapsedMilliseconds >= w.TimeMs)
                 {
                     if (!failIfMissing) return null;
-                    throw new InvalidOperationException(w.Kind + ": \"" + w.Selector.Trim() + "\" was not found on the page within " + w.TimeMs + " ms.");
+                    throw new InvalidOperationException(w.Kind + ": \"" + w.Selector.Trim() + "\" was not found " + (string.IsNullOrWhiteSpace(w.Frame) ? "on the page" : "in the frame \"" + w.Frame.Trim() + "\" (is the frame there?)") + " within " + w.TimeMs + " ms.");
                 }
                 Thread.Sleep(150);
             }
@@ -248,13 +426,13 @@ namespace AutomationTest.Core.Web
 
         private void Input(WebSettings w, string text, CancellationToken token)
         {
-            FindElement(w, token);
+            var at = Locate(w, token);
             int tab = CurrentTab(w.Browser, token);
             Cdp(w.Browser, tab, "Page.bringToFront", null, token);
             Cdp(w.Browser, tab, "Runtime.evaluate", new Dictionary<string, object>
             {
-                { "expression", WebScripts.Focus + "(" + ElementArgs(w) + ")" }, { "returnByValue", true }
-            }, token);
+                { "expression", WebScripts.Focus + "(" + ElementArgs(w, at.Frame) + ")" }, { "returnByValue", true }
+            }, token, CallTimeoutMs, at.Session);
             // insertText goes through the browser's own input path, so frameworks see the change and Vietnamese text is typed as is.
             if (string.IsNullOrEmpty(text)) Cdp(w.Browser, tab, "Input.dispatchKeyEvent", new Dictionary<string, object> { { "type", "rawKeyDown" }, { "key", "Delete" }, { "code", "Delete" }, { "windowsVirtualKeyCode", 46 } }, token);
             else Cdp(w.Browser, tab, "Input.insertText", new Dictionary<string, object> { { "text", text } }, token);
@@ -262,16 +440,16 @@ namespace AutomationTest.Core.Web
 
         private void Click(WebSettings w, CancellationToken token)
         {
-            var at = FindElement(w, token);
+            Locate(w, token);
             int tab = CurrentTab(w.Browser, token);
             Cdp(w.Browser, tab, "Page.bringToFront", null, token);
             Thread.Sleep(100); // the viewport of a tab that was in the background needs a moment
-            at = FindElement(w, token); // again: the position can change once the tab is in front
+            var at = Locate(w, token); // again: the position can change once the tab is in front
             Func<string, int, Dictionary<string, object>> mouse = (type, count) => new Dictionary<string, object>
             {
-                { "type", type }, { "x", at[0] }, { "y", at[1] }, { "button", "left" }, { "clickCount", count }
+                { "type", type }, { "x", at.X }, { "y", at.Y }, { "button", "left" }, { "clickCount", count }
             };
-            Cdp(w.Browser, tab, "Input.dispatchMouseEvent", new Dictionary<string, object> { { "type", "mouseMoved" }, { "x", at[0] }, { "y", at[1] } }, token);
+            Cdp(w.Browser, tab, "Input.dispatchMouseEvent", new Dictionary<string, object> { { "type", "mouseMoved" }, { "x", at.X }, { "y", at.Y } }, token);
             Cdp(w.Browser, tab, "Input.dispatchMouseEvent", mouse("mousePressed", 1), token);
             try
             {
@@ -337,11 +515,13 @@ namespace AutomationTest.Core.Web
             int tab = CurrentTab(browser, token);
             if (w.Get == WebGetKind.Count)
             {
+                var where = ResolveFrames(w, tab, token, out bool frameThere);
+                if (frameThere) return 0.0; // the frame is not there: nothing matches
                 var counted = (Dictionary<string, object>)Cdp(browser, tab, "Runtime.evaluate", new Dictionary<string, object>
                 {
-                    { "expression", WebScripts.Count + "(" + MiniJson.Write(w.Selector.Trim()) + "," + MiniJson.Write((w.Frame ?? "").Trim()) + ")" },
+                    { "expression", WebScripts.Count + "(" + MiniJson.Write(w.Selector.Trim()) + "," + MiniJson.Write(where.Frame) + ")" },
                     { "returnByValue", true }
-                }, token);
+                }, token, CallTimeoutMs, where.Session);
                 object number = ((Dictionary<string, object>)counted["result"]).TryGetValue("value", out object cv) ? cv : null;
                 if (number is Dictionary<string, object> failed) throw new InvalidOperationException(Convert.ToString(failed["error"]));
                 return Convert.ToDouble(number ?? 0);
@@ -349,12 +529,13 @@ namespace AutomationTest.Core.Web
             if (w.Get == WebGetKind.Attribute && string.IsNullOrWhiteSpace(w.Attribute)) throw new InvalidOperationException("Get Text: no attribute name is set.");
 
             // The element only has to be there: a hidden field or a collapsed block can be read too.
-            if (FindElement(w, token, w.Required, false) == null) return w.Get == WebGetKind.Checked ? (object)false : "";
+            var found = Locate(w, token, w.Required, false);
+            if (found == null) return w.Get == WebGetKind.Checked ? (object)false : "";
             var reply = (Dictionary<string, object>)Cdp(browser, tab, "Runtime.evaluate", new Dictionary<string, object>
             {
-                { "expression", WebScripts.Read + "(" + ElementArgs(w) + "," + MiniJson.Write(w.Get.ToString()) + "," + MiniJson.Write((w.Attribute ?? "").Trim()) + ")" },
+                { "expression", WebScripts.Read + "(" + ElementArgs(w, found.Frame) + "," + MiniJson.Write(w.Get.ToString()) + "," + MiniJson.Write((w.Attribute ?? "").Trim()) + ")" },
                 { "returnByValue", true }
-            }, token);
+            }, token, CallTimeoutMs, found.Session);
             var result = (Dictionary<string, object>)reply["result"];
             result.TryGetValue("value", out object value);
             if (value is bool || value is string) return value;

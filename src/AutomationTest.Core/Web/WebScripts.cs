@@ -17,7 +17,7 @@ namespace AutomationTest.Core.Web
     if (!f) return null;
     var inner = null;
     try { inner = f.contentDocument; } catch (err) { inner = null; }
-    if (!inner) return { error: 'The frame ' + frames[i].trim() + ' is from another site, which a script cannot enter.' };
+    if (!inner) return { error: 'The frame ' + frames[i].trim() + ' is from another site.', cross: true };
     var fr = f.getBoundingClientRect();
     ox += fr.left + f.clientLeft; oy += fr.top + f.clientTop;
     doc = inner;
@@ -42,7 +42,7 @@ namespace AutomationTest.Core.Web
         public const string Locate = @"(function (sel, frame, index) {" + ResolveJs + @"
   var hit;
   try { hit = resolve(sel, frame, index); } catch (err) { return { error: 'Bad selector: ' + err.message }; }
-  if (hit && hit.error) return { error: hit.error };
+  if (hit && hit.error) return { error: hit.error, cross: hit.cross };
   if (!hit) return { found: false };
   var el = hit.el;
   el.scrollIntoView({ block: 'center', inline: 'center' });
@@ -51,6 +51,34 @@ namespace AutomationTest.Core.Web
   var r = el.getBoundingClientRect();
   var visible = r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden';
   return { found: true, visible: visible, x: hit.ox + r.left + r.width / 2, y: hit.oy + r.top + r.height / 2 };
+})";
+
+        // Walks the iframes of the chain in this document while they are of the same site. Returns { missing: i } when the frame i is not
+        // there, { cross: i, ox, oy } when it is of another site (ox, oy: where its document starts in this one), { cross: -1 } when all
+        // can be entered.
+        public const string ProbeFrames = @"(function (frame) {
+  var segs = frame.split('>>>'), doc = document, ox = 0, oy = 0;
+  for (var i = 0; i < segs.length; i++) {
+    var f = doc.querySelector(segs[i].trim());
+    if (!f) return { missing: i };
+    var inner = null;
+    try { inner = f.contentDocument; } catch (err) { inner = null; }
+    var r = f.getBoundingClientRect();
+    var nx = ox + r.left + f.clientLeft, ny = oy + r.top + f.clientTop;
+    if (!inner) return { cross: i, ox: nx, oy: ny };
+    ox = nx; oy = ny; doc = inner;
+  }
+  return { cross: -1 };
+})";
+
+        // The iframe element number upTo of the chain (as an object, to ask the browser for its frame).
+        public const string FrameElement = @"(function (frame, upTo) {
+  var segs = frame.split('>>>'), doc = document, el = null;
+  for (var i = 0; i <= upTo; i++) {
+    el = doc.querySelector(segs[i].trim());
+    if (i < upTo) doc = el.contentDocument;
+  }
+  return el;
 })";
 
         // Focuses the element and selects its content, so typed text replaces it.
