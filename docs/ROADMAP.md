@@ -4,7 +4,7 @@ Tài liệu này ghi các tính năng đã được yêu cầu nhưng chưa làm
 Tình trạng hiện tại xem `docs/STATUS.md`, yêu cầu gốc và quyết định kỹ thuật xem `docs/PROJECT.md`.
 Mỗi giai đoạn là một nhánh `feature_xxx` tách từ `preview`, xong thì PR vào `preview` (quy ước git trong `CLAUDE.md`).
 
-Cập nhật lần cuối: 2026-11-15. Trạng thái: **P0 (bộ test trong repo) đã xong phần chính; P1 (R1 và R14: Try/Catch/Break/Continue/Return và Section) và P2 (R2 Log, R3 Message, R4 Random Time) đã xong**; các giai đoạn còn lại chưa bắt đầu. P0 chưa có: test cho Web (cần trình duyệt và extension), RecordConverter, overlay/hook/phím nóng và Image trên cửa sổ thật.
+Cập nhật lần cuối: 2026-11-15. Trạng thái: **P0 (bộ test trong repo) đã xong phần chính; P1 (R1 và R14: Try/Catch/Break/Continue/Return và Section) P2 (R2 Log, R3 Message, R4 Random Time) và P3 (R6 Clipboard, R15 Password, R7 Start Selected nhớ giá trị) đã xong**; các giai đoạn còn lại chưa bắt đầu. P0 chưa có: test cho Web (cần trình duyệt và extension), RecordConverter, overlay/hook/phím nóng và Image trên cửa sổ thật.
 
 ## 1. Danh sách yêu cầu
 
@@ -46,12 +46,12 @@ Mã R1, R2... dùng để tham chiếu trong các mục sau.
 - **Chuyển đổi:** khi mở file, action Utilities có kiểu Open/Close được đọc thành Program; lưu lại thì ghi theo category mới.
 - **Tương thích:** bản cũ không biết category Program, đọc thành **Mouse** mặc định (chạy sẽ click bậy). Ghi vào cảnh báo.
 
-### R6. Variable kiểu Clipboard
+### R6. Variable kiểu Clipboard – đã làm (P3)
 - Kiểu mới của action Variable. Khi action chạy, biến được gán bằng **chuỗi** đang có trong clipboard tại thời điểm đó; sau đó clipboard đổi thì biến **không** đổi theo.
 - Clipboard rỗng hoặc không phải chữ (hình, file) thì giá trị là chuỗi rỗng (đề xuất; hoặc lỗi nếu bật tùy chọn).
 - Đọc clipboard phải chạy trên luồng STA; runner chạy trên luồng riêng nên cần cầu nối (marshal sang luồng giao diện hoặc luồng STA riêng).
 
-### R15. Variable kiểu Password
+### R15. Variable kiểu Password – đã làm (P3)
 - Giá trị **không bao giờ lưu trong file JSON**. Lúc chạy, khi gặp action Variable kiểu Password thì hiện hộp nhập (ô che ký tự); giá trị chỉ nằm trong bộ nhớ của lần chạy đó.
 - Đề xuất: hỏi **một lần cho mỗi ID trong mỗi lần chạy** (không hỏi lại ở mỗi vòng Loop); lần chạy sau lại hỏi.
 - Chỉ dùng được qua biểu thức `{pw}` (ví dụ Keyboard Text, Web Input, API header, Email). Không hiện trong cột Details, hộp nhập biến của Start Selected (R7) thì cũng che và **không nhớ**, và không bao giờ vào log (R2).
@@ -60,7 +60,7 @@ Mã R1, R2... dùng để tham chiếu trong các mục sau.
 - Việc "không lưu" phải được bảo đảm **ở chỗ dựng node và ghi file**, không chỉ ẩn ô nhập: đổi một biến String đang có giá trị sang Password thì giá trị phải bị xóa, không để sót trong JSON (cùng loại lỗi trường ẩn còn dư giá trị đã gặp ở Excel).
 - Giới hạn cần ghi rõ cho người dùng: chạy tự động không người ngồi (hẹn giờ/dòng lệnh, nếu sau này làm) không hỏi mật khẩu được.
 
-### R7. Start Selected nhớ giá trị biến của lần trước
+### R7. Start Selected nhớ giá trị biến của lần trước – đã làm (P3)
 - Hộp nhập biến của Start Selected nhớ giá trị đã nhập **ở lần Start Selected ngay trước đó**. Biến cùng **tên và kiểu** với một biến của lần trước thì tự điền giá trị cũ; khác kiểu hoặc không có ở lần trước thì để trống như hiện nay.
 - Chỉ nhớ đúng một lần trước đó (lần sau thay hẳn): ví dụ lần 1 có `a` String, `b` Number, `c` Number; lần 2 có `a` String và `b` String → `a` được điền, `b` không (khác kiểu); lần 3 có `c` Number → không điền vì `c` không có ở lần 2.
 - Chỉ lưu trong bộ nhớ của phiên làm việc (không ghi ra file). Không bao giờ nhớ biến Password.
@@ -112,7 +112,7 @@ Mã R1, R2... dùng để tham chiếu trong các mục sau.
 | P0 (**xong phần chính**) | Đưa bộ test vào repo (`tests/`): biểu thức, runner, vòng nạp/lưu editor, thư mục tạm, Excel ẩn riêng | Mọi giai đoạn sau đều cần test; trước đây test nằm ở thư mục tạm của phiên và mất đi | M |
 | P1 (**xong**) | R1 Try/Catch/Break/Continue/Return + R14 Section | Nền cho cây và runner; Return cần cho Auto Script | L |
 | P2 (**xong**) | R2 Log, R3 Message, R4 Random Time (hộp Settings) | Log nên ghi được Try/Catch từ đầu; ba ô cùng một hộp | M |
-| P3 | R6 Clipboard, R15 Password, R7 nhớ giá trị Start Selected | Nhỏ, độc lập, Password cần có trước API/Email/Auto Script | M |
+| P3 (**xong**) | R6 Clipboard, R15 Password, R7 nhớ giá trị Start Selected | Nhỏ, độc lập, Password cần có trước API/Email/Auto Script | M |
 | P4 | R13 copy/paste, kéo thả, (Undo/Redo) | Sau P1 để quy tắc cây (Try, Section) đã chốt | L |
 | P5 | R5 Category Program + thao tác cửa sổ | Tách category kéo theo chuyển đổi file | M |
 | P6 | R10 Image → Variable, R11 OCR | Thay đổi phá vỡ lớn nhất; OCR cần thử công cụ trước | L |
