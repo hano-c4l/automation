@@ -64,15 +64,19 @@ namespace AutomationTest.Core.Runner
             Run(script.Actions, null, token);
         }
 
-        /// <summary>Runs just these actions (for trying part of a script), starting with the given variable values.</summary>
+        /// <summary>
+        /// Runs just these actions (for trying part of a script), starting with the given variable values. With
+        /// <paramref name="partial"/> (Start Selected) the actions may be the inside of a Loop, so a Break or Continue that is reached
+        /// simply ends the selection instead of being an error.
+        /// </summary>
         /// <exception cref="OperationCanceledException">The token was cancelled.</exception>
-        public void Run(List<ActionNode> actions, IDictionary<string, object> variables, CancellationToken token)
+        public void Run(List<ActionNode> actions, IDictionary<string, object> variables, CancellationToken token, bool partial = false)
         {
             if (actions == null) throw new ArgumentNullException(nameof(actions));
             _windowCache.Clear();
             _vars.Clear();
             _flow = Flow.None;
-            _loopDepth = 0;
+            _loopDepth = partial ? 1 : 0;
             (WebSession ?? AutomationTest.Core.Web.WebSession.SharedIfCreated)?.ResetTab(); // every run starts on the tab that is in front
             (ExcelSession ?? AutomationTest.Core.Excel.ExcelSession.SharedIfCreated)?.Reset(); // and on the workbook and sheet that are active
             if (variables != null)
@@ -82,6 +86,8 @@ namespace AutomationTest.Core.Runner
             try
             {
                 ExecuteList(actions, token);
+                if (partial && (_flow == Flow.Break || _flow == Flow.Continue))
+                    Message?.Invoke((_flow == Flow.Break ? "Break" : "Continue") + " reached: the selection ends here (it would act on the Loop around it).");
             }
             catch (ShutdownIssuedException)
             {

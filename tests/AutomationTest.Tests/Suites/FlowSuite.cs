@@ -173,6 +173,22 @@ namespace AutomationTest.Tests.Suites
             t.Eq("a Return does not leak into the next run", Get(runner, "z"), 4.0);
         }
 
+        [Suite("flow.partial-run")]
+        public static void PartialRun(T t)
+        {
+            // Start Selected on the inside of a Loop: a Break or Continue ends the selection, it is not an error
+            var messages = new List<string>();
+            var runner = new ScriptRunner(new MouseController());
+            runner.Message += messages.Add;
+            runner.Run(new List<ActionNode> { Var("a", "1"), ActionNode.NewJump(ControlKind.Break), Var("a", "2") }, null, CancellationToken.None, partial: true);
+            t.Eq("the actions before the Break ran", Get(runner, "a"), 1.0);
+            t.True("and a note says the selection ended", messages.Any(m => m.Contains("selection ends")));
+            runner.Run(new List<ActionNode> { Var("a", "1"), Cond("true", ActionNode.NewJump(ControlKind.Continue)), Var("a", "2") }, null, CancellationToken.None, partial: true);
+            t.Eq("a Continue inside a Condition ends it as well", Get(runner, "a"), 1.0);
+            // the same actions in a whole run (not partial) are still an error
+            t.Throws("a whole run keeps the error", () => Run(Var("a", "1"), ActionNode.NewJump(ControlKind.Break)), "inside a Loop");
+        }
+
         [Suite("flow.section")]
         public static void Sections(T t)
         {

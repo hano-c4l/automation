@@ -3469,7 +3469,7 @@ namespace AutomationTest.App
             // keeps its own state, so a disabled action inside a chosen Loop is still skipped.
             var chosen = new HashSet<ActionNode>(rows.Select(r => r.Node));
             var nodes = plan.RunNodes.Select(n => { var copy = n.Clone(); if (chosen.Contains(n)) copy.Disabled = false; return copy; }).ToList();
-            await RunAsync((runner, token) => runner.Run(nodes, values, token), RunKind.Selected);
+            await RunAsync((runner, token) => runner.Run(nodes, values, token, partial: true), RunKind.Selected);
         }
 
         /// <summary>Runs something on the script runner in the background with the status messages, locking the window meanwhile.</summary>
