@@ -109,7 +109,8 @@ namespace AutomationTest.App
             {
                 case ActionCategory.Mouse: kind = "Mouse " + node.Mouse.Action; break;
                 case ActionCategory.Keyboard: kind = "Keyboard " + node.Keyboard.Action; break;
-                case ActionCategory.Utilities: kind = ActionGroups.Display(node.Command.Kind); break;
+                case ActionCategory.Utilities:
+                case ActionCategory.Program: kind = ActionGroups.Display(node.Command.Kind); break;
                 case ActionCategory.Web: kind = ActionGroups.Display(node.Web.Kind); break;
                 case ActionCategory.Excel: kind = ActionGroups.Display(node.Excel.Kind); break;
                 default: kind = node.Control.ToString(); break;

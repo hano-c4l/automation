@@ -4,7 +4,7 @@ Tài liệu này ghi các tính năng đã được yêu cầu nhưng chưa làm
 Tình trạng hiện tại xem `docs/STATUS.md`, yêu cầu gốc và quyết định kỹ thuật xem `docs/PROJECT.md`.
 Mỗi giai đoạn là một nhánh `feature_xxx` tách từ `preview`, xong thì PR vào `preview` (quy ước git trong `CLAUDE.md`).
 
-Cập nhật lần cuối: 2026-11-15. Trạng thái: **P0 (bộ test trong repo) đã xong phần chính; P1 (R1 và R14: Try/Catch/Break/Continue/Return và Section) P2 (R2 Log, R3 Message, R4 Random Time) và P3 (R6 Clipboard, R15 Password, R7 Start Selected nhớ giá trị) và P4 (R13 copy/paste, kéo thả, Undo/Redo) đã xong**; các giai đoạn còn lại chưa bắt đầu. P0 chưa có: test cho Web (cần trình duyệt và extension), RecordConverter, overlay/hook/phím nóng và Image trên cửa sổ thật.
+Cập nhật lần cuối: 2026-11-15. Trạng thái: **P0 (bộ test trong repo) đã xong phần chính; P1 (R1 và R14: Try/Catch/Break/Continue/Return và Section) P2 (R2 Log, R3 Message, R4 Random Time) và P3 (R6 Clipboard, R15 Password, R7 Start Selected nhớ giá trị) P4 (R13 copy/paste, kéo thả, Undo/Redo) và P5 (R5 category Program và thao tác cửa sổ) đã xong**; các giai đoạn còn lại chưa bắt đầu. P0 chưa có: test cho Web (cần trình duyệt và extension), RecordConverter, overlay/hook/phím nóng và Image trên cửa sổ thật.
 
 ## 1. Danh sách yêu cầu
 
@@ -39,7 +39,7 @@ Mã R1, R2... dùng để tham chiếu trong các mục sau.
 - Hiển thị (cột Time, tổng của Loop/Section) vẫn là giá trị đã cài, không phải giá trị ngẫu nhiên.
 - Làm một chỗ duy nhất trong runner (một hàm trả lại giá trị đã cộng) để mọi loại action dùng chung.
 
-### R5. Category Program (tách khỏi Utilities)
+### R5. Category Program (tách khỏi Utilities) – đã làm (P5)
 - Category mới **Program** có các action: **Open**, **Close** (đã có, chuyển từ Utilities), rồi thêm thao tác cửa sổ: **Move**, **Resize**, **Minimize**, **Maximize**, **Restore**, **Activate** (đưa lên trước), có thể thêm **Close window** (đóng một cửa sổ theo tiêu đề, khác Close cả chương trình).
 - Chọn chương trình/cửa sổ bằng cùng bộ **Match** của Close (Title regex, Name, Path, Id), có Pick giống Mouse nếu làm được.
 - Utilities còn: File/Folder, System (Active, Shutdown), và sẽ thêm API, Auto Script (R8, R12).
@@ -114,7 +114,7 @@ Mã R1, R2... dùng để tham chiếu trong các mục sau.
 | P2 (**xong**) | R2 Log, R3 Message, R4 Random Time (hộp Settings) | Log nên ghi được Try/Catch từ đầu; ba ô cùng một hộp | M |
 | P3 (**xong**) | R6 Clipboard, R15 Password, R7 nhớ giá trị Start Selected | Nhỏ, độc lập, Password cần có trước API/Email/Auto Script | M |
 | P4 (**xong**) | R13 copy/paste, kéo thả, (Undo/Redo) | Sau P1 để quy tắc cây (Try, Section) đã chốt | L |
-| P5 | R5 Category Program + thao tác cửa sổ | Tách category kéo theo chuyển đổi file | M |
+| P5 (**xong**) | R5 Category Program + thao tác cửa sổ | Tách category kéo theo chuyển đổi file | M |
 | P6 | R10 Image → Variable, R11 OCR | Thay đổi phá vỡ lớn nhất; OCR cần thử công cụ trước | L |
 | P7 | R12 Auto Script | Cần Return (P1), biến/Password (P3) | M |
 | P8 | R8 API | Cần giá trị JSON trong biểu thức | L |

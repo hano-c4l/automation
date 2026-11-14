@@ -155,6 +155,7 @@ namespace AutomationTest.Core.Runner
                     ExecuteKeyboard(node, token);
                     break;
                 case ActionCategory.Utilities:
+                case ActionCategory.Program:
                     ExecuteCommand(node, token);
                     break;
                 case ActionCategory.Web:
@@ -348,16 +349,27 @@ namespace AutomationTest.Core.Runner
                     break;
 
                 case CommandKind.Open:
-                    if (string.IsNullOrWhiteSpace(c.Value))
+                    string toOpen = c.ValueIsExpression ? EvalString(c.Value) : c.Value;
+                    if (string.IsNullOrWhiteSpace(toOpen))
                         throw new InvalidOperationException("Program Open: no path is set.");
                     try
                     {
-                        Process.Start(new ProcessStartInfo(c.Value.Trim()) { UseShellExecute = true });
+                        Process.Start(new ProcessStartInfo(toOpen.Trim()) { UseShellExecute = true });
                     }
                     catch (Exception ex) when (ex is System.ComponentModel.Win32Exception || ex is InvalidOperationException)
                     {
-                        throw new InvalidOperationException("Cannot open \"" + c.Value.Trim() + "\": " + ex.Message);
+                        throw new InvalidOperationException("Cannot open \"" + toOpen.Trim() + "\": " + ex.Message);
                     }
+                    break;
+
+                case CommandKind.WindowActivate:
+                case CommandKind.WindowMinimize:
+                case CommandKind.WindowMaximize:
+                case CommandKind.WindowRestore:
+                case CommandKind.WindowMove:
+                case CommandKind.WindowResize:
+                    int arranged = ProgramActions.Arrange(c.Kind, c.Match, c.ValueIsExpression ? EvalString(c.Value) : c.Value, c.All, c.X, c.Y, c.Width, c.Height);
+                    if (arranged == 0) throw new InvalidOperationException("No window found for " + c.Match + " \"" + (c.ValueIsExpression ? EvalString(c.Value) : c.Value).Trim() + "\" (is the program running, and is its window visible?).");
                     break;
 
                 case CommandKind.Close:

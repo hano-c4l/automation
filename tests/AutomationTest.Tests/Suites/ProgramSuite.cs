@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -27,13 +28,117 @@ namespace AutomationTest.Tests.Suites
         private static Process Start(string title, bool refuse)
         {
             var p = Process.Start(DummyPath, "\"" + title + "\"" + (refuse ? " refuse" : ""));
-            for (int i = 0; i < 80 && p.MainWindowHandle == IntPtr.Zero; i++) { Thread.Sleep(100); p.Refresh(); }
+            // The dummy window is not in the taskbar, so .NET does not see it as the main window: look for it the way the actions do.
+            for (int i = 0; i < 80 && ProgramActions.FindWindows(ProgramMatch.Id, p.Id.ToString(), false).Count == 0; i++) Thread.Sleep(100);
             return p;
+        }
+
+        private static IntPtr HandleOf(Process p)
+        {
+            var found = ProgramActions.FindWindows(ProgramMatch.Id, p.Id.ToString(), false);
+            return found.Count == 0 ? IntPtr.Zero : found[0];
         }
 
         private static int Close(ProgramMatch match, string value, bool all = false, bool kill = false, long timeoutMs = 5000)
         {
             return ProgramActions.Close(match, value, all, kill, timeoutMs, CancellationToken.None);
+        }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool IsIconic(IntPtr hwnd);
+        [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool IsZoomed(IntPtr hwnd);
+
+        private static ActionNode Window(CommandKind kind, ProgramMatch match, string value, bool all = false, int x = 0, int y = 0, int width = 0, int height = 0)
+        {
+            return ActionNode.NewCommand(new CommandSettings { Kind = kind, Match = match, Value = value, All = all, X = x, Y = y, Width = width, Height = height });
+        }
+
+        private static void Run(params ActionNode[] actions)
+        {
+            new ScriptRunner(new AutomationTest.Core.Input.MouseController()).Run(new List<ActionNode>(actions), null, CancellationToken.None);
+        }
+
+        [Suite("program.windows")]
+        public static void Windows(T t)
+        {
+            var started = new List<Process>();
+            try
+            {
+                string title = UniqueTitle("AtWin");
+                var p = Start(title, false); started.Add(p);
+                IntPtr hwnd = HandleOf(p);
+                string pattern = "^" + title + "$";
+
+                Run(Window(CommandKind.WindowMove, ProgramMatch.Title, pattern, x: 120, y: 130));
+                int x, y, w, h;
+                ProgramActions.GetBounds(hwnd, out x, out y, out w, out h);
+                t.True("Move puts the top left corner there (" + x + ", " + y + ")", x == 120 && y == 130);
+
+                Run(Window(CommandKind.WindowResize, ProgramMatch.Title, pattern, width: 420, height: 260));
+                ProgramActions.GetBounds(hwnd, out x, out y, out w, out h);
+                t.True("Resize gives the width and height (" + w + " x " + h + ")", w == 420 && h == 260);
+                t.True("Resize keeps the place", x == 120 && y == 130);
+
+                Run(Window(CommandKind.WindowMinimize, ProgramMatch.Title, pattern));
+                t.True("Minimize", IsIconic(hwnd));
+                Run(Window(CommandKind.WindowRestore, ProgramMatch.Title, pattern));
+                t.False("Restore after Minimize", IsIconic(hwnd));
+                Run(Window(CommandKind.WindowMaximize, ProgramMatch.Title, pattern));
+                t.True("Maximize", IsZoomed(hwnd));
+                Run(Window(CommandKind.WindowRestore, ProgramMatch.Title, pattern));
+                t.False("Restore after Maximize", IsZoomed(hwnd));
+
+                // a minimized window is restored to be moved
+                Run(Window(CommandKind.WindowMinimize, ProgramMatch.Title, pattern));
+                Run(Window(CommandKind.WindowMove, ProgramMatch.Title, pattern, x: 200, y: 210));
+                ProgramActions.GetBounds(hwnd, out x, out y, out w, out h);
+                t.True("a minimized window can be moved (it is restored first)", !IsIconic(hwnd) && x == 200 && y == 210);
+
+                // Activate does not fail (whether Windows lets it to the front depends on who has the focus)
+                Run(Window(CommandKind.WindowActivate, ProgramMatch.Title, pattern));
+                t.True("Activate runs", true);
+
+                // found by process id and by process name, and all windows of a name
+                Run(Window(CommandKind.WindowMove, ProgramMatch.Id, p.Id.ToString(), x: 50, y: 60));
+                ProgramActions.GetBounds(hwnd, out x, out y, out w, out h);
+                t.True("by process id", x == 50 && y == 60);
+                var second = Start(UniqueTitle("AtWin2"), false); started.Add(second);
+                Run(Window(CommandKind.WindowMove, ProgramMatch.Name, "AtDummyApp", all: true, x: 300, y: 310));
+                int x2, y2, w2, h2;
+                ProgramActions.GetBounds(HandleOf(second), out x2, out y2, out w2, out h2);
+                ProgramActions.GetBounds(hwnd, out x, out y, out w, out h);
+                t.True("All moves every window of the name", x == 300 && y == 310 && x2 == 300 && y2 == 310);
+                Run(Window(CommandKind.WindowMove, ProgramMatch.Name, "AtDummyApp", x: 10, y: 20));
+                ProgramActions.GetBounds(hwnd, out x, out y, out w, out h);
+                ProgramActions.GetBounds(HandleOf(second), out x2, out y2, out w2, out h2);
+                t.True("without All only one window moves", (x == 10 && y == 20) != (x2 == 10 && y2 == 20));
+
+                // by path
+                Run(Window(CommandKind.WindowMove, ProgramMatch.Path, DummyPath, all: true, x: 70, y: 80));
+                ProgramActions.GetBounds(hwnd, out x, out y, out w, out h);
+                t.True("by path", x == 70 && y == 80);
+
+                // problems are said clearly
+                t.Throws("no such window", () => Run(Window(CommandKind.WindowMinimize, ProgramMatch.Title, "^NoSuchWindow-" + Guid.NewGuid().ToString("N") + "$")), "No window found");
+                t.Throws("nothing to look for", () => Run(Window(CommandKind.WindowMinimize, ProgramMatch.Title, "  ")), "Enter the window");
+                t.Throws("a size of 0", () => Run(Window(CommandKind.WindowResize, ProgramMatch.Title, pattern, width: 0, height: 100)), "at least 1");
+                t.Throws("a bad regular expression", () => Run(Window(CommandKind.WindowMinimize, ProgramMatch.Title, "(")), "regular expression");
+
+                // the window value can be an expression
+                var expr = Window(CommandKind.WindowMove, ProgramMatch.Title, "\"^\" + {t} + \"$\"", x: 15, y: 25);
+                expr.Command.ValueIsExpression = true;
+                var runner = new ScriptRunner(new AutomationTest.Core.Input.MouseController());
+                runner.Run(new List<ActionNode> { expr }, new Dictionary<string, object> { { "t", title } }, CancellationToken.None);
+                ProgramActions.GetBounds(hwnd, out x, out y, out w, out h);
+                t.True("a window found by an expression", x == 15 && y == 25);
+            }
+            finally
+            {
+                foreach (var p in started)
+                {
+                    try { if (!p.HasExited) p.Kill(); } catch (Exception) { }
+                    p.Dispose();
+                }
+            }
         }
 
         [Suite("program.close")]

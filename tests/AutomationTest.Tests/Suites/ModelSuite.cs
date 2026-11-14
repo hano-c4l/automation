@@ -40,6 +40,7 @@ namespace AutomationTest.Tests.Suites
             script.Actions.Add(ActionNode.NewKeyboard(new KeyboardSettings { Action = KeyboardAction.Text, Value = "xin chào" }));
             script.Actions.Add(ActionNode.NewCommand(new CommandSettings { Kind = CommandKind.FsCopy, Value = "a", Target = "b", Overwrite = true }));
             script.Actions.Add(ActionNode.NewCommand(new CommandSettings { Kind = CommandKind.Close, Match = ProgramMatch.Id, Value = "12", All = true, Force = true, TimeMs = 4000 }));
+            script.Actions.Add(ActionNode.NewCommand(new CommandSettings { Kind = CommandKind.WindowResize, Match = ProgramMatch.Name, Value = "notepad", Width = 400, Height = 300 }));
             script.Actions.Add(ActionNode.NewExcel(new ExcelSettings { Kind = ExcelKind.Copy, Cell = "A1", Value = "B2", Paste = ExcelPasteKind.Formulas, Transpose = true, UseWorkbook = "x", DestSheet = "y" }));
             script.Actions.Add(ActionNode.NewWeb(new WebSettings { Kind = WebKind.Click, Selector = "#go" }));
             var loop = ActionNode.NewLoop(new LoopSettings { Mode = LoopType.For, ForId = "i", ForFrom = "1", ForTo = "3", ForStep = "1" });
@@ -63,8 +64,8 @@ namespace AutomationTest.Tests.Suites
                 t.Eq("name kept", back.Actions[back.Actions.Count - 1].Name, "off one");
                 t.True("State kept", back.Actions[back.Actions.Count - 1].Disabled);
                 t.Eq("a Close action keeps its fields", back.Actions[3].Command.Match, ProgramMatch.Id);
-                t.Eq("a Copy action keeps its paste kind", back.Actions[4].Excel.Paste, ExcelPasteKind.Formulas);
-                t.Eq("children kept", back.Actions[6].Children.Count, 1);
+                t.Eq("a Copy action keeps its paste kind", back.Actions[5].Excel.Paste, ExcelPasteKind.Formulas);
+                t.Eq("children kept", back.Actions[7].Children.Count, 1);
             }
             finally { File.Delete(path); }
         }
@@ -119,7 +120,12 @@ namespace AutomationTest.Tests.Suites
             // files from the past
             t.Throws<InvalidDataException>("version 1 is refused with a clear message", () => Load("{\"Version\":1,\"Actions\":[]}"), "old step format");
             t.Throws<InvalidDataException>("a newer version is refused", () => Load("{\"Version\":99,\"Actions\":[]}"), "newer version");
-            t.Eq("a category saved as Command is Utilities", First("{\"Category\":\"Command\",\"Command\":{\"Kind\":\"Open\",\"Value\":\"x\"}}").Category, ActionCategory.Utilities);
+            t.Eq("a category saved as Command with Open is read as Program", First("{\"Category\":\"Command\",\"Command\":{\"Kind\":\"Open\",\"Value\":\"x\"}}").Category, ActionCategory.Program);
+            t.Eq("an old Utilities Open is read as Program", First("{\"Category\":\"Utilities\",\"Command\":{\"Kind\":\"Open\",\"Value\":\"x\"}}").Category, ActionCategory.Program);
+            t.Eq("an old Utilities Close is read as Program", First("{\"Category\":\"Utilities\",\"Command\":{\"Kind\":\"Close\",\"Value\":\"x\"}}").Category, ActionCategory.Program);
+            t.Eq("File/Folder stays in Utilities", First("{\"Category\":\"Utilities\",\"Command\":{\"Kind\":\"FsCopy\",\"Value\":\"x\"}}").Category, ActionCategory.Utilities);
+            t.Eq("a Program category with a Utilities kind is put right", First("{\"Category\":\"Program\",\"Command\":{\"Kind\":\"Shutdown\"}}").Category, ActionCategory.Utilities);
+            t.Eq("a Program action keeps its settings", First("{\"Category\":\"Program\",\"Command\":{\"Kind\":\"WindowMove\",\"Value\":\"w\",\"X\":5,\"Y\":6}}").Command.Y, 6);
             t.Eq("a file without State is enabled", First("{\"Category\":\"Mouse\",\"Mouse\":{}}").Disabled, false);
 
             // Excel Copy: ValuesOnly of older files means Paste = Values
@@ -145,7 +151,7 @@ namespace AutomationTest.Tests.Suites
             t.Eq("unknown category -> Mouse", First("{\"Category\":\"Teleport\"}").Category, ActionCategory.Mouse);
             t.Eq("unknown Control kind -> Loop", First("{\"Category\":\"Control\",\"Control\":\"Teleport\"}").Control, ControlKind.Loop);
             t.Eq("a Loop made from an unknown Control runs once", First("{\"Category\":\"Control\",\"Control\":\"Teleport\"}").Loop.Count, 1L);
-            t.Eq("unknown Utilities kind -> Open", First("{\"Category\":\"Utilities\",\"Command\":{\"Kind\":\"Teleport\"}}").Command.Kind, CommandKind.Open);
+            t.Eq("unknown Utilities kind -> Open (which is a Program action)", First("{\"Category\":\"Utilities\",\"Command\":{\"Kind\":\"Teleport\"}}").Command.Kind, CommandKind.Open);
             t.Eq("unknown Excel kind -> Workbook", First("{\"Category\":\"Excel\",\"Excel\":{\"Kind\":\"Teleport\"}}").Excel.Kind, ExcelKind.Workbook);
             t.Eq("unknown Web kind -> NewTab", First("{\"Category\":\"Web\",\"Web\":{\"Kind\":\"Teleport\"}}").Web.Kind, WebKind.NewTab);
             t.Eq("unknown Variable type -> Number", First("{\"Category\":\"Control\",\"Control\":\"Variable\",\"Variable\":{\"Id\":\"a\",\"Type\":\"Teleport\"}}").Variable.Type, VariableType.Number);

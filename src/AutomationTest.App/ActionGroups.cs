@@ -79,6 +79,12 @@ namespace AutomationTest.App
         {
             Tuple.Create(CommandKind.Open, "Program", "Open"),
             Tuple.Create(CommandKind.Close, "Program", "Close"),
+            Tuple.Create(CommandKind.WindowActivate, "Window", "Activate"),
+            Tuple.Create(CommandKind.WindowMinimize, "Window", "Minimize"),
+            Tuple.Create(CommandKind.WindowMaximize, "Window", "Maximize"),
+            Tuple.Create(CommandKind.WindowRestore, "Window", "Restore"),
+            Tuple.Create(CommandKind.WindowMove, "Window", "Move"),
+            Tuple.Create(CommandKind.WindowResize, "Window", "Resize"),
             Tuple.Create(CommandKind.FsCopy, "File/Folder", "Copy"),
             Tuple.Create(CommandKind.FsMove, "File/Folder", "Move"),
             Tuple.Create(CommandKind.FsRename, "File/Folder", "Rename"),
@@ -101,7 +107,11 @@ namespace AutomationTest.App
 
         // The groups appear in the order of the first kind that uses them.
         public static IList<string> ExcelGroups { get; } = ExcelMap.Values.Select(e => e.Group).Distinct().ToList();
-        public static IList<string> CommandGroups { get; } = CommandMap.Values.Select(e => e.Group).Distinct().ToList();
+        /// <summary>The groups of the Utilities category, or of the Program category (Program and Window).</summary>
+        public static IList<string> CommandGroupsFor(ActionCategory category)
+        {
+            return CommandMap.Where(p => CommandKinds.CategoryOf(p.Key) == category).Select(p => p.Value.Group).Distinct().ToList();
+        }
         public static IList<string> WebGroups { get; } = WebMap.Values.Select(e => e.Group).Distinct().ToList();
 
         public static string GroupOf(ExcelKind kind) { return ExcelMap[kind].Group; }
