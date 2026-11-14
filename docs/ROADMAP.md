@@ -4,7 +4,7 @@ Tài liệu này ghi các tính năng đã được yêu cầu nhưng chưa làm
 Tình trạng hiện tại xem `docs/STATUS.md`, yêu cầu gốc và quyết định kỹ thuật xem `docs/PROJECT.md`.
 Mỗi giai đoạn là một nhánh `feature_xxx` tách từ `preview`, xong thì PR vào `preview` (quy ước git trong `CLAUDE.md`).
 
-Cập nhật lần cuối: 2026-11-15. Trạng thái: **P0 (bộ test trong repo) đã xong phần chính; P1 (R1 và R14: Try/Catch/Break/Continue/Return và Section) đã xong**; các giai đoạn còn lại chưa bắt đầu. P0 chưa có: test cho Web (cần trình duyệt và extension), RecordConverter, overlay/hook/phím nóng và Image trên cửa sổ thật.
+Cập nhật lần cuối: 2026-11-15. Trạng thái: **P0 (bộ test trong repo) đã xong phần chính; P1 (R1 và R14: Try/Catch/Break/Continue/Return và Section) và P2 (R2 Log, R3 Message, R4 Random Time) đã xong**; các giai đoạn còn lại chưa bắt đầu. P0 chưa có: test cho Web (cần trình duyệt và extension), RecordConverter, overlay/hook/phím nóng và Image trên cửa sổ thật.
 
 ## 1. Danh sách yêu cầu
 
@@ -23,17 +23,17 @@ Mã R1, R2... dùng để tham chiếu trong các mục sau.
 - Break/Continue/Return đi xuyên qua Section (Section không phải vòng lặp). Có thể thu gọn/mở rộng như các action cha khác.
 - Cùng giai đoạn với R1 vì cùng đụng quy tắc cây và runner.
 
-### R2. Setting "Log" (mặc định No)
+### R2. Setting "Log" (mặc định No) – đã làm (P2)
 - Hộp Settings có ô **Log**; Yes thì mỗi lần chạy (Start hoặc Start Selected) ghi **một file log riêng**. Lưu ở `Setting.ini` mục `[Options]` như các tùy chọn khác.
 - Đề xuất: thư mục `Logs` cạnh exe, tên `yyyyMMdd_HHmmss_<tên kịch bản>.log`, mỗi dòng có giờ; ghi bắt đầu/kết thúc lần chạy, mỗi action (đường dẫn trong cây + Name + loại) bắt đầu/xong, lỗi và nhánh Catch, lý do kết thúc (xong, bị Stop, lỗi, Return).
 - **Bảo mật:** log **không bao giờ** ghi giá trị trường, giá trị biến, nội dung gõ hay phản hồi API. Chỉ ghi tên action và thông báo lỗi; thông báo lỗi cũng phải đi qua bước che các giá trị Password đã biết. Không ghi header/token của API và tài khoản Email.
 - Chưa có tự xóa log cũ (xem mục quyết định).
 
-### R3. Setting "Message" (mặc định No)
+### R3. Setting "Message" (mặc định No) – đã làm (P2)
 - Hộp Settings có ô **Message**; Yes thì khi lần chạy kết thúc (xong hoặc lỗi) hiện thông báo cho người dùng. Chạy lâu và thu nhỏ ở khay hệ thống thì thông báo quan trọng nhất.
-- Đề xuất: bong bóng thông báo của icon khay (`NotifyIcon`, không cần thư viện thêm). Nội dung ngắn: xong / bị dừng / lỗi kèm câu lỗi và tên action.
+- Đã làm: thông báo nhỏ riêng ở góc màn hình (không dùng bong bóng của icon khay vì icon bị ẩn khi lần chạy kết thúc); chỉ cho xong hoặc lỗi, không cho Stop.
 
-### R4. Setting "Random Time" (mặc định No)
+### R4. Setting "Random Time" (mặc định No) – đã làm (P2)
 - Yes thì lúc chạy thật, **mỗi lần** thực hiện một action, các giá trị **Time** và **Delay** của nó được cộng thêm một khoảng ngẫu nhiên **10–20%** của chính giá trị đó (chỉ cộng thêm, không bớt).
 - Chỉ áp dụng cho Time (thời gian di chuột, giữ phím, gõ) và Delay (chờ sau action). **Không** áp dụng cho Timeout, Retry, Wait, thời gian đếm ngược Shutdown, thời lượng Loop kiểu Duration/Until.
 - Hiển thị (cột Time, tổng của Loop/Section) vẫn là giá trị đã cài, không phải giá trị ngẫu nhiên.
@@ -56,6 +56,7 @@ Mã R1, R2... dùng để tham chiếu trong các mục sau.
 - Đề xuất: hỏi **một lần cho mỗi ID trong mỗi lần chạy** (không hỏi lại ở mỗi vòng Loop); lần chạy sau lại hỏi.
 - Chỉ dùng được qua biểu thức `{pw}` (ví dụ Keyboard Text, Web Input, API header, Email). Không hiện trong cột Details, hộp nhập biến của Start Selected (R7) thì cũng che và **không nhớ**, và không bao giờ vào log (R2).
 - Hủy hộp nhập thì dừng lần chạy.
+- Khi làm P3: gọi `RunLog.AddSecret` cho mọi giá trị Password (log đã có chỗ che chuỗi bí mật) và che cả thanh trạng thái lẫn thông báo của Message, vì thông báo hiện `ex.Message`.
 - Việc "không lưu" phải được bảo đảm **ở chỗ dựng node và ghi file**, không chỉ ẩn ô nhập: đổi một biến String đang có giá trị sang Password thì giá trị phải bị xóa, không để sót trong JSON (cùng loại lỗi trường ẩn còn dư giá trị đã gặp ở Excel).
 - Giới hạn cần ghi rõ cho người dùng: chạy tự động không người ngồi (hẹn giờ/dòng lệnh, nếu sau này làm) không hỏi mật khẩu được.
 
@@ -110,7 +111,7 @@ Mã R1, R2... dùng để tham chiếu trong các mục sau.
 |---|---|---|---|
 | P0 (**xong phần chính**) | Đưa bộ test vào repo (`tests/`): biểu thức, runner, vòng nạp/lưu editor, thư mục tạm, Excel ẩn riêng | Mọi giai đoạn sau đều cần test; trước đây test nằm ở thư mục tạm của phiên và mất đi | M |
 | P1 (**xong**) | R1 Try/Catch/Break/Continue/Return + R14 Section | Nền cho cây và runner; Return cần cho Auto Script | L |
-| P2 | R2 Log, R3 Message, R4 Random Time (hộp Settings) | Log nên ghi được Try/Catch từ đầu; ba ô cùng một hộp | M |
+| P2 (**xong**) | R2 Log, R3 Message, R4 Random Time (hộp Settings) | Log nên ghi được Try/Catch từ đầu; ba ô cùng một hộp | M |
 | P3 | R6 Clipboard, R15 Password, R7 nhớ giá trị Start Selected | Nhỏ, độc lập, Password cần có trước API/Email/Auto Script | M |
 | P4 | R13 copy/paste, kéo thả, (Undo/Redo) | Sau P1 để quy tắc cây (Try, Section) đã chốt | L |
 | P5 | R5 Category Program + thao tác cửa sổ | Tách category kéo theo chuyển đổi file | M |

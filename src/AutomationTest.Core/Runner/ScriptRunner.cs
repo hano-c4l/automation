@@ -27,6 +27,21 @@ namespace AutomationTest.Core.Runner
         /// <summary>Where the run goes next after an action: on (None), out of the nearest Loop (Break), to its next pass (Continue) or to the end (Return).</summary>
         private enum Flow { None, Break, Continue, Return }
 
+        /// <summary>
+        /// Random Time: every Time and Delay of an action (not Timeouts, Retry, Wait, the Shutdown countdown or the length of a Loop)
+        /// is made 10 to 20 percent longer, chosen again each time the action runs. Never shorter.
+        /// </summary>
+        public bool RandomTime { get; set; }
+
+        internal Random RandomSource = new Random();
+
+        /// <summary>The time with the random extra added when Random Time is on (0 stays 0).</summary>
+        internal long Jitter(long ms)
+        {
+            if (!RandomTime || ms <= 0) return ms;
+            return ms + (long)Math.Round(ms * (0.10 + RandomSource.NextDouble() * 0.10));
+        }
+
         private Flow _flow;
         private int _loopDepth; // how many Loops the running action is inside of
 
@@ -164,7 +179,7 @@ namespace AutomationTest.Core.Runner
         private void ExecuteKeyboard(ActionNode node, CancellationToken token)
         {
             var k = node.Keyboard;
-            int time = ToInt(k.TimeMs);
+            int time = ToInt(Jitter(k.TimeMs));
             try
             {
                 switch (k.Action)
@@ -194,7 +209,7 @@ namespace AutomationTest.Core.Runner
             {
                 throw new InvalidOperationException(ex.Message);
             }
-            Wait(k.DelayMs, token);
+            Wait(Jitter(k.DelayMs), token);
         }
 
         private void ExecuteWeb(ActionNode node, CancellationToken token)
@@ -211,7 +226,7 @@ namespace AutomationTest.Core.Runner
             // Tab New and Tab Switch hold the actions that work in that tab (and browser).
             if (node.IsContainer) ExecuteList(node.Children, token);
             if (_flow != Flow.None) return;
-            Wait(w.DelayMs, token);
+            Wait(Jitter(w.DelayMs), token);
         }
 
         /// <summary>The Web actions whose Text field is used (and can be an expression).</summary>
@@ -258,7 +273,7 @@ namespace AutomationTest.Core.Runner
             }
             else if (node.IsContainer) ExecuteList(node.Children, token); // Workbook and Sheet Select hold the actions that work there
             if (_flow != Flow.None) return;
-            Wait(x.DelayMs, token);
+            Wait(Jitter(x.DelayMs), token);
         }
 
         /// <summary>Counts from a number to another; the counter is a variable that the actions inside can read (a row number, for example).</summary>
@@ -340,7 +355,7 @@ namespace AutomationTest.Core.Runner
                     ExecuteFileSystem(c);
                     break;
             }
-            Wait(c.DelayMs, token);
+            Wait(Jitter(c.DelayMs), token);
         }
 
         private void ExecuteFileSystem(CommandSettings c)
@@ -626,7 +641,7 @@ namespace AutomationTest.Core.Runner
                     throw new InvalidOperationException("The target window is covered by another window at (" + x + ", " + y + ").");
             }
 
-            _mouse.MoveTo(x, y, ToInt(m.TimeMs), token);
+            _mouse.MoveTo(x, y, ToInt(Jitter(m.TimeMs)), token);
             switch (m.Action)
             {
                 case MouseAction.Click:
@@ -647,7 +662,7 @@ namespace AutomationTest.Core.Runner
                     _mouse.Scroll(-Math.Max(1, m.ScrollNotches));
                     break;
             }
-            Wait(m.DelayMs, token);
+            Wait(Jitter(m.DelayMs), token);
         }
 
         /// <summary>Returns the cached window for the target while it is still valid, otherwise searches again.</summary>

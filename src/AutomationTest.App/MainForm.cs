@@ -3429,7 +3429,7 @@ namespace AutomationTest.App
             if (_script.Actions.Count == 0) { SetStatus("Add at least one action first."); return; }
 
             var snapshot = _script.Clone();
-            await RunAsync((runner, token) => runner.Run(snapshot, token), RunKind.All);
+            await RunAsync((runner, token) => runner.Run(snapshot, token), RunKind.All, snapshot.Actions);
         }
 
         /// <summary>
@@ -3469,46 +3469,68 @@ namespace AutomationTest.App
             // keeps its own state, so a disabled action inside a chosen Loop is still skipped.
             var chosen = new HashSet<ActionNode>(rows.Select(r => r.Node));
             var nodes = plan.RunNodes.Select(n => { var copy = n.Clone(); if (chosen.Contains(n)) copy.Disabled = false; return copy; }).ToList();
-            await RunAsync((runner, token) => runner.Run(nodes, values, token, partial: true), RunKind.Selected);
+            await RunAsync((runner, token) => runner.Run(nodes, values, token, partial: true), RunKind.Selected, nodes);
         }
 
         /// <summary>Runs something on the script runner in the background with the status messages, locking the window meanwhile.</summary>
-        private async Task RunAsync(Action<ScriptRunner, CancellationToken> run, RunKind kind)
+        private async Task RunAsync(Action<ScriptRunner, CancellationToken> run, RunKind kind, List<ActionNode> tree)
         {
             if (_running) return;
             _cts = new CancellationTokenSource();
             var token = _cts.Token;
-            var runner = new ScriptRunner(_mouse, _keyboard);
+            var runner = new ScriptRunner(_mouse, _keyboard) { RandomTime = _settings.RandomTime };
+
+            // Settings: Log. One file for this run; a log that cannot be made never stops the run.
+            RunLog log = null;
+            string logProblem = null;
+            if (_settings.LogRuns)
+            {
+                string scriptName = _currentPath == null ? null : Path.GetFileNameWithoutExtension(_currentPath);
+                log = RunLog.Start(RunLog.Folder, scriptName, kind == RunKind.Selected, tree, _settings.RandomTime, out logProblem);
+            }
+
             runner.NodeStarted += node =>
             {
+                log?.Node(node);
                 var line = Describe(new Row { Node = node, Depth = 0 });
                 PostStatus("Running: " + line.Text + "  " + line.SubItems[3].Text);
             };
             var notes = new List<string>();
-            runner.Message += text => { lock (notes) notes.Add(text); PostStatus(text); };
+            runner.Message += text => { lock (notes) notes.Add(text); log?.Note(text); PostStatus(text); };
 
             _runKind = kind;
             SetRunning(true);
+            RunOutcome? notice = null;
+            string noticeText = null;
             try
             {
                 await Task.Run(() => run(runner, token));
                 string extra;
                 lock (notes) extra = notes.Count == 0 ? "" : "  " + string.Join(" ", notes);
-                SetStatus("Finished." + extra);
+                SetStatus("Finished." + extra + (logProblem != null ? "  " + logProblem : "") + (log != null && log.Problem != null ? "  The log stopped: " + log.Problem : ""));
+                log?.End("finished");
+                notice = RunOutcome.Finished;
             }
             catch (OperationCanceledException)
             {
                 SetStatus("Stopped");
+                log?.End("stopped by the user");
             }
             catch (Exception ex)
             {
                 SetStatus("Error: " + ex.Message);
+                log?.Line("Error: " + ex.Message);
+                log?.End("failed");
+                notice = RunOutcome.Failed;
+                noticeText = ex.Message;
             }
             finally
             {
+                log?.Dispose();
                 SetRunning(false);
                 LicenseAllowsWork(); // a run that just ended counts as the program being used
             }
+            if (_settings.NotifyEnd && notice.HasValue) ToastForm.ShowNotice(notice.Value, noticeText);
         }
 
         /// <summary>

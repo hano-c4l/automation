@@ -5,7 +5,7 @@ rem   Release\AutomationTest\        the program (AutomationTest.exe)
 rem   Release\AutomationWebHelper\  the browser extension for the Web actions (load it unpacked in Chrome or Edge)
 rem   Release\AutomationKeyGen\      the license tool (AutomationTest.KeyGen.exe + make-license.bat)
 rem Files that belong to the user are kept across builds (they are put aside, the folder is rebuilt, then they are put back):
-rem   Release\AutomationTest\Setting.ini and license.lic
+rem   Release\AutomationTest\Setting.ini, license.lic and the Logs folder
 rem   Release\AutomationKeyGen\license-private.key (also taken over from the old Release\KeyGen folder)
 rem The AutomationWebHelper folder is never deleted, only updated, so an extension loaded from it keeps working (Reload it after a build).
 rem Nothing secret is copied from the source tree. The bin and obj folders of the source tree are left alone.
@@ -21,6 +21,9 @@ if exist "%KEEP%" rmdir /s /q "%KEEP%"
 mkdir "%KEEP%\AutomationTest" "%KEEP%\AutomationKeyGen"
 if exist "%OUT%\AutomationTest\Setting.ini" copy /y "%OUT%\AutomationTest\Setting.ini" "%KEEP%\AutomationTest\" >nul
 if exist "%OUT%\AutomationTest\license.lic" copy /y "%OUT%\AutomationTest\license.lic" "%KEEP%\AutomationTest\" >nul
+rem The run logs (Settings, Log) are kept as well.
+if exist "%OUT%\AutomationTest\Logs" robocopy "%OUT%\AutomationTest\Logs" "%KEEP%\AutomationTest\Logs" /E /NFL /NDL /NJH /NJS /NP >nul
+ver >nul
 rem The tool folder used to be called KeyGen: a key left there is kept as well.
 if exist "%OUT%\KeyGen\license-private.key" copy /y "%OUT%\KeyGen\license-private.key" "%KEEP%\AutomationKeyGen\" >nul
 if exist "%OUT%\AutomationKeyGen\license-private.key" copy /y "%OUT%\AutomationKeyGen\license-private.key" "%KEEP%\AutomationKeyGen\" >nul
@@ -65,6 +68,8 @@ if not exist "%OUT%\AutomationKeyGen" mkdir "%OUT%\AutomationKeyGen"
 if exist "%KEEP%\AutomationTest\Setting.ini" copy /y "%KEEP%\AutomationTest\Setting.ini" "%OUT%\AutomationTest\" >nul
 if exist "%KEEP%\AutomationTest\license.lic" copy /y "%KEEP%\AutomationTest\license.lic" "%OUT%\AutomationTest\" >nul
 if exist "%KEEP%\AutomationKeyGen\license-private.key" copy /y "%KEEP%\AutomationKeyGen\license-private.key" "%OUT%\AutomationKeyGen\" >nul
+if exist "%KEEP%\AutomationTest\Logs" robocopy "%KEEP%\AutomationTest\Logs" "%OUT%\AutomationTest\Logs" /E /NFL /NDL /NJH /NJS /NP >nul
+ver >nul
 exit /b 0
 
 :restoremissing
@@ -73,6 +78,8 @@ if not exist "%OUT%\AutomationKeyGen" mkdir "%OUT%\AutomationKeyGen"
 if exist "%KEEP%\AutomationTest\Setting.ini" if not exist "%OUT%\AutomationTest\Setting.ini" copy "%KEEP%\AutomationTest\Setting.ini" "%OUT%\AutomationTest\" >nul
 if exist "%KEEP%\AutomationTest\license.lic" if not exist "%OUT%\AutomationTest\license.lic" copy "%KEEP%\AutomationTest\license.lic" "%OUT%\AutomationTest\" >nul
 if exist "%KEEP%\AutomationKeyGen\license-private.key" if not exist "%OUT%\AutomationKeyGen\license-private.key" copy "%KEEP%\AutomationKeyGen\license-private.key" "%OUT%\AutomationKeyGen\" >nul
+if exist "%KEEP%\AutomationTest\Logs" if not exist "%OUT%\AutomationTest\Logs" robocopy "%KEEP%\AutomationTest\Logs" "%OUT%\AutomationTest\Logs" /E /NFL /NDL /NJH /NJS /NP >nul
+ver >nul
 exit /b 0
 
 :end
