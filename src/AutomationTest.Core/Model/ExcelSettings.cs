@@ -77,6 +77,81 @@ namespace AutomationTest.Core.Model
         /// <summary>How long to wait after the action before the next one starts (milliseconds).</summary>
         [DataMember(Order = 24, EmitDefaultValue = false)] public long DelayMs { get; set; }
 
+        /// <summary>InsertCells, DeleteCells: rows or columns.</summary>
+        public ExcelTarget Target { get; set; }
+
+        /// <summary>InsertCells, DeleteCells: how many rows or columns.</summary>
+        [DataMember(Order = 30)] public int Count { get; set; } = 1;
+
+        /// <summary>Clear: what to clear.</summary>
+        public ExcelClearKind ClearWhat { get; set; }
+
+        /// <summary>Format: the number format (for example 0.00, dd/mm/yyyy, @); empty leaves it.</summary>
+        [DataMember(Order = 32)] public string NumberFormat { get; set; } = "";
+
+        public ExcelFlag Bold { get; set; }
+        public ExcelFlag Italic { get; set; }
+
+        /// <summary>Format: colours as #RRGGBB; empty leaves them.</summary>
+        [DataMember(Order = 35)] public string FontColor { get; set; } = "";
+        [DataMember(Order = 36)] public string FillColor { get; set; } = "";
+
+        /// <summary>Format: the width of the columns of the area: a number, or "auto" to fit the content; empty leaves it.</summary>
+        [DataMember(Order = 37)] public string ColumnWidth { get; set; } = "";
+
+        /// <summary>Sort: the column to sort by (letters, for example C).</summary>
+        [DataMember(Order = 38)] public string SortBy { get; set; } = "";
+        [DataMember(Order = 39, EmitDefaultValue = false)] public bool Descending { get; set; }
+
+        /// <summary>Sort: the first row of the area is a header and stays on top.</summary>
+        [DataMember(Order = 40, EmitDefaultValue = false)] public bool HasHeader { get; set; }
+
+        /// <summary>Filter: the column of the area to filter, 1 = its first column.</summary>
+        [DataMember(Order = 41)] public int FilterField { get; set; } = 1;
+
+        /// <summary>Filter: the criterion, for example >5, =Hanoi, &lt;&gt;, *text*.</summary>
+        [DataMember(Order = 42)] public string Criteria { get; set; } = "";
+
+        /// <summary>Filter: remove the filter of the sheet instead.</summary>
+        [DataMember(Order = 43, EmitDefaultValue = false)] public bool ClearFilter { get; set; }
+
+        /// <summary>Copy: paste only the values.</summary>
+        [DataMember(Order = 44, EmitDefaultValue = false)] public bool ValuesOnly { get; set; }
+
+        /// <summary>RunMacro: the macro, for example Module1.Report or 'sales.xlsm'!Report.</summary>
+        [DataMember(Order = 45)] public string Macro { get; set; } = "";
+
+        /// <summary>Workbook: let the macros of the file run, as far as the Trust Center of Excel allows (otherwise they never run).</summary>
+        [DataMember(Order = 46, EmitDefaultValue = false)] public bool AllowMacros { get; set; }
+
+        [DataMember(Name = "Target", Order = 31)]
+        private string TargetName
+        {
+            get { return Target.ToString(); }
+            set { Target = ActionNode.Parse(value, ExcelTarget.Rows); }
+        }
+
+        [DataMember(Name = "ClearWhat", Order = 33)]
+        private string ClearName
+        {
+            get { return ClearWhat.ToString(); }
+            set { ClearWhat = ActionNode.Parse(value, ExcelClearKind.Contents); }
+        }
+
+        [DataMember(Name = "Bold", Order = 34)]
+        private string BoldName
+        {
+            get { return Bold.ToString(); }
+            set { Bold = ActionNode.Parse(value, ExcelFlag.Leave); }
+        }
+
+        [DataMember(Name = "Italic", Order = 47)]
+        private string ItalicName
+        {
+            get { return Italic.ToString(); }
+            set { Italic = ActionNode.Parse(value, ExcelFlag.Leave); }
+        }
+
         [DataMember(Name = "Kind", Order = 1)]
         private string KindName
         {
@@ -125,6 +200,15 @@ namespace AutomationTest.Core.Model
             SavePath = "";
             Id = "";
             TimeMs = 30000;
+            Count = 1;
+            NumberFormat = "";
+            FontColor = "";
+            FillColor = "";
+            ColumnWidth = "";
+            SortBy = "";
+            FilterField = 1;
+            Criteria = "";
+            Macro = "";
         }
 
         public ExcelSettings Clone()
@@ -141,6 +225,15 @@ namespace AutomationTest.Core.Model
             if (Value == null) Value = "";
             if (SavePath == null) SavePath = "";
             if (Id == null) Id = "";
+            if (NumberFormat == null) NumberFormat = "";
+            if (FontColor == null) FontColor = "";
+            if (FillColor == null) FillColor = "";
+            if (ColumnWidth == null) ColumnWidth = "";
+            if (SortBy == null) SortBy = "";
+            if (Criteria == null) Criteria = "";
+            if (Macro == null) Macro = "";
+            if (Count < 1) Count = 1;
+            if (FilterField < 1) FilterField = 1;
             if (Index < 0) Index = 0;
             if (TimeMs < 0) TimeMs = 0;
             if (DelayMs < 0) DelayMs = 0;

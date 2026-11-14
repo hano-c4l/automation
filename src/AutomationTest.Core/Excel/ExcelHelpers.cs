@@ -54,12 +54,43 @@ namespace AutomationTest.Core.Excel
             return m.Success && int.TryParse(m.Groups[1].Value, out int row) ? row : 0;
         }
 
+        /// <summary>A column number to letters: 1 = A, 26 = Z, 27 = AA.</summary>
+        public static string ColumnName(int number)
+        {
+            string letters = "";
+            while (number > 0)
+            {
+                letters = (char)('A' + (number - 1) % 26) + letters;
+                number = (number - 1) / 26;
+            }
+            return letters;
+        }
+
         /// <summary>Column letters to a number: A = 1, Z = 26, AA = 27.</summary>
         public static int ColumnNumber(string letters)
         {
             int n = 0;
             foreach (char c in letters.ToUpperInvariant()) n = n * 26 + (c - 'A' + 1);
             return n;
+        }
+    }
+
+    /// <summary>Colours written as #RRGGBB.</summary>
+    public static class ExcelColors
+    {
+        private static readonly Regex Hex = new Regex("^#?[0-9A-Fa-f]{6}$", RegexOptions.Compiled);
+
+        public static bool IsValid(string text)
+        {
+            return !string.IsNullOrWhiteSpace(text) && Hex.IsMatch(text.Trim());
+        }
+
+        /// <summary>The number Excel uses for a colour: red + green x 256 + blue x 65536.</summary>
+        public static int ToExcel(string text)
+        {
+            string hex = text.Trim().TrimStart('#');
+            int r = Convert.ToInt32(hex.Substring(0, 2), 16), g = Convert.ToInt32(hex.Substring(2, 2), 16), b = Convert.ToInt32(hex.Substring(4, 2), 16);
+            return r + g * 256 + b * 65536;
         }
     }
 

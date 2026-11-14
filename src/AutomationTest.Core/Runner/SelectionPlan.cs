@@ -102,7 +102,7 @@ namespace AutomationTest.Core.Runner
             if (node.Category == ActionCategory.Excel)
             {
                 var x = node.Excel;
-                bool valueKind = x.Kind == ExcelKind.SetCell || x.Kind == ExcelKind.Find || x.Kind == ExcelKind.Evaluate;
+                bool valueKind = ScriptRunner.ExcelValueKind(x.Kind);
                 return ReadsOf(x.CellIsExpression ? x.Cell : null, x.Kind == ExcelKind.SetRange || (valueKind && x.ValueIsExpression) ? x.Value : null);
             }
             if (node.IsKind(ControlKind.Loop) && node.Loop.Mode == LoopType.For) return ReadsOf(node.Loop.ForFrom, node.Loop.ForTo, node.Loop.ForStep);
@@ -136,7 +136,7 @@ namespace AutomationTest.Core.Runner
             if (node.Category == ActionCategory.Excel)
             {
                 var x = node.Excel;
-                bool keeps = x.Kind == ExcelKind.GetCell || x.Kind == ExcelKind.GetRange || x.Kind == ExcelKind.GetInfo || x.Kind == ExcelKind.Find || x.Kind == ExcelKind.Evaluate;
+                bool keeps = x.Kind == ExcelKind.GetCell || x.Kind == ExcelKind.GetRange || x.Kind == ExcelKind.GetInfo || x.Kind == ExcelKind.Find || x.Kind == ExcelKind.Evaluate || x.Kind == ExcelKind.RunMacro;
                 return keeps && !string.IsNullOrWhiteSpace(x.Id) ? x.Id.Trim() : null;
             }
             if (node.IsKind(ControlKind.Loop) && node.Loop.Mode == LoopType.For)

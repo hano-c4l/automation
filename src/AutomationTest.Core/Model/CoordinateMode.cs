@@ -149,6 +149,7 @@ namespace AutomationTest.Core.Model
         /// <summary>Makes a sheet the current one. Actions inside it work on that sheet.</summary>
         SelectSheet,
         CreateSheet,
+        RenameSheet,
         DeleteSheet,
         GetCell,
         SetCell,
@@ -156,14 +157,52 @@ namespace AutomationTest.Core.Model
         GetRange,
         /// <summary>Writes a table variable into the cells from a top-left cell.</summary>
         SetRange,
+        /// <summary>Selects a cell or an area (so the user sees it, or keys that follow act on it).</summary>
+        Select,
         /// <summary>Looks for text; the actions inside run when it is found.</summary>
         Find,
         GetInfo,
         /// <summary>Calculates an Excel formula.</summary>
         Evaluate,
+        InsertCells,
+        DeleteCells,
+        Clear,
+        /// <summary>Copies cells (with their formatting, or only the values) to another place on the sheet.</summary>
+        Copy,
+        /// <summary>Number format, bold, italic, colours, column width.</summary>
+        Format,
+        Sort,
+        Filter,
+        /// <summary>Refreshes the data connections and pivot tables of the workbook.</summary>
+        Refresh,
+        /// <summary>Runs a macro that exists in an open workbook.</summary>
+        RunMacro,
         Save,
         CloseWorkbook,
         CloseExcel
+    }
+
+    public enum ExcelTarget
+    {
+        Rows,
+        Columns
+    }
+
+    public enum ExcelClearKind
+    {
+        /// <summary>The values and formulas; the formatting stays.</summary>
+        Contents,
+        /// <summary>The formatting; the values stay.</summary>
+        Formats,
+        All
+    }
+
+    /// <summary>A formatting setting that can be left as it is.</summary>
+    public enum ExcelFlag
+    {
+        Leave,
+        Yes,
+        No
     }
 
     public enum ExcelGetKind

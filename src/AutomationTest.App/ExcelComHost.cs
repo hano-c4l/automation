@@ -175,7 +175,7 @@ namespace AutomationTest.App
 
         // ---------------------------------------------------------------- IExcelHost
 
-        public IExcelWorkbook OpenWorkbook(string path, string namePattern, bool readOnly, bool visible, int timeoutMs, CancellationToken token)
+        public IExcelWorkbook OpenWorkbook(string path, string namePattern, bool readOnly, bool visible, bool allowMacros, int timeoutMs, CancellationToken token)
         {
             Token = token;
             if (path.Length == 0 && !string.IsNullOrWhiteSpace(namePattern))
@@ -210,7 +210,9 @@ namespace AutomationTest.App
                 var alerts = app.DisplayAlerts;
                 try
                 {
-                    app.AutomationSecurity = 3; // msoAutomationSecurityForceDisable: macros of a file opened by a script do not run
+                    // 3 = msoAutomationSecurityForceDisable: macros of a file opened by a script do not run;
+                    // 2 = msoAutomationSecurityByUI: the Trust Center of the user decides (a Workbook with Allow macros ON)
+                    app.AutomationSecurity = allowMacros ? 2 : 3;
                     app.DisplayAlerts = false;
                     // UpdateLinks 0: no question about external links.
                     return app.Workbooks.Open(path, 0, readOnly);
@@ -466,6 +468,20 @@ namespace AutomationTest.App
                 _host.Com(() => Workbook.Activate());
             }
 
+            public void RefreshAll()
+            {
+                _host.Com(() =>
+                {
+                    Workbook.RefreshAll();
+                    App.CalculateUntilAsyncQueriesDone(); // background queries finish before the next action
+                });
+            }
+
+            public object RunMacro(string macro, object argument, bool hasArgument)
+            {
+                return _host.Com(() => hasArgument ? (object)App.Run(macro, argument) : (object)App.Run(macro));
+            }
+
             public void Save()
             {
                 _host.Com(() => Workbook.Save());
@@ -527,6 +543,112 @@ namespace AutomationTest.App
             public void Activate()
             {
                 _host.Com(() => Sheet.Activate());
+            }
+
+            public void Rename(string newName)
+            {
+                _host.Com(() => Sheet.Name = newName);
+            }
+
+            public void Select(string area)
+            {
+                _host.Com(() =>
+                {
+                    Sheet.Activate();
+                    Sheet.Range[area].Select();
+                });
+            }
+
+            private static string Lines(ExcelTarget target, string at, int count)
+            {
+                if (target == ExcelTarget.Rows)
+                {
+                    int row = ExcelAddress.RowOf(at);
+                    return row + ":" + (row + count - 1);
+                }
+                int column = ExcelAddress.ColumnNumber(ExcelAddress.ColumnOf(at));
+                return ExcelAddress.ColumnName(column) + ":" + ExcelAddress.ColumnName(column + count - 1);
+            }
+
+            public void InsertCells(ExcelTarget target, string at, int count)
+            {
+                _host.Com(() => Sheet.Range[Lines(target, at, count)].Insert());
+            }
+
+            public void DeleteCells(ExcelTarget target, string at, int count)
+            {
+                _host.Com(() => Sheet.Range[Lines(target, at, count)].Delete());
+            }
+
+            public void Clear(string area, ExcelClearKind what)
+            {
+                _host.Com(() =>
+                {
+                    dynamic range = Sheet.Range[area];
+                    switch (what)
+                    {
+                        case ExcelClearKind.Formats: range.ClearFormats(); break;
+                        case ExcelClearKind.All: range.Clear(); break;
+                        default: range.ClearContents(); break;
+                    }
+                });
+            }
+
+            public void Copy(string source, string destination, bool valuesOnly)
+            {
+                string first = destination.Split(':')[0]; // the paste starts at the first cell
+                _host.Com(() =>
+                {
+                    dynamic from = Sheet.Range[source];
+                    dynamic to = Sheet.Range[first];
+                    if (valuesOnly)
+                    {
+                        // Straight from cell to cell: the clipboard of the user is left alone (formulas arrive as their results).
+                        to.Resize[(int)from.Rows.Count, (int)from.Columns.Count].Value = from.Value;
+                    }
+                    else from.Copy(to); // with formatting: Excel's own copy, which uses the clipboard
+                });
+            }
+
+            public void FormatCells(string area, ExcelFormat format)
+            {
+                _host.Com(() =>
+                {
+                    dynamic range = Sheet.Range[area];
+                    if (!string.IsNullOrEmpty(format.NumberFormat)) range.NumberFormat = format.NumberFormat;
+                    if (format.Bold.HasValue) range.Font.Bold = format.Bold.Value;
+                    if (format.Italic.HasValue) range.Font.Italic = format.Italic.Value;
+                    if (format.FontColor.HasValue) range.Font.Color = format.FontColor.Value;
+                    if (format.FillColor.HasValue) range.Interior.Color = format.FillColor.Value;
+                    if (!string.IsNullOrEmpty(format.ColumnWidth))
+                    {
+                        if (string.Equals(format.ColumnWidth, "auto", StringComparison.OrdinalIgnoreCase)) range.Columns.AutoFit();
+                        else range.ColumnWidth = double.Parse(format.ColumnWidth, System.Globalization.CultureInfo.InvariantCulture);
+                    }
+                });
+            }
+
+            public void Sort(string area, string key, bool descending, bool hasHeader)
+            {
+                _host.Com(() =>
+                {
+                    dynamic range = Sheet.Range[area];
+                    int index = ExcelAddress.ColumnNumber(key) - (int)range.Column + 1;
+                    if (index < 1 || index > (int)range.Columns.Count)
+                        throw new InvalidOperationException("Sort by column " + key + " is not inside the area " + area + ".");
+                    dynamic keyRange = range.Columns[index];
+                    // Key1, Order1 (1 ascending, 2 descending), Key2, Type, Order2, Key3, Order3, Header (1 yes, 2 no)
+                    range.Sort(keyRange, descending ? 2 : 1, Type.Missing, Type.Missing, Type.Missing, Type.Missing, Type.Missing, hasHeader ? 1 : 2);
+                });
+            }
+
+            public void Filter(string area, int field, string criteria, bool clear)
+            {
+                _host.Com(() =>
+                {
+                    if (clear) Sheet.AutoFilterMode = false; // the filter of the sheet is removed and every row shows again
+                    else Sheet.Range[area].AutoFilter(field, criteria);
+                });
             }
 
             private dynamic Range(string address)
