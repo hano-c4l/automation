@@ -24,7 +24,7 @@ AutomationTest.sln
   tools/AutomationTest.KeyGen (net48 console)   công cụ cấp license, chỉ dành cho chủ sản phẩm, không phát hành cùng chương trình
   tools/AutomationTest.IconGen (net48 console)   vẽ lại icon: `dotnet run --project tools/AutomationTest.IconGen -- src/AutomationTest.App/app.ico`
   keys/                                      make-license.bat và khóa riêng (khóa riêng không được commit)
-  docs/                                      PROJECT.md (yêu cầu và quyết định), STATUS.md (tình trạng hiện tại)
+  docs/                                      PROJECT.md (yêu cầu và quyết định), STATUS.md (tình trạng hiện tại), ROADMAP.md (kế hoạch tiếp theo)
 ```
 
 ## Build và chạy
@@ -49,6 +49,7 @@ License có hạn cần mạng khi kích hoạt. Chi tiết xem mục License tr
 
 - [docs/PROJECT.md](docs/PROJECT.md): mục tiêu, quyết định kỹ thuật, mô hình kịch bản, license, kế hoạch.
 - [docs/STATUS.md](docs/STATUS.md): tình trạng hiện tại, checklist test tay, ghi chú kỹ thuật.
+- [docs/ROADMAP.md](docs/ROADMAP.md): các tính năng sắp làm, thiết kế dự kiến, thứ tự và quyết định cần xác nhận.
 - [CLAUDE.md](CLAUDE.md): quy ước làm việc (git, ngôn ngữ, subagent).
 
 ## Quy trình git
