@@ -328,14 +328,14 @@ the Selector, not here: write  host-element >>> inner-element  , for
 example  my-card >>> button.buy . Pick writes it for you. Only open
 shadow roots can be entered.");
 
-        public static readonly HelpTopic WebId = new HelpTopic("ID (Get Text)",
+        public static readonly HelpTopic WebId = new HelpTopic("ID (Element Get)",
 @"The variable that receives the text of the element: the value of an
 input field, otherwise the visible text. Use it later as {id} in
 expressions (Variable, Condition, Input, Keyboard text...).
 
 Letters, digits and _, not starting with a digit.");
 
-        public static readonly HelpTopic WebRequired = new HelpTopic("Required (Get Text)",
+        public static readonly HelpTopic WebRequired = new HelpTopic("Required (Element Get)",
 @"ON    the element must be on the page within the Timeout, otherwise
       the script stops with an error (default)
 OFF   a missing element is not an error: the variable becomes empty
@@ -346,13 +346,13 @@ OFF   a missing element is not an error: the variable becomes empty
 @"Which browser the action works in: Chrome or Edge. Both can be
 open and used by the same script.
 
-The actions inside a New Tab or a Switch Tab always use the browser
+The actions inside a Tab New or a Tab Switch always use the browser
 of that action: it is filled in for them and cannot be changed. To
-work in the other browser, use a New Tab or Switch Tab action for it.
+work in the other browser, use a Tab New or Tab Switch action for it.
 
-Close Tab closes the tab the script is using (the next action that
-needs a tab uses the one in front: add a New Tab or Switch Tab).
-Close Browser closes ALL windows of the browser, also the ones you
+Tab Close closes the tab the script is using (the next action that
+needs a tab uses the one in front: add a Tab New or Tab Switch).
+Browser Close closes ALL windows of the browser, also the ones you
 opened yourself; unsaved forms in them are lost.
 
 Each browser needs the Automation Test extension (Load unpacked:
@@ -361,11 +361,11 @@ be connected at a time.");
 
         public static readonly HelpTopic ExcelId = new HelpTopic("ID (Excel)",
 @"The variable that receives the result. Use it later as {id} in
-expressions (Variable, Condition, Set Cell, Loop...).
+expressions (Variable, Condition, Cell Set, Loop...).
 
-Get Cell, Get Info, Evaluate  the value, as a number, date, true/false
+Cell Get, Excel Info, Evaluate  the value, as a number, date, true/false
                               or text
-Get Range                     a table: {id.Rows}, {id.Columns},
+Range Get                     a table: {id.Rows}, {id.Columns},
                               {id[row, column]} (see the ? of Value)
 Find                          Found, Row, Column and Address:
                               {id.Found}, {id.Row}, {id.Column}, {id.Address}
@@ -409,7 +409,7 @@ ON    Excel is shown and stays open when the script ends
 OFF   Excel runs hidden and is quit when the script ends
 
 An Excel that was running before is never hidden or quit unless
-you use Close Excel.");
+you use Excel Close.");
 
         public static readonly HelpTopic ExcelAllowMacros = new HelpTopic("Allow macros",
 @"OFF (default)  the macros of the file never run, whatever the file
@@ -417,7 +417,7 @@ you use Close Excel.");
 ON              the Trust Center of your Excel decides: macros run
                 only if it allows them for this file (a trusted
                 location, or a setting that enables all macros).
-                Use it only for files you trust, and for a Run Macro.");
+                Use it only for files you trust, and for an Excel Macro.");
 
         public static readonly HelpTopic ExcelInsert = new HelpTopic("Insert / Delete rows or columns",
 @"Target   rows or columns
@@ -448,7 +448,7 @@ Values only ON   just the values (formulas become their results)
 
 Formatting can only be copied inside one Excel window; between
 workbooks that are open in separate Excel windows turn Values only
-on (or use Get Range and Set Range).");
+on (or use Range Get and Range Set).");
 
         public static readonly HelpTopic ExcelFormat = new HelpTopic("Format",
 @"Changes only the fields that are filled in; empty fields and Leave
@@ -478,7 +478,7 @@ The rows that do not match are hidden, not deleted. Another Filter
 on a different column narrows it further. Clear filter removes the
 filter of the sheet and shows every row again.");
 
-        public static readonly HelpTopic ExcelMacro = new HelpTopic("Run Macro",
+        public static readonly HelpTopic ExcelMacro = new HelpTopic("Excel Macro",
 @"Runs a macro (a Sub or Function) of a workbook that is open, for
 example Module1.Report or 'sales.xlsm'!Report. One argument can be
 given in Value. What a Function returns goes into the variable ID.
@@ -504,20 +504,20 @@ uses that workbook's active sheet.
 The workbook has to be open in Excel already; use Workbook to open it.");
 
         public static readonly HelpTopic ExcelSheet = new HelpTopic("Sheet",
-@"Select Sheet, Delete Sheet: a regular expression for the name of
+@"Sheet Select, Sheet Delete: a regular expression for the name of
 the sheet, not case sensitive (empty: only the Index counts).
-Create Sheet: the name of the new sheet (empty: Excel names it).
+Sheet Create: the name of the new sheet (empty: Excel names it).
 
 Sheet names have at most 31 characters and none of : \ / ? * [ ].
 
-Select Sheet makes the sheet the current one; the actions inside it
+Sheet Select makes the sheet the current one; the actions inside it
 work on that sheet. Without it the sheet that is active in the
 workbook is used.");
 
         public static readonly HelpTopic ExcelIndex = new HelpTopic("Index (Excel)",
 @"The position of the sheet, 1 for the first one. With a sheet name
 it chooses among the sheets that match. A number beyond the last
-one chooses the last. Empty counts as 1 (Select Sheet); for Delete
+one chooses the last. Empty counts as 1 (Sheet Select); for Delete
 Sheet empty means the current sheet.");
 
         public static readonly HelpTopic ExcelPosition = new HelpTopic("Position",
@@ -529,13 +529,13 @@ after the current sheet.");
 OFF   the current sheet stays the current one");
 
         public static readonly HelpTopic ExcelCell = new HelpTopic("Cell",
-@"Get Cell, Set Cell: one cell, for example B2 or $B$2, or a name
+@"Cell Get, Cell Set: one cell, for example B2 or $B$2, or a name
 defined in the workbook.
 Find: the area to search, for example A1:D100 (empty: the whole
 sheet).
-Get Range: the area to read (A1:D100). Set Range: the top-left cell
+Range Get: the area to read (A1:D100). Range Set: the top-left cell
 where the table is written (if an area is given, its first cell).
-Get Info (Last Row, Last Column): any cell in the column or row to
+Excel Info (Last Row, Last Column): any cell in the column or row to
 measure; B7 or B:B for a column, 7:7 for a row.
 
 Pick: select the cell in Excel and press the Pick key.
@@ -545,7 +545,7 @@ address, so a loop can walk down a column:
 
     ""B"" + {row}        B2, B3, B4... while the counter row counts");
 
-        public static readonly HelpTopic ExcelGet = new HelpTopic("Get (Get Cell)",
+        public static readonly HelpTopic ExcelGet = new HelpTopic("Get (Cell Get)",
 @"Value         the value, typed: a number, a date, true/false or
               text. An error cell gives its text (#N/A, #DIV/0!);
               an empty cell gives empty text.
@@ -555,7 +555,7 @@ Formula       the formula, for example =A1*2 (a plain value as is)
 NumberFormat  for example General, 0.00, dd/mm/yyyy, @ (text)
 IsEmpty       true when the cell has nothing in it");
 
-        public static readonly HelpTopic ExcelInfo = new HelpTopic("Info (Get Info)",
+        public static readonly HelpTopic ExcelInfo = new HelpTopic("Info (Excel Info)",
 @"LastRow        the last row that has something in the column
 LastColumn     the last column that has something in the row
                (0 when the column or row is empty)
@@ -577,9 +577,9 @@ Formula  the value is a formula, with English function names and
          commas, as in the formula bar: SUM(A1,B1)");
 
         public static readonly HelpTopic ExcelValue = new HelpTopic("Value (Excel) and tables",
-@"Set Cell   what to write.
+@"Cell Set   what to write.
 Find       the text to look for.
-Set Range  the table variable to write, for example {t}
+Range Set  the table variable to write, for example {t}
            (always an expression); see Tables below.
 Evaluate   an Excel formula to calculate, for example
            SUM(A1:A10)   COUNTIF(B:B,""x"")   TODAY()
@@ -589,29 +589,29 @@ Evaluate   an Excel formula to calculate, for example
 With Expr. (value) ON the field is an expression, so a variable
 or a calculation can be used; a number stays a number.
 
-Rename Sheet  the new name of the sheet.
+Sheet Rename  the new name of the sheet.
 Copy          the cell where the copy goes (its top-left cell), for
               example E1; with Expr. ON an expression such as
               ""E"" + {row}.
-Run Macro     an argument for the macro (optional). Literal text is
+Excel Macro     an argument for the macro (optional). Literal text is
               passed as text; with Expr. ON a number, date or
               true/false from an expression keeps its type
               ({n} * 2 passes a number). Empty: no argument.
 
-Tables: Get Range -> {t}; {t.Rows}, {t.Columns}, {t[row, column]}
-(counted from 1). Set Range writes {t} (or a copy of any table
+Tables: Range Get -> {t}; {t.Rows}, {t.Columns}, {t[row, column]}
+(counted from 1). Range Set writes {t} (or a copy of any table
 variable) from a top-left cell. Get (Value, Text or Formula) says
 what is read; Write as says how it is written.
 
 Walk down a table with a Loop of type For:
 
-    Get Range  A1:D100  -> t
+    Range Get  A1:D100  -> t
     Loop For   row = 1 to {t.Rows}
-        Set Cell  ""F"" + {row}  =  {t[row, 2]} * {t[row, 3]}
+        Cell Set  ""F"" + {row}  =  {t[row, 2]} * {t[row, 3]}
 
 A table is a copy: changing the sheet later does not change it.
-Copy a block to another sheet or workbook: Get Range, then
-Select Sheet / Workbook, then Set Range.");
+Copy a block to another sheet or workbook: Range Get, then
+Sheet Select / Workbook, then Range Set.");
 
         public static readonly HelpTopic ExcelFind = new HelpTopic("Find (Excel)",
 @"Looks for the text in the cells (their values, as shown). The first
@@ -633,9 +633,9 @@ Save As ON    saves under the New file, which also becomes the
               without asking.");
 
         public static readonly HelpTopic ExcelSaveChanges = new HelpTopic("Save changes",
-@"Close Workbook   ON saves the workbook first (it needs a file);
+@"Workbook Close   ON saves the workbook first (it needs a file);
                  OFF drops the changes.
-Close Excel      closes the Excel that holds the current workbook.
+Excel Close      closes the Excel that holds the current workbook.
                  ON saves the workbooks that have a file; OFF drops
                  all changes. A workbook that has no file yet is
                  never saved by this (use Save As first).
@@ -646,7 +646,7 @@ Close Excel      closes the Excel that holds the current workbook.
 Excel is busy (a cell is being edited, a dialog is open). After
 that the action fails.
 
-It does NOT limit how long Refresh and Run Macro run: once Excel
+It does NOT limit how long Refresh and Excel Macro run: once Excel
 has started them they run to the end, and the Stop key takes
 effect only after they finish. A macro that shows a dialog
 (MsgBox, InputBox) waits for you: use a visible Excel for it.
@@ -668,7 +668,7 @@ From 10  To 1        Step -1       counting down
 Step cannot be 0. When the numbers do not lead from From to To
 (From 5, To 1, Step 1) the actions inside do not run.");
 
-        public static readonly HelpTopic WebUrl = new HelpTopic("URL (New Tab)",
+        public static readonly HelpTopic WebUrl = new HelpTopic("URL (Tab New)",
 @"The address to open in a new tab. https:// is added when missing.
 Empty opens the start page of the browser.
 
@@ -676,7 +676,7 @@ If the browser is not running it is started first (that can take
 a while: see Timeout). The actions inside this action work in that
 tab.");
 
-        public static readonly HelpTopic WebTitle = new HelpTopic("Title (Switch Tab)",
+        public static readonly HelpTopic WebTitle = new HelpTopic("Title (Tab Switch)",
 @"A regular expression for the title of the tab, not case sensitive.
 It may match any part of the title, so a title that changes (the
 number of messages, a file name...) can still be found:
@@ -695,7 +695,7 @@ With a Title and/or URL: the Index-th tab that matches (1 = the
 first; the action waits up to Timeout for a match); if there are
 fewer, the last one.");
 
-        public static readonly HelpTopic WebUrlPattern = new HelpTopic("URL (Switch Tab)",
+        public static readonly HelpTopic WebUrlPattern = new HelpTopic("URL (Tab Switch)",
 @"A regular expression for the address of the tab, not case sensitive.
 Use it when the title changes but the address does not:
 
@@ -708,20 +708,20 @@ See Title for how the tab is chosen when Title, URL and Index are
 combined.");
 
         public static readonly HelpTopic WebIndex = new HelpTopic("Index",
-@"Wait, Input, Click, Get Text:
+@"Wait, Input, Click, Element Get:
   Which of the elements that match the Selector (in the Frame) to
   use: 1 is the first one, 2 the second... A number beyond the last
   match chooses the last match. Empty counts as 1. The Pick button
   fills it in when the element it picked is not the only match.
 
-Switch Tab:
+Tab Switch:
   The position of the tab. Without a Title or URL: the Index-th tab
   of the window you used last. With a Title and/or URL: the Index-th
   of the tabs that match. A number beyond the last one chooses the
   last. Empty counts as 1, so with nothing filled in the first tab
   of the window you used last is used.");
 
-        public static readonly HelpTopic WebGet = new HelpTopic("Get (Get Text)",
+        public static readonly HelpTopic WebGet = new HelpTopic("Get (Element Get)",
 @"What to read from the element; it goes into the variable ID.
 
 Text          the visible text of a button, label, span, div...;
@@ -748,7 +748,7 @@ input[name=size]:checked, and read Value or SelectedText.
 Text and numbers are text when they come from the page: use a
 Variable action (type Number, Date...) to convert them.");
 
-        public static readonly HelpTopic WebAttribute = new HelpTopic("Attribute (Get Text)",
+        public static readonly HelpTopic WebAttribute = new HelpTopic("Attribute (Element Get)",
 @"The name of the attribute to read, for example href, src, alt,
 data-id, class, placeholder, aria-label. An attribute that is not
 there gives empty text.");
@@ -789,7 +789,7 @@ Wait for        the pattern of the address, title or page text
 Input   the text typed into the element; what was in it is replaced.
         Vietnamese and other Unicode text is typed as is.
 Dialog  the answer typed into a prompt box (when accepting).
-Switch Tab  a word from the title or the address of the tab to use;
+Tab Switch  a word from the title or the address of the tab to use;
         not case sensitive. If several tabs match, the newest one.");
 
         public static readonly HelpTopic WebDialog = new HelpTopic("Accept (Dialog)",
@@ -807,8 +807,8 @@ be reached from here: use Image and Mouse.");
 @"How long to wait before the action fails:
 Open Browser   for the browser extension to connect
 Open URL       for the page to finish loading
-Wait, Input, Click, Get Text   for the element to appear
-Switch Tab     for a matching tab to exist
+Wait, Input, Click, Element Get   for the element to appear
+Tab Switch     for a matching tab to exist
 Dialog         for a dialog to appear
 
 Can be given in milliseconds, seconds, minutes or hours.");

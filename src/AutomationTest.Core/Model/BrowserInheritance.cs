@@ -3,7 +3,7 @@ using System.Collections.Generic;
 namespace AutomationTest.Core.Model
 {
     /// <summary>
-    /// An action inside a New Tab or Switch Tab uses the browser of that action: its Browser value is copied down the tree
+    /// An action inside a Tab New or Tab Switch uses the browser of that action: its Browser value is copied down the tree
     /// (through every container, Loop and Condition included) and cannot be edited there. The copy is kept in the action itself,
     /// so a file, Start Selected on one action and the editor all see the same value. Run it after loading and after every change
     /// of the tree.

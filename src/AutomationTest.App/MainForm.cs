@@ -115,6 +115,7 @@ namespace AutomationTest.App
         private readonly HintTextBox _cmdValue = new HintTextBox { Width = 200, Placeholder = "Process Path" };
 
         // Editor: web
+        private readonly ComboBox _webGroup = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 120 };
         private readonly ComboBox _webKind = MakeCombo(typeof(WebKind));
         private readonly ComboBox _webBrowser = MakeCombo(typeof(BrowserKind));
         private readonly HintTextBox _webUrl = new HintTextBox { Width = 200, Placeholder = "https://..." };
@@ -139,7 +140,9 @@ namespace AutomationTest.App
         private readonly TimeBox _webTime = new TimeBox(10000);
         private readonly TimeBox _webDelay = new TimeBox(0);
         // Editor: excel
+        private readonly ComboBox _xlGroup = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 120 };
         private readonly ComboBox _xlKind = MakeCombo(typeof(ExcelKind));
+        private bool _grouping; // true while the Group and Type boxes are being filled or set together
         private readonly HintTextBox _xlId = new HintTextBox { Width = 200, Placeholder = "Variable ID" };
         private readonly HintTextBox _xlPath = new HintTextBox { Width = 200, Placeholder = "File path (empty = new workbook)" };
         private readonly HintTextBox _xlName = new HintTextBox { Width = 200, Placeholder = "Open workbook name (regular expr.)" };
@@ -387,8 +390,10 @@ namespace AutomationTest.App
             AddRow(common, "Action", _mouseAction);
             AddRow(common, "Action", _kbAction);
             AddRow(common, "Action", _cmdKind);
-            AddRow(common, "Action", _webKind);
-            AddRow(common, "Action", _xlKind);
+            AddRow(common, "Group", _webGroup);
+            AddRow(common, "Type", _webKind);
+            AddRow(common, "Group", _xlGroup);
+            AddRow(common, "Type", _xlKind);
             AddRow(common, "Action", _controlKind);
 
             // Every field is FieldWidth wide; a unit text and a Pick button go in a second fixed column and the "?" in a
@@ -610,10 +615,13 @@ namespace AutomationTest.App
             _mouseAction.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
             _kbAction.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
             _cmdKind.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
-            _webKind.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
+            InitGroups();
+            _webGroup.SelectedIndexChanged += (s, e) => { FillWebKinds(); if (!_grouping) UpdateEditorVisibility(); };
+            _xlGroup.SelectedIndexChanged += (s, e) => { FillXlKinds(); if (!_grouping) UpdateEditorVisibility(); };
+            _webKind.SelectedIndexChanged += (s, e) => { if (!_grouping) UpdateEditorVisibility(); };
             _webGet.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
             _webUntil.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
-            _xlKind.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
+            _xlKind.SelectedIndexChanged += (s, e) => { if (!_grouping) UpdateEditorVisibility(); };
             _xlInfo.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
             _xlSaveAs.CheckedChanged += (s, e) => UpdateEditorVisibility();
             _xlClearFilter.CheckedChanged += (s, e) => UpdateEditorVisibility();
@@ -664,6 +672,7 @@ namespace AutomationTest.App
             bool webText = web == WebKind.Input || web == WebKind.Dialog || web == WebKind.PressKey || web == WebKind.SelectOption
                 || web == WebKind.Upload || web == WebKind.Screenshot || (web == WebKind.WaitElement && !waitElement);
             SetRowVisible(_webKind, category == ActionCategory.Web);
+            SetRowVisible(_webGroup, category == ActionCategory.Web);
             SetRowVisible(_webBrowser, category == ActionCategory.Web);
             SetRowVisible(_webUrl, web == WebKind.NewTab);
             SetRowVisible(_webTitle, web == WebKind.SwitchTab);
@@ -706,6 +715,7 @@ namespace AutomationTest.App
             bool xlValue = ScriptRunner.ExcelValueKind(xl) || xl == ExcelKind.SetRange;
             bool insertDelete = xl == ExcelKind.InsertCells || xl == ExcelKind.DeleteCells;
             SetRowVisible(_xlKind, xlOn);
+            SetRowVisible(_xlGroup, xlOn);
             SetRowVisible(_xlId, xl == ExcelKind.GetCell || xl == ExcelKind.GetRange || xl == ExcelKind.GetInfo || xl == ExcelKind.Find || xl == ExcelKind.Evaluate || xl == ExcelKind.RunMacro);
             _xlId.Placeholder = xl == ExcelKind.Find || xl == ExcelKind.Evaluate || xl == ExcelKind.RunMacro ? "Variable ID (optional)" : "Variable ID";
             SetRowVisible(_xlPath, xl == ExcelKind.Workbook);
@@ -745,7 +755,7 @@ namespace AutomationTest.App
             _xlValue.Placeholder = xl == ExcelKind.SetRange ? "Table variable, for example {t}" : xl == ExcelKind.Find ? "Text to find"
                 : xl == ExcelKind.Evaluate ? "Formula, for example SUM(A1:A10)" : xl == ExcelKind.RenameSheet ? "New name of the sheet"
                 : xl == ExcelKind.Copy ? "Destination (its top-left cell)" : xl == ExcelKind.RunMacro ? "Argument (optional)" : "Value";
-            SetRowVisible(_xlValueExpr, xlValue && xl != ExcelKind.SetRange); // Set Range always takes a variable
+            SetRowVisible(_xlValueExpr, xlValue && xl != ExcelKind.SetRange); // Range Set always takes a variable
             SetRowVisible(_xlValuesOnly, xl == ExcelKind.Copy);
             SetRowVisible(_xlNumberFormat, xl == ExcelKind.Format);
             SetRowVisible(_xlBold, xl == ExcelKind.Format);
@@ -1102,7 +1112,7 @@ namespace AutomationTest.App
             }
             _name.Text = node.Name ?? "";
             _enabled.Checked = !node.Disabled;
-            _webBrowser.Enabled = true; // a Web action inside a New Tab or Switch Tab turns it off below
+            _webBrowser.Enabled = true; // a Web action inside a Tab New or Tab Switch turns it off below
             _category.SelectedItem = node.Category;
             switch (node.Category)
             {
@@ -1139,7 +1149,7 @@ namespace AutomationTest.App
 
                 case ActionCategory.Excel:
                     var xs = node.Excel;
-                    _xlKind.SelectedItem = xs.Kind;
+                    SetExcelKind(xs.Kind);
                     _xlPath.Text = xs.Path;
                     _xlName.Text = xs.Name;
                     _xlReadOnly.Checked = xs.ReadOnly;
@@ -1189,7 +1199,7 @@ namespace AutomationTest.App
 
                 case ActionCategory.Web:
                     var web = node.Web;
-                    _webKind.SelectedItem = web.Kind;
+                    SetWebKind(web.Kind);
                     _webBrowser.SelectedItem = web.Browser;
                     _webUrl.Text = web.Url;
                     _webUrlPattern.Text = web.Url;
@@ -1198,7 +1208,7 @@ namespace AutomationTest.App
                     _webGet.SelectedItem = web.Get;
                     _webAttribute.Text = web.Attribute;
                     _webScript.Text = web.Script;
-                    _webBrowser.Enabled = !web.BrowserInherited; // inside a New Tab or Switch Tab the browser is theirs
+                    _webBrowser.Enabled = !web.BrowserInherited; // inside a Tab New or Tab Switch the browser is theirs
                     _webSelector.Text = web.Selector;
                     _webFrame.Text = web.Frame;
                     _webClickType.SelectedItem = web.ClickType;
@@ -1431,7 +1441,7 @@ namespace AutomationTest.App
             return false;
         }
 
-        /// <summary>Get Info kinds that read the workbook (not a sheet), where In sheet means nothing.</summary>
+        /// <summary>Excel Info kinds that read the workbook (not a sheet), where In sheet means nothing.</summary>
         private static bool XlWorkbookInfoOnly(ExcelKind kind, ExcelInfoKind info)
         {
             return kind == ExcelKind.GetInfo && (info == ExcelInfoKind.SheetCount || info == ExcelInfoKind.WorkbookName || info == ExcelInfoKind.WorkbookPath || info == ExcelInfoKind.Selection);
@@ -1527,11 +1537,11 @@ namespace AutomationTest.App
                     if (x.CellIsExpression) Expression.CheckSyntax(x.Cell);
                     else if ((problem = AutomationTest.Core.Excel.ExcelAddress.Check(x.Cell, "area")) != null) return problem;
                     if (x.Get != ExcelGetKind.Value && x.Get != ExcelGetKind.Text && x.Get != ExcelGetKind.Formula)
-                        return "Get Range reads the Value, the Text or the Formula of the cells (not " + x.Get + ").";
+                        return "Range Get reads the Value, the Text or the Formula of the cells (not " + x.Get + ").";
                     break;
                 case ExcelKind.SetRange:
                     if ((problem = cellProblem(x.Cell, x.CellIsExpression)) != null) return problem;
-                    if (x.Value.Trim().Length == 0) return "Enter the table variable to write, for example {t} (read with Get Range).";
+                    if (x.Value.Trim().Length == 0) return "Enter the table variable to write, for example {t} (read with Range Get).";
                     Expression.CheckSyntax(x.Value);
                     break;
                 case ExcelKind.Find:
@@ -1928,7 +1938,7 @@ namespace AutomationTest.App
         private void RefreshList(IEnumerable<ActionNode> select)
         {
             var wanted = select == null ? new HashSet<ActionNode>() : new HashSet<ActionNode>(select);
-            BrowserInheritance.Propagate(_script.Actions); // actions inside a New Tab or Switch Tab take over its browser
+            BrowserInheritance.Propagate(_script.Actions); // actions inside a Tab New or Tab Switch take over its browser
             _rows.Clear();
             if (wanted.Count > 0) ExpandTo(_script.Actions, wanted);
             Flatten(_script.Actions, null, 0);
@@ -2143,7 +2153,7 @@ namespace AutomationTest.App
 
                 case ActionCategory.Excel:
                     var xd = n.Excel;
-                    action = xd.Kind.ToString();
+                    action = ActionGroups.Display(xd.Kind);
                     switch (xd.Kind)
                     {
                         case ExcelKind.Workbook:
@@ -2195,7 +2205,7 @@ namespace AutomationTest.App
 
                 case ActionCategory.Web:
                     var wb = n.Web;
-                    action = wb.Kind.ToString();
+                    action = ActionGroups.Display(wb.Kind);
                     process = wb.Browser.ToString(); // the Process column tells the browser
                     switch (wb.Kind)
                     {
@@ -3532,6 +3542,79 @@ namespace AutomationTest.App
         }
 
         // ---------------------------------------------------------------- helpers
+
+        /// <summary>Fills the Group boxes of Excel and Web, and makes the Type boxes show only the short label of a kind.</summary>
+        private void InitGroups()
+        {
+            _grouping = true;
+            try
+            {
+                _xlGroup.Items.AddRange(ActionGroups.ExcelGroups.Cast<object>().ToArray());
+                _webGroup.Items.AddRange(ActionGroups.WebGroups.Cast<object>().ToArray());
+                _xlKind.FormattingEnabled = true;
+                _xlKind.Format += (s, e) => { if (e.ListItem is ExcelKind k) e.Value = ActionGroups.LabelOf(k); };
+                _webKind.FormattingEnabled = true;
+                _webKind.Format += (s, e) => { if (e.ListItem is WebKind k) e.Value = ActionGroups.LabelOf(k); };
+                _xlGroup.SelectedIndex = 0;
+                _webGroup.SelectedIndex = 0;
+                FillXlKinds();
+                FillWebKinds();
+            }
+            finally { _grouping = false; }
+        }
+
+        private void FillXlKinds()
+        {
+            bool before = _grouping;
+            _grouping = true;
+            try
+            {
+                _xlKind.Items.Clear();
+                _xlKind.Items.AddRange(ActionGroups.KindsOf((string)_xlGroup.SelectedItem).Cast<object>().ToArray());
+                _xlKind.SelectedIndex = 0;
+            }
+            finally { _grouping = before; }
+        }
+
+        private void FillWebKinds()
+        {
+            bool before = _grouping;
+            _grouping = true;
+            try
+            {
+                _webKind.Items.Clear();
+                _webKind.Items.AddRange(ActionGroups.WebKindsOf((string)_webGroup.SelectedItem).Cast<object>().ToArray());
+                _webKind.SelectedIndex = 0;
+            }
+            finally { _grouping = before; }
+        }
+
+        /// <summary>Shows an Excel kind in the editor: its group first (which fills the Type box), then the kind.</summary>
+        private void SetExcelKind(ExcelKind kind)
+        {
+            bool before = _grouping;
+            _grouping = true;
+            try
+            {
+                _xlGroup.SelectedItem = ActionGroups.GroupOf(kind);
+                _xlKind.SelectedItem = kind;
+            }
+            finally { _grouping = before; }
+            if (!before) UpdateEditorVisibility();
+        }
+
+        private void SetWebKind(WebKind kind)
+        {
+            bool before = _grouping;
+            _grouping = true;
+            try
+            {
+                _webGroup.SelectedItem = ActionGroups.GroupOf(kind);
+                _webKind.SelectedItem = kind;
+            }
+            finally { _grouping = before; }
+            if (!before) UpdateEditorVisibility();
+        }
 
         private static ComboBox MakeCombo(Type enumType)
         {

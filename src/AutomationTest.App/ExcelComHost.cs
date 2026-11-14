@@ -67,7 +67,7 @@ namespace AutomationTest.App
                 }
                 catch (InvalidComObjectException)
                 {
-                    throw new InvalidOperationException("The workbook or sheet is no longer there (Excel closed it). Use a Workbook action again.");
+                    throw new InvalidOperationException("The workbook or sheet is no longer there (Excel closed it). Use a Workbook Open action again.");
                 }
                 catch (Microsoft.CSharp.RuntimeBinder.RuntimeBinderException ex)
                 {
@@ -201,7 +201,7 @@ namespace AutomationTest.App
             foreach (var clash in WorkbooksOf(instance))
                 if (string.Equals(clash.Name, fileName, StringComparison.OrdinalIgnoreCase))
                     throw new InvalidOperationException("A workbook named \"" + clash.Name + "\" is open already from " + clash.FullPath +
-                        ". Excel cannot open two workbooks with the same name: close it first (Close Workbook).");
+                        ". Excel cannot open two workbooks with the same name: close it first (Workbook Close).");
 
             dynamic wb = Com(() =>
             {
@@ -764,7 +764,7 @@ namespace AutomationTest.App
             public object[,] GetRange(string area, ExcelGetKind kind)
             {
                 if (kind != ExcelGetKind.Value && kind != ExcelGetKind.Text && kind != ExcelGetKind.Formula)
-                    throw new InvalidOperationException("Get Range reads the Value, the Text or the Formula of the cells (not " + kind + ").");
+                    throw new InvalidOperationException("Range Get reads the Value, the Text or the Formula of the cells (not " + kind + ").");
                 return _host.Com(() =>
                 {
                     dynamic range = Sheet.Range[area];
@@ -774,7 +774,7 @@ namespace AutomationTest.App
                     {
                         // Excel gives the text of one cell at a time only.
                         if ((long)rows * columns > 100000)
-                            throw new InvalidOperationException("Get Range with Text reads cell by cell: at most 100000 cells (" + area + " is " + ((long)rows * columns) + "). Use Value or Formula for a large area.");
+                            throw new InvalidOperationException("Range Get with Text reads cell by cell: at most 100000 cells (" + area + " is " + ((long)rows * columns) + "). Use Value or Formula for a large area.");
                         for (int r = 1; r <= rows; r++)
                             for (int c = 1; c <= columns; c++)
                                 result[r - 1, c - 1] = (string)range.Cells[r, c].Text;

@@ -17,7 +17,7 @@ namespace AutomationTest.Core.Excel
     }
 
     /// <summary>
-    /// The Excel the actions of a run work in: the workbook and sheet the script is using now. Workbook and Select Sheet set them (and
+    /// The Excel the actions of a run work in: the workbook and sheet the script is using now. Workbook and Sheet Select set them (and
     /// hold the actions that work there); everything else uses them. Without a Workbook action the workbook that is active in Excel is used.
     /// </summary>
     public sealed class ExcelSession : IDisposable
@@ -129,7 +129,7 @@ namespace AutomationTest.Core.Excel
                 _workbook = _host.ActiveWorkbook((int)Math.Min(_host.BusyTimeoutMs, int.MaxValue), token);
                 _sheet = null;
             }
-            if (_workbook == null) throw new InvalidOperationException("No workbook is open in Excel. Add a Workbook action first.");
+            if (_workbook == null) throw new InvalidOperationException("No workbook is open in Excel. Add a Workbook Open action first.");
             return _workbook;
         }
 
@@ -378,7 +378,7 @@ namespace AutomationTest.Core.Excel
         private object RunMacro(ExcelSettings x, ExcelArgs args)
         {
             string macro = (x.Macro ?? "").Trim();
-            if (macro.Length == 0) throw new InvalidOperationException("Run Macro: enter the name of the macro.");
+            if (macro.Length == 0) throw new InvalidOperationException("Excel Macro: enter the name of the macro.");
             bool hasArgument = !(args.Value == null || (args.Value is string text && text.Length == 0));
             return ExcelValues.ForVariable(CurrentWorkbook(_host.Token).RunMacro(macro, hasArgument ? args.Value : null, hasArgument));
         }
@@ -386,7 +386,7 @@ namespace AutomationTest.Core.Excel
         private object GetRange(ExcelSettings x, ExcelArgs args)
         {
             if (x.Get != ExcelGetKind.Value && x.Get != ExcelGetKind.Text && x.Get != ExcelGetKind.Formula)
-                throw new InvalidOperationException("Get Range reads the Value, the Text or the Formula of the cells (not " + x.Get + ").");
+                throw new InvalidOperationException("Range Get reads the Value, the Text or the Formula of the cells (not " + x.Get + ").");
             string area = CellAddress(args, "area");
             var cells = SheetFor(x).GetRange(area, x.Get);
             var typed = new object[cells.GetLength(0), cells.GetLength(1)];
@@ -402,7 +402,7 @@ namespace AutomationTest.Core.Excel
             int colon = address.IndexOf(':');
             if (colon > 0) address = address.Substring(0, colon); // an area was given: its first cell is where the table starts
             if (!(args.Value is TableValue table))
-                throw new InvalidOperationException("Set Range writes a table: the value must be a table variable such as {t} (read with Get Range), not " + Format.TypeName(args.Value) + ".");
+                throw new InvalidOperationException("Range Set writes a table: the value must be a table variable such as {t} (read with Range Get), not " + Format.TypeName(args.Value) + ".");
             SheetFor(x).SetRange(address, table.ToArray(), x.As);
         }
 

@@ -240,7 +240,7 @@ namespace AutomationTest.Core.Model
             set { Get = ActionNode.Parse(value, WebGetKind.Text); }
         }
 
-        /// <summary>True for an action inside a New Tab or Switch Tab: its Browser is copied from there and cannot be edited.</summary>
+        /// <summary>True for an action inside a Tab New or Tab Switch: its Browser is copied from there and cannot be edited.</summary>
         public bool BrowserInherited { get; set; }
 
         /// <summary>WaitElement, Input, Click: CSS selector, or "text=Label" to find an element by its text.</summary>
@@ -275,7 +275,7 @@ namespace AutomationTest.Core.Model
             get { return Kind.ToString(); }
             set
             {
-                // Scripts from the first Web version: "OpenUrl" and "OpenBrowser" became New Tab.
+                // Scripts from the first Web version: "OpenUrl" and "OpenBrowser" became Tab New.
                 if (string.Equals(value, "OpenUrl", StringComparison.OrdinalIgnoreCase) || string.Equals(value, "OpenBrowser", StringComparison.OrdinalIgnoreCase)) Kind = WebKind.NewTab;
                 else Kind = ActionNode.Parse(value, WebKind.NewTab);
             }
@@ -322,7 +322,7 @@ namespace AutomationTest.Core.Model
             if (TargetSelector == null) TargetSelector = "";
             if (Index < 0) Index = 0;
             if (Id == null) Id = "";
-            // Switch Tab of the first Web version held plain text in Text: the same words, as a pattern.
+            // Tab Switch of the first Web version held plain text in Text: the same words, as a pattern.
             if (Kind == WebKind.SwitchTab && Title.Length == 0 && Index == 0 && Text.Length > 0)
             {
                 Title = System.Text.RegularExpressions.Regex.Escape(Text.Trim());
