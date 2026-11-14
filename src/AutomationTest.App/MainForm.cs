@@ -2079,7 +2079,7 @@ namespace AutomationTest.App
                         case ExcelKind.CloseWorkbook: details = "close the workbook" + (xd.SaveChanges ? " (save changes)" : " (drop changes)"); break;
                         case ExcelKind.CloseExcel: details = "quit Excel" + (xd.SaveChanges ? " (save changes)" : " (drop changes)"); break;
                     }
-                    if (xd.Kind == ExcelKind.Workbook || xd.Kind == ExcelKind.CloseExcel || xd.Kind == ExcelKind.Refresh || xd.Kind == ExcelKind.RunMacro) time = TimeBox.Format(xd.TimeMs);
+                    if (xd.Kind == ExcelKind.Workbook || xd.Kind == ExcelKind.CloseExcel) time = TimeBox.Format(xd.TimeMs);
                     delay = TimeBox.Format(xd.DelayMs);
                     break;
 

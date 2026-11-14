@@ -341,7 +341,10 @@ Path    the file. If it is open in Excel already (in any Excel
         open, even from different folders: that is reported.
 
 Without a Workbook action the workbook that is active in Excel is
-used. Macros of a file opened here do not run.");
+used. Macros of a file opened here do not run (see Allow macros).
+
+A script's changes cannot be undone with Ctrl+Z: Excel forgets
+its Undo history when a program changes the workbook.");
 
         public static readonly HelpTopic ExcelWorkbookName = new HelpTopic("Name (Workbook)",
 @"Used when Path is empty: a regular expression for the name of a
@@ -432,6 +435,9 @@ filter of the sheet and shows every row again.");
 @"Runs a macro (a Sub or Function) of a workbook that is open, for
 example Module1.Report or 'sales.xlsm'!Report. One argument can be
 given in Value. What a Function returns goes into the variable ID.
+
+The Timeout does not stop a macro that runs long or waits for a
+dialog; Stop works after it has finished. Use a visible Excel.
 
 WARNING: a macro can do anything on this computer. Run only macros
 you trust, and do not run a script from someone else that uses
@@ -524,6 +530,15 @@ Evaluate   an Excel formula to calculate, for example
 With Expr. (value) ON the field is an expression, so a variable
 or a calculation can be used; a number stays a number.
 
+Rename Sheet  the new name of the sheet.
+Copy          the cell where the copy goes (its top-left cell), for
+              example E1; with Expr. ON an expression such as
+              ""E"" + {row}.
+Run Macro     an argument for the macro (optional). Literal text is
+              passed as text; with Expr. ON a number, date or
+              true/false from an expression keeps its type
+              ({n} * 2 passes a number). Empty: no argument.
+
 Tables: Get Range -> {t}; {t.Rows}, {t.Columns}, {t[row, column]}
 (counted from 1). Set Range writes {t} (or a copy of any table
 variable) from a top-left cell. Get (Value, Text or Formula) says
@@ -571,6 +586,11 @@ Close Excel      closes the Excel that holds the current workbook.
 @"How long to wait for Excel: to start, to open a file, and while
 Excel is busy (a cell is being edited, a dialog is open). After
 that the action fails.
+
+It does NOT limit how long Refresh and Run Macro run: once Excel
+has started them they run to the end, and the Stop key takes
+effect only after they finish. A macro that shows a dialog
+(MsgBox, InputBox) waits for you: use a visible Excel for it.
 
 Can be given in milliseconds, seconds, minutes or hours.");
 

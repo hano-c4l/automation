@@ -603,11 +603,10 @@ namespace AutomationTest.App
                     dynamic to = Sheet.Range[first];
                     if (valuesOnly)
                     {
-                        from.Copy();
-                        to.PasteSpecial(-4163); // xlPasteValues
-                        Sheet.Application.CutCopyMode = false;
+                        // Straight from cell to cell: the clipboard of the user is left alone (formulas arrive as their results).
+                        to.Resize[(int)from.Rows.Count, (int)from.Columns.Count].Value = from.Value;
                     }
-                    else from.Copy(to);
+                    else from.Copy(to); // with formatting: Excel's own copy, which uses the clipboard
                 });
             }
 
