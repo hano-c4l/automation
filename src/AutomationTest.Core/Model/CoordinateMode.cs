@@ -37,7 +37,11 @@ namespace AutomationTest.Core.Model
         /// <summary>Reads the text (or value) of an element into a variable.</summary>
         GetText,
         /// <summary>Runs JavaScript in the page, like the browser console, and can keep the result in a variable.</summary>
-        Script
+        Script,
+        /// <summary>Closes the tab the script is using.</summary>
+        CloseTab,
+        /// <summary>Closes every window of the browser.</summary>
+        CloseBrowser
     }
 
     /// <summary>What a Get Text action reads.</summary>

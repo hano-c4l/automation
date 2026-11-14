@@ -307,6 +307,11 @@ The actions inside a New Tab or a Switch Tab always use the browser
 of that action: it is filled in for them and cannot be changed. To
 work in the other browser, use a New Tab or Switch Tab action for it.
 
+Close Tab closes the tab the script is using (the next action that
+needs a tab uses the one in front: add a New Tab or Switch Tab).
+Close Browser closes ALL windows of the browser, also the ones you
+opened yourself; unsaved forms in them are lost.
+
 Each browser needs the Automation Test extension (Load unpacked:
 the BrowserExtension folder) and only one profile of a browser can
 be connected at a time.");

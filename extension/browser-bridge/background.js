@@ -74,14 +74,19 @@ async function run(cmd, args) {
       let tab;
       const props = { active: true };
       if (args.url) props.url = args.url;
-      if (args.newTab || args.tabId == null) tab = await chrome.tabs.create(props);
+      // A browser kept alive in the background has no window: a tab cannot be added then, a window has to be opened.
+      const windows = await chrome.windows.getAll();
+      if (windows.length === 0) {
+        const created = await chrome.windows.create({ url: args.url || undefined, focused: true });
+        tab = created.tabs[0];
+      } else if (args.newTab || args.tabId == null) tab = await chrome.tabs.create(props);
       else tab = await chrome.tabs.update(args.tabId, props);
       await waitComplete(tab.id, args.timeoutMs || 15000);
       return { tabId: tab.id };
     }
     case "activeTab": {
       const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-      if (tabs.length === 0) throw new Error("There is no active tab.");
+      if (tabs.length === 0) throw new Error("The browser has no open window. Use a New Tab action first.");
       return { tabId: tabs[0].id, url: tabs[0].url || "" };
     }
     case "activateTab": {
@@ -92,6 +97,21 @@ async function run(cmd, args) {
     case "tabInfo": {
       const t = await chrome.tabs.get(args.tabId);
       return { url: t.url || "", title: t.title || "" };
+    }
+    case "closeTab": {
+      attached.delete(args.tabId);
+      await chrome.tabs.remove(args.tabId);
+      return {};
+    }
+    case "closeBrowser": {
+      // Answer first: closing the last window may stop this extension before the answer is sent.
+      setTimeout(async () => {
+        try {
+          const windows = await chrome.windows.getAll();
+          for (const win of windows) await chrome.windows.remove(win.id);
+        } catch (e) { }
+      }, 200);
+      return {};
     }
     case "tabExists": {
       try { await chrome.tabs.get(args.tabId); return { exists: true }; } catch (e) { return { exists: false }; }

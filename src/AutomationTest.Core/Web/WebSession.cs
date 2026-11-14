@@ -86,6 +86,8 @@ namespace AutomationTest.Core.Web
                 case WebKind.Dialog: Dialog(w, token); break;
                 case WebKind.GetText: return GetText(w, token);
                 case WebKind.Script: return RunScript(w, text, token);
+                case WebKind.CloseTab: CloseTab(w, token); break;
+                case WebKind.CloseBrowser: CloseBrowser(w, token); break;
                 case WebKind.SwitchTab: SwitchTab(w, token); break;
             }
             return null;
@@ -388,6 +390,27 @@ namespace AutomationTest.Core.Web
             if (value is long l) return (double)l;
             if (value is double) return value;
             return MiniJson.Write(value); // an object or an array: as JSON text
+        }
+
+        /// <summary>Closes the tab the script is using; the next action that needs a tab uses the one that is in front then.</summary>
+        private void CloseTab(WebSettings w, CancellationToken token)
+        {
+            int tab = CurrentTab(w.Browser, token);
+            Call(w.Browser, "closeTab", new Dictionary<string, object> { { "tabId", tab } }, token);
+            lock (_tabs) _tabs.Remove(w.Browser);
+        }
+
+        /// <summary>
+        /// Closes every window of the browser. The extension answers first and closes the windows a moment later, so the answer is not
+        /// lost with the connection. A browser kept alive in the background (Startup Boost) may stay connected and open a new window at
+        /// the next New Tab; one that really quits is started again by New Tab.
+        /// </summary>
+        private void CloseBrowser(WebSettings w, CancellationToken token)
+        {
+            if (!_bridge.IsConnected(w.Browser)) return; // not running: nothing to close
+            Call(w.Browser, "closeBrowser", null, token);
+            lock (_tabs) _tabs.Remove(w.Browser);
+            Thread.Sleep(1000); // let the windows go before the next action
         }
 
         private List<TabInfo> ListTabs(BrowserKind browser, CancellationToken token, out int lastWindowId)

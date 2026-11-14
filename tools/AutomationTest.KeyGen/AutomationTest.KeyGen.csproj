@@ -5,6 +5,7 @@
     <LangVersion>latest</LangVersion>
     <GenerateSupportedRuntime>false</GenerateSupportedRuntime>
     <RootNamespace>AutomationTest.KeyGen</RootNamespace>
+    <ApplicationIcon>..\..\src\AutomationTest.App\app.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\AutomationTest.Core\AutomationTest.Core.csproj" />
