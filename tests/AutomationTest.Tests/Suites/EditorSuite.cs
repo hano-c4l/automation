@@ -23,7 +23,7 @@ namespace AutomationTest.Tests.Suites
 
             public Editor()
             {
-                Form = new MainForm();
+                Form = new MainForm { HotKeysEnabled = false }; // never take the hotkeys of a program the user may have open
                 var h = Form.Handle; // the list needs a window handle to select rows
                 foreach (Control c in Form.Controls) { var h2 = c.Handle; }
                 var script = Field("_script");

@@ -3505,7 +3505,7 @@ namespace AutomationTest.App
             HotKeyNative.UnregisterHotKey(Handle, HotKeyToggleId);
             HotKeyNative.UnregisterHotKey(Handle, HotKeyStartSelectedId);
             HotKeyNative.UnregisterHotKey(Handle, HotKeyRecordId);
-            if (!enabled || _running || _recording) return;
+            if (!enabled || !HotKeysEnabled || _running || _recording) return;
             var taken = new List<string>();
             if (!HotKeyNative.RegisterHotKey(Handle, HotKeyToggleId, HotKeyNative.MOD_NOREPEAT, (uint)_settings.StartCode)) taken.Add(_settings.Start + " (Start)");
             if (!HotKeyNative.RegisterHotKey(Handle, HotKeyStartSelectedId, HotKeyNative.MOD_NOREPEAT, (uint)_settings.StartSelectedCode)) taken.Add(_settings.StartSelected + " (Start Selected)");
@@ -3534,6 +3534,9 @@ namespace AutomationTest.App
             });
             if (_startStop.Owner != null) CenterRunButtons(_startStop.Owner); // item widths are known only once shown
         }
+
+        /// <summary>False keeps the program from taking the global hotkeys (the tests create forms while the user may be running the program).</summary>
+        internal bool HotKeysEnabled { get; set; } = true;
 
         protected override void OnHandleCreated(EventArgs e)
         {

@@ -92,7 +92,8 @@ namespace AutomationTest.Tests.Suites
 
                 // delete and its guards
                 t.Throws("delete a folder that is not empty", () => FileActions.Delete(tree, false, false), "not empty");
-                t.Throws("delete a whole drive", () => FileActions.Delete("C:\\", true, true), "whole drive");
+                // Recurse and Force are off on purpose: should the guard ever break, the delete stops at "not empty" instead of touching the drive.
+                t.Throws("delete a whole drive", () => FileActions.Delete("C:\\", false, false), "whole drive");
                 string ro = Path.Combine(root, "ro.txt");
                 File.WriteAllText(ro, "r");
                 File.SetAttributes(ro, FileAttributes.ReadOnly);
