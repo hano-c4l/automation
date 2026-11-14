@@ -270,6 +270,22 @@ namespace AutomationTest.App
             throw new InvalidOperationException("No open workbook has a name matching \"" + pattern + "\"" + (names.Count == 0 ? " (Excel has no workbook open)." : " (open: " + string.Join(", ", names) + ")."));
         }
 
+        public IExcelWorkbook FindOpenWorkbook(string namePattern, CancellationToken token)
+        {
+            Token = token;
+            Regex regex;
+            try { regex = new Regex(namePattern, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(1000)); }
+            catch (ArgumentException ex) { throw new InvalidOperationException("The workbook name is not a valid regular expression: " + ex.Message); }
+            var names = new List<string>();
+            foreach (var instance in Instances())
+                foreach (var wb in WorkbooksOf(instance))
+                {
+                    names.Add(wb.Name);
+                    if (regex.IsMatch(wb.Name)) return wb; // not activated: only this action uses it
+                }
+            throw new InvalidOperationException("No open workbook has a name matching \"" + namePattern + "\"" + (names.Count == 0 ? " (Excel has no workbook open)." : " (open: " + string.Join(", ", names) + ")."));
+        }
+
         public IExcelWorkbook ActiveWorkbook(int timeoutMs, CancellationToken token)
         {
             Token = token;
@@ -554,6 +570,7 @@ namespace AutomationTest.App
             {
                 _host.Com(() =>
                 {
+                    Sheet.Parent.Activate(); // the sheet may belong to a workbook that is not the active one
                     Sheet.Activate();
                     Sheet.Range[area].Select();
                 });
@@ -594,19 +611,26 @@ namespace AutomationTest.App
                 });
             }
 
-            public void Copy(string source, string destination, bool valuesOnly)
+            public void Copy(string source, IExcelSheet target, string destination, bool valuesOnly)
             {
                 string first = destination.Split(':')[0]; // the paste starts at the first cell
+                dynamic targetSheet = ((ComSheet)target).Sheet;
                 _host.Com(() =>
                 {
                     dynamic from = Sheet.Range[source];
-                    dynamic to = Sheet.Range[first];
+                    dynamic to = targetSheet.Range[first];
                     if (valuesOnly)
                     {
                         // Straight from cell to cell: the clipboard of the user is left alone (formulas arrive as their results).
+                        // This also works between workbooks of separate Excel windows.
                         to.Resize[(int)from.Rows.Count, (int)from.Columns.Count].Value = from.Value;
+                        return;
                     }
-                    else from.Copy(to); // with formatting: Excel's own copy, which uses the clipboard
+                    if ((long)Sheet.Application.Hwnd != (long)targetSheet.Application.Hwnd)
+                        throw new InvalidOperationException("The two workbooks are open in separate Excel windows, so formatting cannot be copied between them. " +
+                            "Turn on Values only, or open both files in the same Excel window.");
+                    from.Copy(to); // with formatting: Excel's own copy, which uses the clipboard
+                    targetSheet.Application.CutCopyMode = false;
                 });
             }
 
@@ -646,7 +670,16 @@ namespace AutomationTest.App
             {
                 _host.Com(() =>
                 {
-                    if (clear) Sheet.AutoFilterMode = false; // the filter of the sheet is removed and every row shows again
+                    if (clear)
+                    {
+                        Sheet.AutoFilterMode = false; // the filter of the sheet is removed and every row shows again
+                        // The filter of an Excel Table (ListObject) is a separate one: show all its rows. The filter buttons stay on the table.
+                        foreach (dynamic table in Sheet.ListObjects)
+                        {
+                            dynamic tableFilter = table.AutoFilter;
+                            if (tableFilter != null && (bool)tableFilter.FilterMode) tableFilter.ShowAllData();
+                        }
+                    }
                     else Sheet.Range[area].AutoFilter(field, criteria);
                 });
             }

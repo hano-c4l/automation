@@ -124,6 +124,28 @@ namespace AutomationTest.Core.Model
         /// <summary>Workbook: let the macros of the file run, as far as the Trust Center of Excel allows (otherwise they never run).</summary>
         [DataMember(Order = 46, EmitDefaultValue = false)] public bool AllowMacros { get; set; }
 
+        private string _useWorkbook, _useSheet, _destWorkbook, _destSheet;
+
+        /// <summary>Cell and range actions: the open workbook to work in for this action only (regular expression on its name); empty = the workbook in use.</summary>
+        public string UseWorkbook { get { return _useWorkbook ?? ""; } set { _useWorkbook = value; } }
+        [DataMember(Name = "UseWorkbook", Order = 50, EmitDefaultValue = false)]
+        private string UseWorkbookData { get { return string.IsNullOrEmpty(_useWorkbook) ? null : _useWorkbook; } set { _useWorkbook = value; } } // not written when empty
+
+        /// <summary>Cell and range actions: the sheet to work on for this action only (regular expression on its name); empty = the sheet in use.</summary>
+        public string UseSheet { get { return _useSheet ?? ""; } set { _useSheet = value; } }
+        [DataMember(Name = "UseSheet", Order = 51, EmitDefaultValue = false)]
+        private string UseSheetData { get { return string.IsNullOrEmpty(_useSheet) ? null : _useSheet; } set { _useSheet = value; } } // not written when empty
+
+        /// <summary>Copy: the workbook that gets the copy (regular expression); empty = the one the area is in.</summary>
+        public string DestWorkbook { get { return _destWorkbook ?? ""; } set { _destWorkbook = value; } }
+        [DataMember(Name = "DestWorkbook", Order = 52, EmitDefaultValue = false)]
+        private string DestWorkbookData { get { return string.IsNullOrEmpty(_destWorkbook) ? null : _destWorkbook; } set { _destWorkbook = value; } } // not written when empty
+
+        /// <summary>Copy: the sheet that gets the copy (regular expression); empty = the sheet the area is on.</summary>
+        public string DestSheet { get { return _destSheet ?? ""; } set { _destSheet = value; } }
+        [DataMember(Name = "DestSheet", Order = 53, EmitDefaultValue = false)]
+        private string DestSheetData { get { return string.IsNullOrEmpty(_destSheet) ? null : _destSheet; } set { _destSheet = value; } } // not written when empty
+
         [DataMember(Name = "Target", Order = 31)]
         private string TargetName
         {

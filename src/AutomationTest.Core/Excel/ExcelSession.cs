@@ -100,10 +100,10 @@ namespace AutomationTest.Core.Excel
                 case ExcelKind.GetCell: return GetCell(x, args);
                 case ExcelKind.SetCell: SetCell(x, args); return null;
                 case ExcelKind.RenameSheet: RenameSheet(x, args); return null;
-                case ExcelKind.Select: CurrentSheet().Select(CellAddress(args, "cell")); return null;
+                case ExcelKind.Select: SheetFor(x).Select(CellAddress(args, "cell")); return null;
                 case ExcelKind.InsertCells: InsertDelete(x, args, true); return null;
                 case ExcelKind.DeleteCells: InsertDelete(x, args, false); return null;
-                case ExcelKind.Clear: CurrentSheet().Clear(CellAddress(args, "area"), x.ClearWhat); return null;
+                case ExcelKind.Clear: SheetFor(x).Clear(CellAddress(args, "area"), x.ClearWhat); return null;
                 case ExcelKind.Copy: CopyCells(x, args); return null;
                 case ExcelKind.Format: FormatCells(x, args); return null;
                 case ExcelKind.Sort: SortCells(x, args); return null;
@@ -114,7 +114,7 @@ namespace AutomationTest.Core.Excel
                 case ExcelKind.SetRange: SetRange(x, args); return null;
                 case ExcelKind.Find: return Find(x, args);
                 case ExcelKind.GetInfo: return GetInfo(x, args);
-                case ExcelKind.Evaluate: return Evaluate(args);
+                case ExcelKind.Evaluate: return Evaluate(x, args);
                 case ExcelKind.Save: Save(x); return null;
                 case ExcelKind.CloseWorkbook: CloseWorkbook(x); return null;
                 case ExcelKind.CloseExcel: CloseExcel(x, token); return null;
@@ -147,11 +147,50 @@ namespace AutomationTest.Core.Excel
             _sheet = _workbook.ActiveSheet;
         }
 
+        /// <summary>
+        /// Before an action works elsewhere, the workbook and sheet in use are fixed (they would otherwise be read from what is active in Excel
+        /// at the next action, and an action such as Select moves what is active).
+        /// </summary>
+        private void PinContext(ExcelSettings x)
+        {
+            if (string.IsNullOrWhiteSpace(x.UseWorkbook) && string.IsNullOrWhiteSpace(x.UseSheet)) return;
+            try { CurrentSheet(); }
+            catch (InvalidOperationException) { /* nothing is open: the override then fails with its own message */ }
+        }
+
+        /// <summary>The workbook for this action: the one named in "Use workbook" (found without switching to it), otherwise the one in use.</summary>
+        private IExcelWorkbook WorkbookFor(ExcelSettings x)
+        {
+            PinContext(x);
+            if (string.IsNullOrWhiteSpace(x.UseWorkbook)) return CurrentWorkbook(_host.Token);
+            return _host.FindOpenWorkbook(x.UseWorkbook.Trim(), _host.Token);
+        }
+
+        /// <summary>The sheet for this action: "Use sheet" in "Use workbook" when given; otherwise the sheet in use (in the workbook in use) or the active sheet of the other workbook.</summary>
+        private IExcelSheet SheetFor(ExcelSettings x)
+        {
+            PinContext(x);
+            return ResolveSheet(WorkbookFor(x), x.UseWorkbook, x.UseSheet);
+        }
+
+        private IExcelSheet ResolveSheet(IExcelWorkbook wb, string workbookPattern, string sheetPattern)
+        {
+            if (string.IsNullOrWhiteSpace(sheetPattern))
+                return string.IsNullOrWhiteSpace(workbookPattern) ? CurrentSheet() : wb.ActiveSheet;
+            int position;
+            try { position = SheetSelector.Choose(wb.SheetNames, sheetPattern.Trim(), 0); }
+            catch (ArgumentException ex) { throw new InvalidOperationException("The sheet name is not a valid regular expression: " + ex.Message); }
+            if (position == 0)
+                throw new InvalidOperationException("No sheet with a name matching \"" + sheetPattern + "\" in " + wb.Name + " (sheets: " + string.Join(", ", wb.SheetNames) + ").");
+            return wb.Sheet(position);
+        }
+
         /// <summary>The sheet a name pattern and/or position points to.</summary>
         private IExcelSheet FindSheet(ExcelSettings x, bool emptyMeansCurrent)
         {
-            var wb = CurrentWorkbook(_host.Token);
-            if (emptyMeansCurrent && string.IsNullOrWhiteSpace(x.SheetName) && x.Index <= 0) return CurrentSheet();
+            var wb = WorkbookFor(x);
+            if (emptyMeansCurrent && string.IsNullOrWhiteSpace(x.SheetName) && x.Index <= 0)
+                return string.IsNullOrWhiteSpace(x.UseWorkbook) ? CurrentSheet() : wb.ActiveSheet;
             int position;
             try { position = SheetSelector.Choose(wb.SheetNames, x.SheetName, x.Index); }
             catch (ArgumentException ex) { throw new InvalidOperationException("The sheet name is not a valid regular expression: " + ex.Message); }
@@ -201,7 +240,7 @@ namespace AutomationTest.Core.Excel
         private object GetCell(ExcelSettings x, ExcelArgs args)
         {
             string address = CellAddress(args, "cell");
-            var sheet = CurrentSheet();
+            var sheet = SheetFor(x);
             switch (x.Get)
             {
                 case ExcelGetKind.Text: return sheet.GetText(address) ?? "";
@@ -215,7 +254,7 @@ namespace AutomationTest.Core.Excel
         private void SetCell(ExcelSettings x, ExcelArgs args)
         {
             string address = CellAddress(args, "cell");
-            var sheet = CurrentSheet();
+            var sheet = SheetFor(x);
             object value = args.Value;
             switch (x.As)
             {
@@ -258,8 +297,8 @@ namespace AutomationTest.Core.Excel
             if (x.Target == ExcelTarget.Rows ? ExcelAddress.RowOf(at) <= 0 : ExcelAddress.ColumnOf(at) == null)
                 throw new InvalidOperationException("\"" + at + "\" has no " + (x.Target == ExcelTarget.Rows ? "row number" : "column letters") + ": use a cell such as B5.");
             int count = Math.Max(1, x.Count);
-            if (insert) CurrentSheet().InsertCells(x.Target, at, count);
-            else CurrentSheet().DeleteCells(x.Target, at, count);
+            if (insert) SheetFor(x).InsertCells(x.Target, at, count);
+            else SheetFor(x).DeleteCells(x.Target, at, count);
         }
 
         private void CopyCells(ExcelSettings x, ExcelArgs args)
@@ -268,7 +307,24 @@ namespace AutomationTest.Core.Excel
             string destination = Format.Display(args.Value).Trim();
             string problem = ExcelAddress.Check(destination, "destination cell");
             if (problem != null) throw new InvalidOperationException(problem);
-            CurrentSheet().Copy(source, destination, x.ValuesOnly);
+            var from = SheetFor(x);
+            IExcelSheet target = from;
+            if (!string.IsNullOrWhiteSpace(x.DestWorkbook) || !string.IsNullOrWhiteSpace(x.DestSheet))
+            {
+                // Without a destination workbook the copy stays in the workbook of the area; without a destination sheet it goes to that workbook's active sheet.
+                IExcelWorkbook destWorkbook = string.IsNullOrWhiteSpace(x.DestWorkbook) ? WorkbookFor(x) : _host.FindOpenWorkbook(x.DestWorkbook.Trim(), _host.Token);
+                if (string.IsNullOrWhiteSpace(x.DestSheet)) target = destWorkbook.ActiveSheet;
+                else
+                {
+                    int position;
+                    try { position = SheetSelector.Choose(destWorkbook.SheetNames, x.DestSheet.Trim(), 0); }
+                    catch (ArgumentException ex) { throw new InvalidOperationException("The destination sheet name is not a valid regular expression: " + ex.Message); }
+                    if (position == 0)
+                        throw new InvalidOperationException("No sheet with a name matching \"" + x.DestSheet + "\" in " + destWorkbook.Name + " (sheets: " + string.Join(", ", destWorkbook.SheetNames) + ").");
+                    target = destWorkbook.Sheet(position);
+                }
+            }
+            from.Copy(source, target, destination, x.ValuesOnly);
         }
 
         private void FormatCells(ExcelSettings x, ExcelArgs args)
@@ -295,7 +351,7 @@ namespace AutomationTest.Core.Excel
                 && !(double.TryParse(format.ColumnWidth, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double width) && width >= 0 && width <= 255))
                 throw new InvalidOperationException("The column width is a number from 0 to 255, or auto, not \"" + format.ColumnWidth + "\".");
             if (format.IsEmpty) throw new InvalidOperationException("Format: nothing to change. Fill in at least one of the format fields.");
-            CurrentSheet().FormatCells(area, format);
+            SheetFor(x).FormatCells(area, format);
         }
 
         private void SortCells(ExcelSettings x, ExcelArgs args)
@@ -304,19 +360,19 @@ namespace AutomationTest.Core.Excel
             string key = (x.SortBy ?? "").Trim().TrimStart('$');
             if (key.Length == 0 || key.Length > 3 || ExcelAddress.ColumnOf(key) != key.ToUpperInvariant())
                 throw new InvalidOperationException("Sort by: enter the column letters, for example C.");
-            CurrentSheet().Sort(area, key.ToUpperInvariant(), x.Descending, x.HasHeader);
+            SheetFor(x).Sort(area, key.ToUpperInvariant(), x.Descending, x.HasHeader);
         }
 
         private void FilterCells(ExcelSettings x, ExcelArgs args)
         {
             if (x.ClearFilter)
             {
-                CurrentSheet().Filter((args.Cell ?? "").Trim(), 0, null, true);
+                SheetFor(x).Filter((args.Cell ?? "").Trim(), 0, null, true);
                 return;
             }
             string area = CellAddress(args, "area (with its header row)");
             if (string.IsNullOrWhiteSpace(x.Criteria)) throw new InvalidOperationException("Filter: enter the criterion, for example >5 or =Hanoi.");
-            CurrentSheet().Filter(area, Math.Max(1, x.FilterField), x.Criteria.Trim(), false);
+            SheetFor(x).Filter(area, Math.Max(1, x.FilterField), x.Criteria.Trim(), false);
         }
 
         private object RunMacro(ExcelSettings x, ExcelArgs args)
@@ -332,7 +388,7 @@ namespace AutomationTest.Core.Excel
             if (x.Get != ExcelGetKind.Value && x.Get != ExcelGetKind.Text && x.Get != ExcelGetKind.Formula)
                 throw new InvalidOperationException("Get Range reads the Value, the Text or the Formula of the cells (not " + x.Get + ").");
             string area = CellAddress(args, "area");
-            var cells = CurrentSheet().GetRange(area, x.Get);
+            var cells = SheetFor(x).GetRange(area, x.Get);
             var typed = new object[cells.GetLength(0), cells.GetLength(1)];
             for (int r = 0; r < typed.GetLength(0); r++)
                 for (int c = 0; c < typed.GetLength(1); c++)
@@ -347,7 +403,7 @@ namespace AutomationTest.Core.Excel
             if (colon > 0) address = address.Substring(0, colon); // an area was given: its first cell is where the table starts
             if (!(args.Value is TableValue table))
                 throw new InvalidOperationException("Set Range writes a table: the value must be a table variable such as {t} (read with Get Range), not " + Format.TypeName(args.Value) + ".");
-            CurrentSheet().SetRange(address, table.ToArray(), x.As);
+            SheetFor(x).SetRange(address, table.ToArray(), x.As);
         }
 
         private object Find(ExcelSettings x, ExcelArgs args)
@@ -360,7 +416,7 @@ namespace AutomationTest.Core.Excel
                 string problem = ExcelAddress.Check(area, "area");
                 if (problem != null) throw new InvalidOperationException(problem);
             }
-            var match = CurrentSheet().Find(area, what, x.MatchCase, x.WholeCell);
+            var match = SheetFor(x).Find(area, what, x.MatchCase, x.WholeCell);
             return match == null ? new CellValue(false, 0, 0, "") : new CellValue(true, match.Row, match.Column, match.Address);
         }
 
@@ -369,25 +425,25 @@ namespace AutomationTest.Core.Excel
             switch (x.Info)
             {
                 case ExcelInfoKind.LastRow:
-                    return (double)CurrentSheet().LastRow(CellAddress(args, "cell in the column"));
+                    return (double)SheetFor(x).LastRow(CellAddress(args, "cell in the column"));
                 case ExcelInfoKind.LastColumn:
-                    return (double)CurrentSheet().LastColumn(CellAddress(args, "cell in the row"));
-                case ExcelInfoKind.UsedRange: return CurrentSheet().UsedRange() ?? "";
-                case ExcelInfoKind.SheetCount: return (double)CurrentWorkbook(_host.Token).SheetNames.Count;
-                case ExcelInfoKind.SheetName: return CurrentSheet().Name;
-                case ExcelInfoKind.WorkbookName: return CurrentWorkbook(_host.Token).Name;
-                case ExcelInfoKind.WorkbookPath: return CurrentWorkbook(_host.Token).FullPath;
+                    return (double)SheetFor(x).LastColumn(CellAddress(args, "cell in the row"));
+                case ExcelInfoKind.UsedRange: return SheetFor(x).UsedRange() ?? "";
+                case ExcelInfoKind.SheetCount: return (double)WorkbookFor(x).SheetNames.Count;
+                case ExcelInfoKind.SheetName: return SheetFor(x).Name;
+                case ExcelInfoKind.WorkbookName: return WorkbookFor(x).Name;
+                case ExcelInfoKind.WorkbookPath: return WorkbookFor(x).FullPath;
                 default:
                     return _host.TryGetSelection(out string sheetName, out string address) ? address : "";
             }
         }
 
-        private object Evaluate(ExcelArgs args)
+        private object Evaluate(ExcelSettings x, ExcelArgs args)
         {
             string formula = Format.Display(args.Value).Trim();
             if (formula.Length == 0) throw new InvalidOperationException("Evaluate: there is no formula.");
             if (formula.StartsWith("=")) formula = formula.Substring(1);
-            return ExcelValues.ForVariable(CurrentSheet().Evaluate(formula));
+            return ExcelValues.ForVariable(SheetFor(x).Evaluate(formula));
         }
 
         private static readonly HashSet<string> SaveExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)

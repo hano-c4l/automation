@@ -56,6 +56,12 @@ namespace AutomationTest.Core.Excel
         /// </summary>
         IExcelWorkbook OpenWorkbook(string path, string namePattern, bool readOnly, bool visible, bool allowMacros, int timeoutMs, CancellationToken token);
 
+        /// <summary>
+        /// The open workbook (in any Excel window) whose name matches the pattern, without making it the active one; fails with a message
+        /// that lists the open workbooks when none matches.
+        /// </summary>
+        IExcelWorkbook FindOpenWorkbook(string namePattern, CancellationToken token);
+
         /// <summary>The workbook that is active in Excel now; null when Excel is not running or has no workbook.</summary>
         IExcelWorkbook ActiveWorkbook(int timeoutMs, CancellationToken token);
 
@@ -106,8 +112,11 @@ namespace AutomationTest.Core.Excel
         void InsertCells(ExcelTarget target, string at, int count);
         void DeleteCells(ExcelTarget target, string at, int count);
         void Clear(string area, ExcelClearKind what);
-        /// <summary>Copies the area to the destination (its top-left cell), with its formatting or only the values.</summary>
-        void Copy(string source, string destination, bool valuesOnly);
+        /// <summary>
+        /// Copies the area to the destination (its top-left cell) on <paramref name="target"/> (a sheet of the same or another workbook),
+        /// with its formatting or only the values. Copying with formatting between two Excel windows that are separate programs fails.
+        /// </summary>
+        void Copy(string source, IExcelSheet target, string destination, bool valuesOnly);
         void FormatCells(string area, ExcelFormat format);
         /// <param name="key">The column to sort by, letters.</param>
         void Sort(string area, string key, bool descending, bool hasHeader);
