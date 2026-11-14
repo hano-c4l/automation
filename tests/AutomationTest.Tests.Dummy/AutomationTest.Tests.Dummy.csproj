@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- A tiny window for the tests of Program Close to close, kill or watch. It is never shipped. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>AtDummyApp</AssemblyName>
+    <RootNamespace>AutomationTest.Tests.Dummy</RootNamespace>
+  </PropertyGroup>
+
+</Project>

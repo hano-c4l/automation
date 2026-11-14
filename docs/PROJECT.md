@@ -41,6 +41,7 @@ AutomationTest.sln
                                             biểu thức/biến, chuyển bản ghi thành action, runner,
                                             tọa độ theo cửa sổ; kiểm tra license (Licensing/)
   src/AutomationTest.App      (net48 WinForms)  UI cây action, overlay chọn điểm/vùng, phím nóng, hook ghi thao tác
+  tests/AutomationTest.Tests  (net48 console)   bộ test của chương trình (xem STATUS, mục Kiểm thử)
   tools/AutomationTest.KeyGen (net48 console)   công cụ tạo license, KHÔNG đóng gói cùng bản phát hành
 ```
 

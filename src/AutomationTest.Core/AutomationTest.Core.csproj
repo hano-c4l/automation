@@ -4,4 +4,7 @@
     <LangVersion>latest</LangVersion>
     <RootNamespace>AutomationTest.Core</RootNamespace>
   </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="AutomationTest.Tests" />
+  </ItemGroup>
 </Project>
