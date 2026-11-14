@@ -177,7 +177,19 @@ namespace AutomationTest.Core.Model
         /// <summary>One branch of a Condition; runs when its expression is true and no earlier case was.</summary>
         Case,
         /// <summary>The last branch of a Condition; runs when no case matched.</summary>
-        Else
+        Else,
+        /// <summary>Runs its actions; when one of them fails the rest are skipped and the Catch at its end runs instead of the run stopping.</summary>
+        Try,
+        /// <summary>The last line of a Try; runs when an action of the Try failed. Made together with its Try, never added by hand.</summary>
+        Catch,
+        /// <summary>Leaves the nearest Loop.</summary>
+        Break,
+        /// <summary>Goes on with the next pass of the nearest Loop.</summary>
+        Continue,
+        /// <summary>Ends the script (a script called by Auto Script: goes back to the caller).</summary>
+        Return,
+        /// <summary>Groups actions under a name. Runs the actions inside it once.</summary>
+        Section
     }
 
     public enum VariableType

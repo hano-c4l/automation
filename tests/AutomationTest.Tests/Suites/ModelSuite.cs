@@ -69,6 +69,50 @@ namespace AutomationTest.Tests.Suites
             finally { File.Delete(path); }
         }
 
+        [Suite("model.flow-kinds")]
+        public static void FlowKinds(T t)
+        {
+            // Try, Section and the jumps survive saving and loading
+            var script = new AutomationScript();
+            var loop = ActionNode.NewLoop(new LoopSettings { Mode = LoopType.Times, Count = 2 });
+            var tr = ActionNode.NewTry();
+            tr.Children[0].Catch.Id = "err";
+            tr.Children.Insert(0, ActionNode.NewJump(ControlKind.Break));
+            var section = ActionNode.NewSection();
+            section.Name = "group";
+            section.Children.Add(ActionNode.NewJump(ControlKind.Continue));
+            loop.Children.Add(tr);
+            loop.Children.Add(section);
+            script.Actions.Add(loop);
+            script.Actions.Add(ActionNode.NewJump(ControlKind.Return));
+
+            string path = Path.Combine(Path.GetTempPath(), "at_model_" + Guid.NewGuid().ToString("N") + ".json");
+            try
+            {
+                ScriptSerializer.Save(script, path);
+                var back = ScriptSerializer.Load(path);
+                t.Eq("the same text after a round trip", ScriptSerializer.ToJson(back), ScriptSerializer.ToJson(script));
+                var backTry = back.Actions[0].Children[0];
+                t.True("the Try keeps its body and its Catch last", backTry.Children.Count == 2 && backTry.Children[0].IsKind(ControlKind.Break) && backTry.Children[1].IsKind(ControlKind.Catch));
+                t.Eq("the Catch keeps its ID", backTry.Children[1].Catch.Id, "err");
+                t.Eq("the Section keeps its name", back.Actions[0].Children[1].Name, "group");
+            }
+            finally { File.Delete(path); }
+
+            // a Try from a hand-edited file is repaired: one Catch, last
+            var noCatch = First("{\"Category\":\"Control\",\"Control\":\"Try\",\"Children\":[{\"Category\":\"Mouse\",\"Mouse\":{}}]}");
+            t.True("a Try without a Catch gets one", noCatch.Children.Count == 2 && noCatch.Children[1].IsKind(ControlKind.Catch));
+            var twoCatch = First("{\"Category\":\"Control\",\"Control\":\"Try\",\"Children\":[{\"Category\":\"Control\",\"Control\":\"Catch\",\"Catch\":{\"Id\":\"a\"}},{\"Category\":\"Mouse\",\"Mouse\":{}},{\"Category\":\"Control\",\"Control\":\"Catch\",\"Catch\":{\"Id\":\"b\"}}]}");
+            t.True("a Catch in the middle moves to the end and only one is kept", twoCatch.Children.Count == 2 && twoCatch.Children[0].Category == ActionCategory.Mouse && twoCatch.Children[1].IsKind(ControlKind.Catch));
+            t.Eq("it is the first Catch that is kept", twoCatch.Children[1].Catch.Id, "a");
+
+            // the jumps have nothing inside them
+            var jump = First("{\"Category\":\"Control\",\"Control\":\"Break\",\"Children\":[{\"Category\":\"Mouse\",\"Mouse\":{}}]}");
+            t.Eq("Break is not a container", jump.Children.Count, 0);
+            t.False("IsContainer for Return", ActionNode.NewJump(ControlKind.Return).IsContainer);
+            t.True("IsContainer for Try, Catch and Section", ActionNode.NewTry().IsContainer && ActionNode.NewCatch(null).IsContainer && ActionNode.NewSection().IsContainer);
+        }
+
         [Suite("model.compatibility")]
         public static void Compatibility(T t)
         {

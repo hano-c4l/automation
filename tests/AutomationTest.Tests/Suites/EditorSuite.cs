@@ -36,6 +36,49 @@ namespace AutomationTest.Tests.Suites
 
             public object Field(string name) { return typeof(MainForm).GetField(name, Private).GetValue(Form); }
 
+            /// <summary>The actions of the script in the editor.</summary>
+            public System.Collections.Generic.List<ActionNode> Actions
+            {
+                get { return (System.Collections.Generic.List<ActionNode>)_actions; }
+            }
+
+            public string Status { get { return ((dynamic)Field("_status")).Text; } }
+
+            public void Show(params ActionNode[] actions)
+            {
+                _actions.Clear();
+                foreach (var a in actions) _actions.Add(a);
+                _refresh.Invoke(Form, null);
+                _list.SelectedItems.Clear();
+            }
+
+            /// <summary>Selects the lines of these nodes (as a click would).</summary>
+            public void Select(params ActionNode[] nodes)
+            {
+                var rows = (System.Collections.IList)Field("_rows");
+                _list.SelectedItems.Clear();
+                for (int i = 0; i < rows.Count; i++)
+                {
+                    object row = rows[i];
+                    var node = (ActionNode)row.GetType().GetField("Node").GetValue(row);
+                    bool end = (bool)row.GetType().GetField("IsEnd").GetValue(row);
+                    if (!end && Array.IndexOf(nodes, node) >= 0) _list.Items[i].Selected = true;
+                }
+            }
+
+            /// <summary>Chooses the Action of the Control category in the editor.</summary>
+            public void Choose(ControlKind kind)
+            {
+                ((ComboBox)Field("_category")).SelectedItem = ActionCategory.Control;
+                var combo = (ComboBox)Field("_controlKind");
+                combo.SelectedItem = kind;
+            }
+
+            public void Call(string method, params object[] args)
+            {
+                typeof(MainForm).GetMethod(method, Private).Invoke(Form, args);
+            }
+
             /// <summary>Puts the node into the editor and takes it out again.</summary>
             public ActionNode Through(ActionNode node)
             {
@@ -73,6 +116,20 @@ namespace AutomationTest.Tests.Suites
             {
                 var back = e.Through(ActionNode.NewCommand(new CommandSettings { Kind = k, Value = k == CommandKind.Close ? "x" : "", Match = ProgramMatch.Name, All = true, Id = "v" }));
                 t.Eq("Utilities " + k, back?.Command?.Kind, k);
+            }
+            foreach (ControlKind k in Enum.GetValues(typeof(ControlKind)))
+            {
+                if (k == ControlKind.Image || k == ControlKind.Wait || k == ControlKind.Variable || k == ControlKind.Loop || k == ControlKind.Case) continue; // need fields filled in, or only offered inside a Condition: covered elsewhere
+                ActionNode node = k == ControlKind.Condition ? ActionNode.NewCondition()
+                    : k == ControlKind.Case ? ActionNode.NewCase(new CaseSettings { Expression = "true" })
+                    : k == ControlKind.Else ? ActionNode.NewElse()
+                    : k == ControlKind.Try ? ActionNode.NewTry()
+                    : k == ControlKind.Catch ? ActionNode.NewCatch(new CatchSettings { Id = "err" })
+                    : k == ControlKind.Section ? ActionNode.NewSection()
+                    : ActionNode.NewJump(k);
+                var back = e.Through(node);
+                if (k == ControlKind.Else) continue; // an else has no settings: selecting it leaves the editor as it was
+                t.Eq("Control " + k, back?.Control, k);
             }
         }
 
@@ -152,6 +209,84 @@ namespace AutomationTest.Tests.Suites
             x = e.Through(ActionNode.NewExcel(new ExcelSettings { Kind = ExcelKind.GetCell, Cell = "A1", Id = "v", Paste = ExcelPasteKind.Values, ReplaceWith = "stale" })).Excel;
             t.Eq("Get Cell drops the paste kind", x.Paste, ExcelPasteKind.All);
             t.Eq("Get Cell drops the replacement", x.ReplaceWith, "");
+        }
+
+        [Suite("editor.flow")]
+        public static void Flow(T t)
+        {
+            var e = new Editor();
+
+            // Add a Try: it comes with its Catch
+            e.Show();
+            e.Choose(ControlKind.Try);
+            e.Call("AddAction");
+            t.Eq("a Try was added", e.Actions.Count, 1);
+            var tr = e.Actions[0];
+            t.True("it is a Try with one child, the Catch", tr.IsKind(ControlKind.Try) && tr.Children.Count == 1 && tr.Children[0].IsKind(ControlKind.Catch));
+
+            // Add with the Try selected: the action goes in before the Catch
+            e.Select(tr);
+            e.Choose(ControlKind.Section);
+            e.Call("AddAction");
+            t.Eq("the Try has the Section and the Catch", tr.Children.Count, 2);
+            t.True("the Section is before the Catch", tr.Children[0].IsKind(ControlKind.Section) && tr.Children[1].IsKind(ControlKind.Catch));
+
+            // Break and Continue only inside a Loop
+            e.Select(tr);
+            e.Choose(ControlKind.Break);
+            e.Call("AddAction");
+            t.Eq("Break outside a Loop is refused", tr.Children.Count, 2);
+            t.True("and the message says why", e.Status.Contains("inside a Loop") || e.Status.Contains("only works inside a Loop"));
+
+            var loop = ActionNode.NewLoop(new LoopSettings { Mode = LoopType.Times, Count = 2 });
+            var tryInLoop = ActionNode.NewTry();
+            loop.Children.Add(tryInLoop);
+            e.Show(loop);
+            e.Select(tryInLoop);
+            e.Choose(ControlKind.Break);
+            e.Call("AddAction");
+            t.True("Break inside a Try inside a Loop is accepted", tryInLoop.Children.Count == 2 && tryInLoop.Children[0].IsKind(ControlKind.Break));
+            e.Select(tryInLoop.Children[0]);
+            e.Choose(ControlKind.Return);
+            e.Call("AddAction");
+            t.True("an action added after a line goes after it, before the Catch", tryInLoop.Children.Count == 3 && tryInLoop.Children[1].IsKind(ControlKind.Return) && tryInLoop.Children[2].IsKind(ControlKind.Catch));
+
+            // the Catch cannot be added by hand, deleted or moved
+            e.Show(tr);
+            e.Select(tr.Children[1]);
+            e.Call("DeleteActions");
+            t.True("the Catch cannot be deleted", tr.Children.Count == 2 && e.Status.Contains("catch line cannot be deleted"));
+            e.Select(tr.Children[0]);
+            e.Call("MoveUpDown", 1);
+            t.True("a line cannot be moved below the Catch", tr.Children[0].IsKind(ControlKind.Section) && tr.Children[1].IsKind(ControlKind.Catch));
+            e.Select(tr.Children[1]);
+            e.Call("MoveUpDown", -1);
+            t.True("the Catch cannot be moved up", tr.Children[1].IsKind(ControlKind.Catch));
+            e.Select(tr.Children[0]);
+            e.Call("MoveToEdge", false);
+            t.True("Down to End keeps the Catch last", tr.Children[1].IsKind(ControlKind.Catch));
+
+            // In puts an action into the Try before the Catch
+            var tryB = ActionNode.NewTry();
+            var after = ActionNode.NewSection();
+            e.Show(tryB, after);
+            e.Select(after);
+            e.Call("MoveIn");
+            t.True("In puts the action inside the Try, before the Catch", tryB.Children.Count == 2 && ReferenceEquals(tryB.Children[0], after) && tryB.Children[1].IsKind(ControlKind.Catch));
+
+            // Update the Catch: only its ID changes; a Try cannot become something else
+            var tryC = ActionNode.NewTry();
+            e.Show(tryC);
+            e.Select(tryC.Children[0]);
+            e.Choose(ControlKind.Catch);
+            ((TextBox)e.Field("_catchId")).Text = "oops";
+            e.Call("UpdateAction");
+            t.Eq("Update changes the ID of the Catch", tryC.Children[0].Catch.Id, "oops");
+            t.True("it is still the last line of the Try", tryC.Children.Count == 1 && tryC.Children[0].IsKind(ControlKind.Catch));
+            e.Select(tryC);
+            e.Choose(ControlKind.Section);
+            e.Call("UpdateAction");
+            t.True("a Try cannot be changed into a Section", tryC.IsKind(ControlKind.Try) && e.Status.Contains("cannot be changed"));
         }
 
         [Suite("editor.group-box")]

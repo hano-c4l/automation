@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using AutomationTest.Core.Excel;
 using AutomationTest.Core.Expressions;
@@ -22,6 +23,12 @@ namespace AutomationTest.Core.Runner
         private readonly Dictionary<string, IntPtr> _windowCache = new Dictionary<string, IntPtr>();
 
         private readonly VariableStore _vars = new VariableStore();
+
+        /// <summary>Where the run goes next after an action: on (None), out of the nearest Loop (Break), to its next pass (Continue) or to the end (Return).</summary>
+        private enum Flow { None, Break, Continue, Return }
+
+        private Flow _flow;
+        private int _loopDepth; // how many Loops the running action is inside of
 
         /// <summary>The variables of the run (read by tests).</summary>
         internal VariableStore Variables => _vars;
@@ -64,6 +71,8 @@ namespace AutomationTest.Core.Runner
             if (actions == null) throw new ArgumentNullException(nameof(actions));
             _windowCache.Clear();
             _vars.Clear();
+            _flow = Flow.None;
+            _loopDepth = 0;
             (WebSession ?? AutomationTest.Core.Web.WebSession.SharedIfCreated)?.ResetTab(); // every run starts on the tab that is in front
             (ExcelSession ?? AutomationTest.Core.Excel.ExcelSession.SharedIfCreated)?.Reset(); // and on the workbook and sheet that are active
             if (variables != null)
@@ -95,6 +104,7 @@ namespace AutomationTest.Core.Runner
                 if (node.Disabled) continue; // a disabled action is skipped with everything inside it
                 NodeStarted?.Invoke(node);
                 Execute(node, token);
+                if (_flow != Flow.None) return; // Break, Continue or Return: the rest of this list is not run
             }
         }
 
@@ -127,6 +137,16 @@ namespace AutomationTest.Core.Runner
                         case ControlKind.Case:
                         case ControlKind.Else:
                             throw new InvalidOperationException("A Case or Else can only be inside a Condition.");
+                        case ControlKind.Catch:
+                            throw new InvalidOperationException("A Catch can only be the last line of a Try.");
+                        case ControlKind.Try: ExecuteTry(node, token); break;
+                        case ControlKind.Section: ExecuteList(node.Children, token); break;
+                        case ControlKind.Break:
+                        case ControlKind.Continue:
+                            if (_loopDepth == 0) throw new InvalidOperationException((node.Control == ControlKind.Break ? "Break" : "Continue") + " can only be used inside a Loop.");
+                            _flow = node.Control == ControlKind.Break ? Flow.Break : Flow.Continue;
+                            break;
+                        case ControlKind.Return: _flow = Flow.Return; break;
                         default: ExecuteLoop(node, token); break;
                     }
                     break;
@@ -184,6 +204,7 @@ namespace AutomationTest.Core.Runner
             if (keeps) _vars.Set(w.Id.Trim(), result ?? "");
             // Tab New and Tab Switch hold the actions that work in that tab (and browser).
             if (node.IsContainer) ExecuteList(node.Children, token);
+            if (_flow != Flow.None) return;
             Wait(w.DelayMs, token);
         }
 
@@ -230,6 +251,7 @@ namespace AutomationTest.Core.Runner
                 else Message?.Invoke("Not found in Excel: " + Format.Display(args.Value));
             }
             else if (node.IsContainer) ExecuteList(node.Children, token); // Workbook and Sheet Select hold the actions that work there
+            if (_flow != Flow.None) return;
             Wait(x.DelayMs, token);
         }
 
@@ -249,7 +271,7 @@ namespace AutomationTest.Core.Runner
             for (double i = from; step > 0 ? i <= to : i >= to; i += step)
             {
                 _vars.Set(id, i);
-                Iterate(loop, token);
+                if (!Iterate(loop, token)) break;
             }
         }
 
@@ -494,17 +516,24 @@ namespace AutomationTest.Core.Runner
             if (!loop.Children.Exists(c => !c.Disabled)) return; // nothing enabled inside: nothing to repeat
 
             var settings = loop.Loop;
+            _loopDepth++;
+            try { RunLoop(loop, settings, token); }
+            finally { _loopDepth--; }
+        }
+
+        private void RunLoop(ActionNode loop, LoopSettings settings, CancellationToken token)
+        {
             switch (settings.Mode)
             {
                 case LoopType.Times:
                     for (long i = 0; settings.Count == 0 || i < settings.Count; i++)
-                        Iterate(loop, token);
+                        if (!Iterate(loop, token)) break;
                     break;
 
                 case LoopType.Duration:
                     var watch = Stopwatch.StartNew();
                     while (watch.ElapsedMilliseconds < settings.DurationMs)
-                        Iterate(loop, token);
+                        if (!Iterate(loop, token)) break;
                     break;
 
                 case LoopType.Until:
@@ -515,7 +544,7 @@ namespace AutomationTest.Core.Runner
                         break;
                     }
                     while (DateTime.Now < until.Value)
-                        Iterate(loop, token);
+                        if (!Iterate(loop, token)) break;
                     break;
 
                 case LoopType.For:
@@ -524,10 +553,42 @@ namespace AutomationTest.Core.Runner
             }
         }
 
-        private void Iterate(ActionNode loop, CancellationToken token)
+        /// <summary>One pass over the body of a Loop. False when the Loop is over: a Break, or a Return on its way out.</summary>
+        private bool Iterate(ActionNode loop, CancellationToken token)
         {
             ExecuteList(loop.Children, token);
+            if (_flow == Flow.Break) { _flow = Flow.None; return false; }
+            if (_flow == Flow.Return) return false;
+            _flow = Flow.None; // a Continue is done: the next pass starts
             Wait(0, token); // a loop whose body has no delay still yields and checks for a stop on every pass
+            return true;
+        }
+
+        // ---------------------------------------------------------------- try
+
+        /// <summary>
+        /// Runs the actions of the Try; when one fails, the rest of them are skipped and the Catch line runs (its ID, if any, gets the
+        /// message). A stop and a shutdown are not errors and go through. A disabled Catch means the error is not handled.
+        /// </summary>
+        private void ExecuteTry(ActionNode node, CancellationToken token)
+        {
+            ActionNode handler = node.Children.LastOrDefault(c => c.IsKind(ControlKind.Catch));
+            var body = node.Children.Where(c => !c.IsKind(ControlKind.Catch)).ToList();
+            string id = (handler?.Catch?.Id ?? "").Trim();
+            if (id.Length > 0 && !Expression.IsValidId(id))
+                throw new InvalidOperationException("Catch: \"" + handler.Catch.Id + "\" is not a valid ID.");
+            try
+            {
+                ExecuteList(body, token);
+            }
+            catch (Exception ex) when (!(ex is OperationCanceledException) && !(ex is ShutdownIssuedException) && handler != null && !handler.Disabled)
+            {
+                _flow = Flow.None;
+                Message?.Invoke("Caught: " + ex.Message);
+                if (id.Length > 0) _vars.Set(id, ex.Message);
+                NodeStarted?.Invoke(handler);
+                ExecuteList(handler.Children, token);
+            }
         }
 
         // ---------------------------------------------------------------- mouse

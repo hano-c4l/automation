@@ -81,6 +81,10 @@ namespace AutomationTest.Core.Model
                     }
                     return longest;
                 case ControlKind.Variable:
+                case ControlKind.Break:
+                case ControlKind.Continue:
+                case ControlKind.Return:
+                case ControlKind.Catch: // the Catch line runs only after a failure: not counted
                     return 0;
                 default: // Wait, Image: what is inside them
                     return SumChildren(node);

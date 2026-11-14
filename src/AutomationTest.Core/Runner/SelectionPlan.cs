@@ -51,7 +51,7 @@ namespace AutomationTest.Core.Runner
             {
                 if (chosen.Contains(node))
                 {
-                    if (node.IsKind(ControlKind.Case) || node.IsKind(ControlKind.Else)) run.AddRange(node.Children);
+                    if (node.IsKind(ControlKind.Case) || node.IsKind(ControlKind.Else) || node.IsKind(ControlKind.Catch)) run.AddRange(node.Children);
                     else run.Add(node);
                 }
                 else
@@ -145,6 +145,7 @@ namespace AutomationTest.Core.Runner
                 bool keeps = x.Kind == ExcelKind.GetCell || x.Kind == ExcelKind.GetRange || x.Kind == ExcelKind.GetInfo || x.Kind == ExcelKind.Find || x.Kind == ExcelKind.Evaluate || x.Kind == ExcelKind.RunMacro;
                 return keeps && !string.IsNullOrWhiteSpace(x.Id) ? x.Id.Trim() : null;
             }
+            if (node.IsKind(ControlKind.Catch)) return string.IsNullOrWhiteSpace(node.Catch?.Id) ? null : node.Catch.Id.Trim(); // the error message
             if (node.Category == ActionCategory.Utilities)
                 return ScriptRunner.CommandKeeps(node.Command.Kind) && !string.IsNullOrWhiteSpace(node.Command.Id) ? node.Command.Id.Trim() : null;
             if (node.IsKind(ControlKind.Loop) && node.Loop.Mode == LoopType.For)
