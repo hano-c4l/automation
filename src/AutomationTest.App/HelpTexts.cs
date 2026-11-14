@@ -313,7 +313,7 @@ Close Browser closes ALL windows of the browser, also the ones you
 opened yourself; unsaved forms in them are lost.
 
 Each browser needs the Automation Test extension (Load unpacked:
-the BrowserExtension folder) and only one profile of a browser can
+the AutomationWebHelper folder) and only one profile of a browser can
 be connected at a time.");
 
         public static readonly HelpTopic WebUrl = new HelpTopic("URL (New Tab)",
