@@ -2,7 +2,7 @@
 setlocal
 rem Creates license.lic (in this folder) for a user from the request key their program shows.
 rem Needs the signing key (license-private.key in this folder, never commit it) and the built KeyGen tool.
-rem KeyGen is looked for next to this file first (the Release\KeyGen folder), then in the build output of the source tree.
+rem KeyGen is looked for next to this file first (the Release\AutomationKeyGen folder), then in the build output of the source tree.
 rem If it is somewhere else, update the KEYGEN path below.
 
 set "KEYGEN=%~dp0AutomationTest.KeyGen.exe"

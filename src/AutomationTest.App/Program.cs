@@ -14,6 +14,7 @@ namespace AutomationTest.App
 
             // Nothing but the license screen is shown until a valid license is in place.
             if (!EnsureLicensed()) return;
+            AutomationTest.Core.Excel.ExcelSession.HostFactory = () => new ExcelComHost(); // Excel is driven through COM, which only the program (not Core) knows
             Application.Run(new MainForm { LicenseGuard = EnsureLicensed, SettingsEnabled = true });
         }
 

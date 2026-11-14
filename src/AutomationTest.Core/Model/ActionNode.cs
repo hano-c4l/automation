@@ -144,6 +144,12 @@ namespace AutomationTest.Core.Model
         /// <summary>How long to wait after the action before the next one starts (milliseconds).</summary>
         [DataMember(Order = 3, EmitDefaultValue = false)] public long DelayMs { get; set; }
 
+        /// <summary>Shutdown: how long to wait before the computer is shut down (milliseconds).</summary>
+        [DataMember(Order = 4, EmitDefaultValue = false)] public long TimeMs { get; set; }
+
+        /// <summary>Shutdown: close other programs even if they have unsaved work.</summary>
+        [DataMember(Order = 5, EmitDefaultValue = false)] public bool Force { get; set; }
+
         /// <summary>Open: path of the program or document to open.</summary>
         [DataMember(Order = 2)] public string Value { get; set; } = "";
 
@@ -169,6 +175,161 @@ namespace AutomationTest.Core.Model
         {
             if (Value == null) Value = "";
             if (DelayMs < 0) DelayMs = 0;
+            if (TimeMs < 0) TimeMs = 0;
+        }
+    }
+
+    /// <summary>Settings of a Web action. Which fields count depends on <see cref="Kind"/>.</summary>
+    [DataContract]
+    public sealed class WebSettings
+    {
+        public WebKind Kind { get; set; }
+        public BrowserKind Browser { get; set; }
+
+        /// <summary>NewTab: the address (empty = the browser's start page).</summary>
+        [DataMember(Order = 3)] public string Url { get; set; } = "";
+
+        /// <summary>SwitchTab: regular expression for the title of the tab (not case sensitive); empty = not used.</summary>
+        [DataMember(Order = 14)] public string Title { get; set; } = "";
+
+        /// <summary>
+        /// WaitElement, Input, Click, GetText: which of the elements that match the selector to use. SwitchTab: the position of the tab
+        /// (among the matching ones when a Title or URL is given). 1 = the first; beyond the last = the last; 0 or empty = 1.
+        /// </summary>
+        [DataMember(Order = 15, EmitDefaultValue = false)] public int Index { get; set; }
+
+        /// <summary>Click: the kind of click.</summary>
+        public WebClickKind ClickType { get; set; }
+
+        /// <summary>WaitElement: what to wait for.</summary>
+        public WebWaitKind Until { get; set; }
+
+        /// <summary>Drag: the selector of the element to drop on (same Frame as the dragged element).</summary>
+        [DataMember(Order = 19)] public string TargetSelector { get; set; } = "";
+
+        /// <summary>Screenshot: the whole page, not only what is visible (used when no Selector is given).</summary>
+        [DataMember(Order = 20, EmitDefaultValue = false)] public bool FullPage { get; set; }
+
+        [DataMember(Name = "ClickType", Order = 21)]
+        private string ClickTypeName
+        {
+            get { return ClickType.ToString(); }
+            set { ClickType = ActionNode.Parse(value, WebClickKind.Click); }
+        }
+
+        [DataMember(Name = "Until", Order = 22)]
+        private string UntilName
+        {
+            get { return Until.ToString(); }
+            set { Until = ActionNode.Parse(value, WebWaitKind.ElementAppears); }
+        }
+
+        /// <summary>GetText: what to read.</summary>
+        public WebGetKind Get { get; set; }
+
+        /// <summary>GetText with Get = Attribute: the name of the attribute.</summary>
+        [DataMember(Order = 17)] public string Attribute { get; set; } = "";
+
+        /// <summary>Script: the JavaScript to run (or an expression that makes it).</summary>
+        [DataMember(Order = 18)] public string Script { get; set; } = "";
+
+        [DataMember(Name = "Get", Order = 16)]
+        private string GetName
+        {
+            get { return Get.ToString(); }
+            set { Get = ActionNode.Parse(value, WebGetKind.Text); }
+        }
+
+        /// <summary>True for an action inside a Tab New or Tab Switch: its Browser is copied from there and cannot be edited.</summary>
+        public bool BrowserInherited { get; set; }
+
+        /// <summary>WaitElement, Input, Click: CSS selector, or "text=Label" to find an element by its text.</summary>
+        [DataMember(Order = 5)] public string Selector { get; set; } = "";
+
+        /// <summary>Input: the text to type (or an expression); Dialog: the text to answer a prompt box with.</summary>
+        [DataMember(Order = 6)] public string Text { get; set; } = "";
+
+        [DataMember(Order = 7, EmitDefaultValue = false)] public bool TextIsExpression { get; set; }
+
+        /// <summary>WaitElement, Input, Click, GetText: CSS selector of the iframe the element is in (nested frames separated by " &gt;&gt;&gt; "). Empty = the page itself.</summary>
+        [DataMember(Order = 11)] public string Frame { get; set; } = "";
+
+        /// <summary>GetText: when false, an element that is not found within the timeout gives an empty text instead of an error.</summary>
+        [DataMember(Order = 13)] public bool Required { get; set; } = true;
+
+        /// <summary>GetText: the variable that receives the text.</summary>
+        [DataMember(Order = 12)] public string Id { get; set; } = "";
+
+        /// <summary>Dialog: OK (true) or Cancel (false).</summary>
+        [DataMember(Order = 8)] public bool Accept { get; set; } = true;
+
+        /// <summary>How long to wait for the browser, the page, the element or the dialog (milliseconds).</summary>
+        [DataMember(Order = 9)] public long TimeMs { get; set; } = 10000;
+
+        /// <summary>How long to wait after the action before the next one starts (milliseconds).</summary>
+        [DataMember(Order = 10, EmitDefaultValue = false)] public long DelayMs { get; set; }
+
+        [DataMember(Name = "Kind", Order = 1)]
+        private string KindName
+        {
+            get { return Kind.ToString(); }
+            set
+            {
+                // Scripts from the first Web version: "OpenUrl" and "OpenBrowser" became Tab New.
+                if (string.Equals(value, "OpenUrl", StringComparison.OrdinalIgnoreCase) || string.Equals(value, "OpenBrowser", StringComparison.OrdinalIgnoreCase)) Kind = WebKind.NewTab;
+                else Kind = ActionNode.Parse(value, WebKind.NewTab);
+            }
+        }
+
+        [DataMember(Name = "Browser", Order = 2)]
+        private string BrowserName
+        {
+            get { return Browser.ToString(); }
+            set { Browser = ActionNode.Parse(value, BrowserKind.Chrome); }
+        }
+
+        [OnDeserializing]
+        private void SetDefaults(StreamingContext context)
+        {
+            Url = "";
+            Selector = "";
+            Text = "";
+            Frame = "";
+            Title = "";
+            Attribute = "";
+            Script = "";
+            TargetSelector = "";
+            Id = "";
+            Required = true;
+            Accept = true;
+            TimeMs = 10000;
+        }
+
+        public WebSettings Clone()
+        {
+            return (WebSettings)MemberwiseClone();
+        }
+
+        internal void Normalize()
+        {
+            if (Url == null) Url = "";
+            if (Selector == null) Selector = "";
+            if (Text == null) Text = "";
+            if (Frame == null) Frame = "";
+            if (Title == null) Title = "";
+            if (Attribute == null) Attribute = "";
+            if (Script == null) Script = "";
+            if (TargetSelector == null) TargetSelector = "";
+            if (Index < 0) Index = 0;
+            if (Id == null) Id = "";
+            // Tab Switch of the first Web version held plain text in Text: the same words, as a pattern.
+            if (Kind == WebKind.SwitchTab && Title.Length == 0 && Index == 0 && Text.Length > 0)
+            {
+                Title = System.Text.RegularExpressions.Regex.Escape(Text.Trim());
+                Text = "";
+            }
+            if (TimeMs < 0) TimeMs = 0;
+            if (DelayMs < 0) DelayMs = 0;
         }
     }
 
@@ -187,6 +348,14 @@ namespace AutomationTest.Core.Model
         /// <summary>Mode Until: local date and time as "yyyy-MM-ddTHH:mm:ss"; stored as text to avoid the JSON date format.</summary>
         [DataMember(Order = 4)] public string Until { get; set; }
 
+        /// <summary>Mode For: the variable that holds the counter.</summary>
+        [DataMember(Order = 5)] public string ForId { get; set; } = "";
+
+        /// <summary>Mode For: first value, last value and step; numbers or expressions.</summary>
+        [DataMember(Order = 6)] public string ForFrom { get; set; } = "1";
+        [DataMember(Order = 7)] public string ForTo { get; set; } = "10";
+        [DataMember(Order = 8)] public string ForStep { get; set; } = "1";
+
         [DataMember(Name = "Mode", Order = 1)]
         private string ModeName
         {
@@ -199,6 +368,10 @@ namespace AutomationTest.Core.Model
         {
             Count = 1;
             DurationMs = 10000;
+            ForId = "";
+            ForFrom = "1";
+            ForTo = "10";
+            ForStep = "1";
         }
 
         public DateTime? GetUntil()
@@ -221,6 +394,10 @@ namespace AutomationTest.Core.Model
         {
             if (Count < 0) Count = 0;
             if (DurationMs < 0) DurationMs = 0;
+            if (ForId == null) ForId = "";
+            if (string.IsNullOrWhiteSpace(ForFrom)) ForFrom = "1";
+            if (string.IsNullOrWhiteSpace(ForTo)) ForTo = "10";
+            if (string.IsNullOrWhiteSpace(ForStep)) ForStep = "1";
         }
     }
 
@@ -487,12 +664,19 @@ namespace AutomationTest.Core.Model
         [DataMember(Order = 9, EmitDefaultValue = false)] public ImageSettings Image { get; set; }
         [DataMember(Order = 10, EmitDefaultValue = false)] public VariableSettings Variable { get; set; }
         [DataMember(Order = 11, EmitDefaultValue = false)] public CaseSettings Case { get; set; }
+        [DataMember(Order = 12, EmitDefaultValue = false)] public WebSettings Web { get; set; }
+        [DataMember(Order = 13, EmitDefaultValue = false)] public ExcelSettings Excel { get; set; }
 
         public List<ActionNode> Children { get; set; } = new List<ActionNode>();
 
         public bool IsContainer
         {
-            get { return Category == ActionCategory.Control && Control != ControlKind.Variable; }
+            get
+            {
+                if (Category == ActionCategory.Web) return Web != null && (Web.Kind == WebKind.NewTab || Web.Kind == WebKind.SwitchTab);
+                if (Category == ActionCategory.Excel) return Excel != null && (Excel.Kind == ExcelKind.Workbook || Excel.Kind == ExcelKind.SelectSheet || Excel.Kind == ExcelKind.Find);
+                return Category == ActionCategory.Control && Control != ControlKind.Variable;
+            }
         }
 
         public bool IsKind(ControlKind kind)
@@ -513,6 +697,16 @@ namespace AutomationTest.Core.Model
         public static ActionNode NewCommand(CommandSettings settings)
         {
             return new ActionNode { Category = ActionCategory.Utilities, Command = settings ?? new CommandSettings() };
+        }
+
+        public static ActionNode NewExcel(ExcelSettings settings)
+        {
+            return new ActionNode { Category = ActionCategory.Excel, Excel = settings ?? new ExcelSettings() };
+        }
+
+        public static ActionNode NewWeb(WebSettings settings)
+        {
+            return new ActionNode { Category = ActionCategory.Web, Web = settings ?? new WebSettings() };
         }
 
         public static ActionNode NewLoop(LoopSettings settings)
@@ -595,6 +789,8 @@ namespace AutomationTest.Core.Model
             copy.Mouse = Mouse?.Clone();
             copy.Keyboard = Keyboard?.Clone();
             copy.Command = Command?.Clone();
+            copy.Web = Web?.Clone();
+            copy.Excel = Excel?.Clone();
             copy.Loop = Loop?.Clone();
             copy.Wait = Wait?.Clone();
             copy.Image = Image?.Clone();
@@ -628,13 +824,15 @@ namespace AutomationTest.Core.Model
             var mouse = Category == ActionCategory.Mouse ? (Mouse ?? new MouseSettings()) : null;
             var keyboard = Category == ActionCategory.Keyboard ? (Keyboard ?? new KeyboardSettings()) : null;
             var command = Category == ActionCategory.Utilities ? (Command ?? new CommandSettings()) : null;
+            var web = Category == ActionCategory.Web ? (Web ?? new WebSettings()) : null;
+            var excel = Category == ActionCategory.Excel ? (Excel ?? new ExcelSettings()) : null;
             var loop = Category == ActionCategory.Control && Control == ControlKind.Loop ? (Loop ?? new LoopSettings()) : null;
             var wait = Category == ActionCategory.Control && Control == ControlKind.Wait ? (Wait ?? new WaitSettings()) : null;
             var image = Category == ActionCategory.Control && Control == ControlKind.Image ? (Image ?? new ImageSettings()) : null;
             var variable = Category == ActionCategory.Control && Control == ControlKind.Variable ? (Variable ?? new VariableSettings()) : null;
             var caseSettings = Category == ActionCategory.Control && Control == ControlKind.Case ? (Case ?? new CaseSettings()) : null;
-            Mouse = mouse; Keyboard = keyboard; Command = command; Loop = loop; Wait = wait; Image = image; Variable = variable; Case = caseSettings;
-            mouse?.Normalize(); keyboard?.Normalize(); command?.Normalize(); loop?.Normalize(); wait?.Normalize(); image?.Normalize();
+            Mouse = mouse; Keyboard = keyboard; Command = command; Web = web; Excel = excel; Loop = loop; Wait = wait; Image = image; Variable = variable; Case = caseSettings;
+            mouse?.Normalize(); keyboard?.Normalize(); command?.Normalize(); web?.Normalize(); excel?.Normalize(); loop?.Normalize(); wait?.Normalize(); image?.Normalize();
             variable?.Normalize(); caseSettings?.Normalize();
 
             if (!IsContainer) Children.Clear();

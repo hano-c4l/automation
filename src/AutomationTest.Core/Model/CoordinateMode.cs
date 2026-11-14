@@ -15,7 +15,95 @@ namespace AutomationTest.Core.Model
         Control,
         Utilities,
         Mouse,
-        Keyboard
+        Keyboard,
+        /// <summary>Drives a web browser through the browser extension.</summary>
+        Web,
+        /// <summary>Drives Microsoft Excel (workbooks, sheets, cells).</summary>
+        Excel
+    }
+
+    public enum WebKind
+    {
+        /// <summary>Opens the address in a new tab; starts the browser first when it is not running. Actions inside it use that browser.</summary>
+        NewTab,
+        /// <summary>Makes another open tab (by title pattern, address pattern and/or position) the one the script uses. Actions inside it use that browser.</summary>
+        SwitchTab,
+        /// <summary>Waits until an element appears or disappears, or the address, title or text of the page matches.</summary>
+        WaitElement,
+        /// <summary>Types text into an element.</summary>
+        Input,
+        /// <summary>Clicks an element (click, double click or right click).</summary>
+        Click,
+        /// <summary>Moves the mouse over an element (menus that open on hover).</summary>
+        Hover,
+        /// <summary>Drags an element and drops it on another one.</summary>
+        Drag,
+        /// <summary>Chooses an option of a select list.</summary>
+        SelectOption,
+        /// <summary>Presses a key or a combination (Enter, Tab, Ctrl+A...).</summary>
+        PressKey,
+        /// <summary>Puts files into a file input.</summary>
+        Upload,
+        /// <summary>Answers a JavaScript alert, confirm or prompt box.</summary>
+        Dialog,
+        /// <summary>Reads the text (or value) of an element into a variable.</summary>
+        GetText,
+        /// <summary>Runs JavaScript in the page, like the browser console, and can keep the result in a variable.</summary>
+        Script,
+        /// <summary>Saves a picture of the page, or of one element.</summary>
+        Screenshot,
+        /// <summary>Closes the tab the script is using.</summary>
+        CloseTab,
+        /// <summary>Closes every window of the browser.</summary>
+        CloseBrowser
+    }
+
+    public enum WebClickKind
+    {
+        Click,
+        DoubleClick,
+        RightClick
+    }
+
+    public enum WebWaitKind
+    {
+        ElementAppears,
+        ElementDisappears,
+        /// <summary>The address of the tab matches a regular expression.</summary>
+        UrlMatches,
+        TitleMatches,
+        /// <summary>The text of the page matches a regular expression.</summary>
+        TextOnPage
+    }
+
+    public enum WebGetKind
+    {
+        /// <summary>The visible text of the element; for a field (input, textarea, select) its value.</summary>
+        Text,
+        /// <summary>The value of a field (the value of the selected option for a select), or the value attribute.</summary>
+        Value,
+        /// <summary>The text of the selected option(s) of a select; for a checked checkbox or radio button its label; otherwise like Text.</summary>
+        SelectedText,
+        /// <summary>true or false: a checkbox or radio button is checked, an option is selected, aria-checked is true.</summary>
+        Checked,
+        /// <summary>The HTML inside the element.</summary>
+        Html,
+        /// <summary>The HTML of the element itself.</summary>
+        OuterHtml,
+        /// <summary>An attribute (href, src, data-id, class, aria-label...), named in the Attribute field.</summary>
+        Attribute,
+        /// <summary>How many elements match the selector (a number; 0 when none).</summary>
+        Count,
+        /// <summary>The address of the tab.</summary>
+        PageUrl,
+        /// <summary>The title of the tab.</summary>
+        PageTitle
+    }
+
+    public enum BrowserKind
+    {
+        Chrome,
+        Edge
     }
 
     public enum MouseAction
@@ -41,7 +129,9 @@ namespace AutomationTest.Core.Model
     {
         Open,
         /// <summary>Sends a harmless input event and asks Windows to stay awake, so a long run is not taken for being idle (lock, screen off, sleep).</summary>
-        Active
+        Active,
+        /// <summary>Waits Time, then shuts the computer down.</summary>
+        Shutdown
     }
 
     public enum ControlKind
@@ -76,6 +166,112 @@ namespace AutomationTest.Core.Model
         /// <summary>Repeat until the given time has elapsed since the loop started.</summary>
         Duration,
         /// <summary>Repeat until a local date and time is reached.</summary>
-        Until
+        Until,
+        /// <summary>Count from a number to another with a step; the counter is a variable (rows of a sheet, for example).</summary>
+        For
+    }
+
+    public enum ExcelKind
+    {
+        /// <summary>Switches to a workbook (opening the file, or making a new workbook, and starting Excel, when needed). Actions inside it work in that workbook.</summary>
+        Workbook,
+        /// <summary>Makes a sheet the current one. Actions inside it work on that sheet.</summary>
+        SelectSheet,
+        CreateSheet,
+        RenameSheet,
+        DeleteSheet,
+        GetCell,
+        SetCell,
+        /// <summary>Reads the cells of an area into a table variable ({t.Rows}, {t.Columns}, {t[row, column]}).</summary>
+        GetRange,
+        /// <summary>Writes a table variable into the cells from a top-left cell.</summary>
+        SetRange,
+        /// <summary>Selects a cell or an area (so the user sees it, or keys that follow act on it).</summary>
+        Select,
+        /// <summary>Looks for text; the actions inside run when it is found.</summary>
+        Find,
+        GetInfo,
+        /// <summary>Calculates an Excel formula.</summary>
+        Evaluate,
+        InsertCells,
+        DeleteCells,
+        Clear,
+        /// <summary>Copies cells (with their formatting, or only the values) to another place on the sheet.</summary>
+        Copy,
+        /// <summary>Number format, bold, italic, colours, column width.</summary>
+        Format,
+        Sort,
+        Filter,
+        /// <summary>Refreshes the data connections and pivot tables of the workbook.</summary>
+        Refresh,
+        /// <summary>Runs a macro that exists in an open workbook.</summary>
+        RunMacro,
+        Save,
+        CloseWorkbook,
+        CloseExcel
+    }
+
+    public enum ExcelTarget
+    {
+        Rows,
+        Columns
+    }
+
+    public enum ExcelClearKind
+    {
+        /// <summary>The values and formulas; the formatting stays.</summary>
+        Contents,
+        /// <summary>The formatting; the values stay.</summary>
+        Formats,
+        All
+    }
+
+    /// <summary>A formatting setting that can be left as it is.</summary>
+    public enum ExcelFlag
+    {
+        Leave,
+        Yes,
+        No
+    }
+
+    public enum ExcelGetKind
+    {
+        /// <summary>The value, typed: a number, a date, true/false or text.</summary>
+        Value,
+        /// <summary>The text as Excel shows it (with the number format).</summary>
+        Text,
+        Formula,
+        NumberFormat,
+        /// <summary>true when the cell has nothing in it.</summary>
+        IsEmpty
+    }
+
+    public enum ExcelInfoKind
+    {
+        LastRow,
+        LastColumn,
+        UsedRange,
+        SheetCount,
+        SheetName,
+        WorkbookName,
+        WorkbookPath,
+        Selection
+    }
+
+    public enum ExcelSetKind
+    {
+        /// <summary>As the value is: numbers, dates and true/false are written as such, text like typed into the cell.</summary>
+        Auto,
+        /// <summary>Always as text ("007" stays 007).</summary>
+        Text,
+        Formula
+    }
+
+    public enum ExcelSheetPosition
+    {
+        End,
+        Start,
+        BeforeCurrent,
+        AfterCurrent
     }
 }

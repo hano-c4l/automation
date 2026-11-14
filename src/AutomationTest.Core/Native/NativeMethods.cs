@@ -175,6 +175,10 @@ namespace AutomationTest.Core.Native
         [DllImport("user32.dll")]
         public static extern bool SetForegroundWindow(IntPtr hWnd);
 
+        /// <summary>Lets another process take the foreground (dwProcessId -1 = any); only works while this process has it.</summary>
+        [DllImport("user32.dll")]
+        public static extern bool AllowSetForegroundWindow(int dwProcessId);
+
         [DllImport("user32.dll")]
         public static extern IntPtr GetForegroundWindow();
 
