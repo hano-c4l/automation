@@ -56,6 +56,7 @@ Mã R1, R2... dùng để tham chiếu trong các mục sau.
 - Đề xuất: hỏi **một lần cho mỗi ID trong mỗi lần chạy** (không hỏi lại ở mỗi vòng Loop); lần chạy sau lại hỏi.
 - Chỉ dùng được qua biểu thức `{pw}` (ví dụ Keyboard Text, Web Input, API header, Email). Không hiện trong cột Details, hộp nhập biến của Start Selected (R7) thì cũng che và **không nhớ**, và không bao giờ vào log (R2).
 - Hủy hộp nhập thì dừng lần chạy.
+- Khi làm P3: gọi `RunLog.AddSecret` cho mọi giá trị Password (log đã có chỗ che chuỗi bí mật) và che cả thanh trạng thái lẫn thông báo của Message, vì thông báo hiện `ex.Message`.
 - Việc "không lưu" phải được bảo đảm **ở chỗ dựng node và ghi file**, không chỉ ẩn ô nhập: đổi một biến String đang có giá trị sang Password thì giá trị phải bị xóa, không để sót trong JSON (cùng loại lỗi trường ẩn còn dư giá trị đã gặp ở Excel).
 - Giới hạn cần ghi rõ cho người dùng: chạy tự động không người ngồi (hẹn giờ/dòng lệnh, nếu sau này làm) không hỏi mật khẩu được.
 

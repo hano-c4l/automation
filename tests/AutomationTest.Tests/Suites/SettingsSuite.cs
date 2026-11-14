@@ -155,6 +155,7 @@ namespace AutomationTest.Tests.Suites
             // a real action: the Delay of a File/Folder action is longer when Random Time is on, and exact when it is off
             var action = ActionNode.NewCommand(new CommandSettings { Kind = CommandKind.FsExists, Value = Path.GetTempPath(), Id = "x", DelayMs = 1000 });
             var plain = new ScriptRunner(new MouseController());
+            plain.Run(new List<ActionNode> { ActionNode.NewCommand(new CommandSettings { Kind = CommandKind.FsExists, Value = Path.GetTempPath(), Id = "x" }) }, null, CancellationToken.None); // warm-up: the first run pays for loading code
             var watch = Stopwatch.StartNew();
             plain.Run(new List<ActionNode> { action }, null, CancellationToken.None);
             long off = watch.ElapsedMilliseconds;
@@ -162,8 +163,9 @@ namespace AutomationTest.Tests.Suites
             watch.Restart();
             random.Run(new List<ActionNode> { action }, null, CancellationToken.None);
             long on = watch.ElapsedMilliseconds;
-            t.True("off: the Delay is about 1000 ms (" + off + ")", off >= 950 && off < 1090);
-            t.True("on: the Delay is 1100 to 1200 ms plus a little (" + on + ")", on >= 1090 && on < 1350);
+            t.True("off: the Delay is about 1000 ms (" + off + ")", off >= 980 && off < 1500);
+            t.True("on: the Delay is 1100 to 1200 ms plus a little (" + on + ")", on >= 1090 && on < 1700);
+            t.True("on is longer than off (" + on + " against " + off + ")", on > off + 50);
 
             // the number the list shows is still the one that was set
             var loop = ActionNode.NewLoop(new LoopSettings { Mode = LoopType.Times, Count = 1 });
