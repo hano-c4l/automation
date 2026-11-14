@@ -28,25 +28,54 @@ namespace AutomationTest.Core.Model
         NewTab,
         /// <summary>Makes another open tab (by title pattern, address pattern and/or position) the one the script uses. Actions inside it use that browser.</summary>
         SwitchTab,
-        /// <summary>Waits until an element is on the page.</summary>
+        /// <summary>Waits until an element appears or disappears, or the address, title or text of the page matches.</summary>
         WaitElement,
         /// <summary>Types text into an element.</summary>
         Input,
-        /// <summary>Clicks an element.</summary>
+        /// <summary>Clicks an element (click, double click or right click).</summary>
         Click,
+        /// <summary>Moves the mouse over an element (menus that open on hover).</summary>
+        Hover,
+        /// <summary>Drags an element and drops it on another one.</summary>
+        Drag,
+        /// <summary>Chooses an option of a select list.</summary>
+        SelectOption,
+        /// <summary>Presses a key or a combination (Enter, Tab, Ctrl+A...).</summary>
+        PressKey,
+        /// <summary>Puts files into a file input.</summary>
+        Upload,
         /// <summary>Answers a JavaScript alert, confirm or prompt box.</summary>
         Dialog,
         /// <summary>Reads the text (or value) of an element into a variable.</summary>
         GetText,
         /// <summary>Runs JavaScript in the page, like the browser console, and can keep the result in a variable.</summary>
         Script,
+        /// <summary>Saves a picture of the page, or of one element.</summary>
+        Screenshot,
         /// <summary>Closes the tab the script is using.</summary>
         CloseTab,
         /// <summary>Closes every window of the browser.</summary>
         CloseBrowser
     }
 
-    /// <summary>What a Get Text action reads.</summary>
+    public enum WebClickKind
+    {
+        Click,
+        DoubleClick,
+        RightClick
+    }
+
+    public enum WebWaitKind
+    {
+        ElementAppears,
+        ElementDisappears,
+        /// <summary>The address of the tab matches a regular expression.</summary>
+        UrlMatches,
+        TitleMatches,
+        /// <summary>The text of the page matches a regular expression.</summary>
+        TextOnPage
+    }
+
     public enum WebGetKind
     {
         /// <summary>The visible text of the element; for a field (input, textarea, select) its value.</summary>

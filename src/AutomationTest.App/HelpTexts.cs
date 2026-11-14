@@ -274,6 +274,43 @@ Pick   click the Pick button, then move the mouse over the element in
 The action waits for the element to appear (see Timeout) and
 scrolls it into view.");
 
+        public static readonly HelpTopic WebUntil = new HelpTopic("Wait for",
+@"Element appears     the element is on the page and visible (default)
+Element disappears  the element is gone or hidden
+Address matches     the address of the tab matches a regular
+                    expression (not case sensitive), for example
+                    /dashboard   or   ^https://shop\.
+Title matches       the title of the tab matches
+Page text           the text of the page (not of frames) matches
+
+Each waits until the Timeout, then the action fails.");
+
+        public static readonly HelpTopic WebClickType = new HelpTopic("Click type",
+@"Click         one click with the left button
+DoubleClick   two clicks in a row
+RightClick    one click with the right button (opens the context
+              menu of the page, if it has one)");
+
+        public static readonly HelpTopic WebDrag = new HelpTopic("Drag (Drop on)",
+@"Drags the element of Selector and drops it on the element of Drop on
+(same Frame). The pointer moves in steps, so lists that follow the
+mouse work; pages that use the browser's own drag and drop
+(draggable=true) work too.
+
+Hover and Drag need the tab in front: the browser window comes to
+the front for the time of the action.");
+
+        public static readonly HelpTopic WebScreenshot = new HelpTopic("Screenshot",
+@"Saves a picture of the page in the file (.png or .jpg).
+
+Selector given   just that element
+Full page ON     the whole page, also what has to be scrolled to
+Otherwise        what is visible in the tab now
+
+The folder of the file must exist; an existing file is replaced.
+Text is the file; with Expr. ON an expression, so the name can hold
+a date or a counter.");
+
         public static readonly HelpTopic WebFrame = new HelpTopic("Frame",
 @"Leave empty when the element is on the page itself.
 
@@ -281,9 +318,15 @@ When it is inside an iframe, enter the CSS selector of that iframe,
 for example  iframe#editor . For frames inside frames, separate the
 selectors with >>> , outermost first:  iframe.outer >>> iframe.inner
 
-Only frames from the same site can be entered. A frame from another
-site (an embedded payment form, for example) is refused with a
-message.");
+Frames of the same site and of other sites (an embedded payment
+form or video page, for example) both work, also nested. The Pick
+button does not look inside frames of other sites: type their
+selector by hand.
+
+An element inside a shadow root (a web component) is reached in
+the Selector, not here: write  host-element >>> inner-element  , for
+example  my-card >>> button.buy . Pick writes it for you. Only open
+shadow roots can be entered.");
 
         public static readonly HelpTopic WebId = new HelpTopic("ID (Get Text)",
 @"The variable that receives the text of the element: the value of an
@@ -716,7 +759,18 @@ With Expression ON the Script is an expression that makes the
 JavaScript text, so variables can be put in: ""alert('"" + {name} + ""')""");
 
         public static readonly HelpTopic WebText = new HelpTopic("Text (Web)",
-@"Input   the text typed into the element; what was in it is replaced.
+@"Press Key       Enter, Tab, Escape, Backspace, Delete, Space, Up,
+                 Down, Left, Right, Home, End, PageUp, PageDown,
+                 F1 to F12, a letter or a digit; with modifiers:
+                 Ctrl+A, Shift+Tab, Alt+Left, Ctrl+Shift+Z.
+                 Ctrl+A, C, X, V, Z and Y work in a text field.
+                 A Selector focuses that element first.
+Select Option   the text or the value of the option to choose in a
+                select list (a part of the text is enough)
+Upload          the file for a file input; several files: path1|path2
+Screenshot      the file to save (.png or .jpg)
+Wait for        the pattern of the address, title or page text
+Input   the text typed into the element; what was in it is replaced.
         Vietnamese and other Unicode text is typed as is.
 Dialog  the answer typed into a prompt box (when accepting).
 Switch Tab  a word from the title or the address of the tab to use;

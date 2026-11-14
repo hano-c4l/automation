@@ -59,6 +59,9 @@ namespace AutomationTest.Core.Web
             public double X, Y;
         }
 
+        private readonly object _dragLock = new object();
+        private readonly Dictionary<string, object> _dragData = new Dictionary<string, object>();
+
         private readonly object _childLock = new object();
         private readonly Dictionary<string, List<ChildTarget>> _children = new Dictionary<string, List<ChildTarget>>();
         private readonly HashSet<string> _autoAttached = new HashSet<string>();
@@ -97,6 +100,11 @@ namespace AutomationTest.Core.Web
                 if (!ev.TryGetValue("method", out object m) || !ev.TryGetValue("params", out object p) || !(p is Dictionary<string, object> parameters)) return;
                 string method = Convert.ToString(m);
                 string key = TabKey(browser, Convert.ToInt32(ev["tabId"]));
+                if (method == "Input.dragIntercepted")
+                {
+                    lock (_dragLock) _dragData[key] = parameters.TryGetValue("data", out object dragged) ? dragged : null;
+                    return;
+                }
                 lock (_childLock)
                 {
                     if (method == "Target.attachedToTarget" && parameters["targetInfo"] is Dictionary<string, object> info)
@@ -140,7 +148,13 @@ namespace AutomationTest.Core.Web
             switch (w.Kind)
             {
                 case WebKind.NewTab: NewTab(w, token); break;
-                case WebKind.WaitElement: Locate(w, token); break;
+                case WebKind.WaitElement: WaitFor(w, text, token); break;
+                case WebKind.Hover: Hover(w, token); break;
+                case WebKind.Drag: Drag(w, token); break;
+                case WebKind.SelectOption: SelectOption(w, text, token); break;
+                case WebKind.PressKey: PressKey(w, text, token); break;
+                case WebKind.Upload: Upload(w, text, token); break;
+                case WebKind.Screenshot: Screenshot(w, text, token); break;
                 case WebKind.Input: Input(w, text, token); break;
                 case WebKind.Click: Click(w, token); break;
                 case WebKind.Dialog: Dialog(w, token); break;
@@ -445,19 +459,249 @@ namespace AutomationTest.Core.Web
             Cdp(w.Browser, tab, "Page.bringToFront", null, token);
             Thread.Sleep(100); // the viewport of a tab that was in the background needs a moment
             var at = Locate(w, token); // again: the position can change once the tab is in front
+            string button = w.ClickType == WebClickKind.RightClick ? "right" : "left";
             Func<string, int, Dictionary<string, object>> mouse = (type, count) => new Dictionary<string, object>
             {
-                { "type", type }, { "x", at.X }, { "y", at.Y }, { "button", "left" }, { "clickCount", count }
+                { "type", type }, { "x", at.X }, { "y", at.Y }, { "button", button }, { "clickCount", count }
             };
             Cdp(w.Browser, tab, "Input.dispatchMouseEvent", new Dictionary<string, object> { { "type", "mouseMoved" }, { "x", at.X }, { "y", at.Y } }, token);
-            Cdp(w.Browser, tab, "Input.dispatchMouseEvent", mouse("mousePressed", 1), token);
+            int clicks = w.ClickType == WebClickKind.DoubleClick ? 2 : 1;
+            for (int n = 1; n <= clicks; n++)
+            {
+                Cdp(w.Browser, tab, "Input.dispatchMouseEvent", mouse("mousePressed", n), token);
+                try
+                {
+                    Cdp(w.Browser, tab, "Input.dispatchMouseEvent", mouse("mouseReleased", n), token, ClickReleaseTimeoutMs);
+                }
+                catch (BridgeTimeoutException)
+                {
+                    // The click opened a JavaScript dialog; a Dialog action answers it.
+                    return;
+                }
+            }
+        }
+
+        private void Hover(WebSettings w, CancellationToken token)
+        {
+            Locate(w, token);
+            int tab = CurrentTab(w.Browser, token);
+            Cdp(w.Browser, tab, "Page.bringToFront", null, token);
+            Thread.Sleep(100);
+            var at = Locate(w, token);
+            // Two moves, so a menu that opens on mouseover (and one that waits for movement inside) both see the pointer arrive.
+            Cdp(w.Browser, tab, "Input.dispatchMouseEvent", new Dictionary<string, object> { { "type", "mouseMoved" }, { "x", at.X - 2 }, { "y", at.Y - 2 } }, token);
+            Cdp(w.Browser, tab, "Input.dispatchMouseEvent", new Dictionary<string, object> { { "type", "mouseMoved" }, { "x", at.X }, { "y", at.Y } }, token);
+        }
+
+        private void Drag(WebSettings w, CancellationToken token)
+        {
+            if (string.IsNullOrWhiteSpace(w.TargetSelector)) throw new InvalidOperationException("Drag: no element to drop on is set.");
+            Locate(w, token);
+            int tab = CurrentTab(w.Browser, token);
+            Cdp(w.Browser, tab, "Page.bringToFront", null, token);
+            Thread.Sleep(100);
+            var from = Locate(w, token);
+            var targetSettings = w.Clone();
+            targetSettings.Selector = w.TargetSelector;
+            targetSettings.Index = 1;
+            var to = Locate(targetSettings, token);
+
+            string key = TabKey(w.Browser, tab);
+            lock (_dragLock) _dragData.Remove(key);
+            // A page that uses the browser's own drag and drop (draggable=true) only sees it when the drag is taken over and replayed.
+            Cdp(w.Browser, tab, "Input.setInterceptDrags", new Dictionary<string, object> { { "enabled", true } }, token);
             try
             {
-                Cdp(w.Browser, tab, "Input.dispatchMouseEvent", mouse("mouseReleased", 1), token, ClickReleaseTimeoutMs);
+                Func<string, double, double, int, Dictionary<string, object>> mouse = (type, x, y, buttons) => new Dictionary<string, object>
+                {
+                    { "type", type }, { "x", x }, { "y", y }, { "button", type == "mouseMoved" ? "none" : "left" }, { "buttons", buttons }, { "clickCount", type == "mouseMoved" ? 0 : 1 }
+                };
+                Cdp(w.Browser, tab, "Input.dispatchMouseEvent", mouse("mouseMoved", from.X, from.Y, 0), token);
+                Cdp(w.Browser, tab, "Input.dispatchMouseEvent", mouse("mousePressed", from.X, from.Y, 1), token);
+                object dragged = null;
+                const int steps = 12;
+                for (int i = 1; i <= steps; i++)
+                {
+                    double x = from.X + (to.X - from.X) * i / steps, y = from.Y + (to.Y - from.Y) * i / steps;
+                    Cdp(w.Browser, tab, "Input.dispatchMouseEvent", mouse("mouseMoved", x, y, 1), token);
+                    Thread.Sleep(25);
+                    lock (_dragLock) { if (dragged == null) _dragData.TryGetValue(key, out dragged); }
+                }
+                if (dragged == null) { Thread.Sleep(150); lock (_dragLock) _dragData.TryGetValue(key, out dragged); }
+                if (dragged != null)
+                {
+                    // The browser started a drag of its own: play the rest of it.
+                    foreach (string type in new[] { "dragEnter", "dragOver", "drop" })
+                        Cdp(w.Browser, tab, "Input.dispatchDragEvent", new Dictionary<string, object> { { "type", type }, { "x", to.X }, { "y", to.Y }, { "data", dragged } }, token);
+                }
+                Cdp(w.Browser, tab, "Input.dispatchMouseEvent", mouse("mouseReleased", to.X, to.Y, 0), token);
+                if (dragged == null && from.Session == to.Session && from.Frame == to.Frame)
+                {
+                    // The mouse alone does not start the browser's own drag and drop: play its events in the page.
+                    var native = EvaluateValue(w.Browser, tab, from.Session, WebScripts.NativeDrag + "(" + ElementArgs(w, from.Frame) + "," + MiniJson.Write(w.TargetSelector) + ")", token);
+                    if (native != null && native.TryGetValue("error", out object nativeError)) throw new InvalidOperationException("Drag: " + nativeError);
+                }
             }
-            catch (BridgeTimeoutException)
+            finally
             {
-                // The click opened a JavaScript dialog; a Dialog action answers it.
+                try { Cdp(w.Browser, tab, "Input.setInterceptDrags", new Dictionary<string, object> { { "enabled", false } }, CancellationToken.None, 3000); }
+                catch (InvalidOperationException) { }
+            }
+        }
+
+        private void SelectOption(WebSettings w, string text, CancellationToken token)
+        {
+            if (string.IsNullOrEmpty(text)) throw new InvalidOperationException("Select Option: no option is set.");
+            var at = Locate(w, token, true, false);
+            int tab = CurrentTab(w.Browser, token);
+            var value = EvaluateValue(w.Browser, tab, at.Session, WebScripts.SelectOption + "(" + ElementArgs(w, at.Frame) + "," + MiniJson.Write(text) + ")", token);
+            if (value != null && value.TryGetValue("error", out object error)) throw new InvalidOperationException("Select Option: " + error);
+        }
+
+        private void PressKey(WebSettings w, string text, CancellationToken token)
+        {
+            string problem = WebKeys.Parse(text, out int modifiers, out KeyDefinition key);
+            if (problem != null) throw new InvalidOperationException("Press Key: " + problem);
+            int tab = CurrentTab(w.Browser, token);
+            Cdp(w.Browser, tab, "Page.bringToFront", null, token);
+            if (!string.IsNullOrWhiteSpace(w.Selector))
+            {
+                // Focus the element first (a field that has to get the key).
+                var at = Locate(w, token, true, false);
+                Cdp(w.Browser, tab, "Runtime.evaluate", new Dictionary<string, object>
+                {
+                    { "expression", WebScripts.Focus + "(" + ElementArgs(w, at.Frame) + ")" }, { "returnByValue", true }
+                }, token, CallTimeoutMs, at.Session);
+            }
+            var down = new Dictionary<string, object>
+            {
+                { "type", key.Text != null ? "keyDown" : "rawKeyDown" },
+                { "modifiers", modifiers }, { "key", key.Key }, { "code", key.Code }, { "windowsVirtualKeyCode", key.VirtualKey }
+            };
+            if (key.Text != null) down["text"] = key.Text;
+            if (key.Command != null) down["commands"] = new object[] { key.Command }; // Ctrl+A, Ctrl+C... act on a text field only with their command
+            Cdp(w.Browser, tab, "Input.dispatchKeyEvent", down, token);
+            Cdp(w.Browser, tab, "Input.dispatchKeyEvent", new Dictionary<string, object>
+            {
+                { "type", "keyUp" }, { "modifiers", modifiers }, { "key", key.Key }, { "code", key.Code }, { "windowsVirtualKeyCode", key.VirtualKey }
+            }, token);
+        }
+
+        private void Upload(WebSettings w, string text, CancellationToken token)
+        {
+            var files = new List<object>();
+            foreach (string part in (text ?? "").Split(new[] { '|', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                string path = System.IO.Path.GetFullPath(Environment.ExpandEnvironmentVariables(part.Trim()));
+                if (!System.IO.File.Exists(path)) throw new InvalidOperationException("Upload: the file " + path + " does not exist.");
+                files.Add(path);
+            }
+            if (files.Count == 0) throw new InvalidOperationException("Upload: no file is set.");
+            var at = Locate(w, token, true, false); // a file input is often hidden behind a nice button
+            int tab = CurrentTab(w.Browser, token);
+            var element = Evaluate(w.Browser, tab, at.Session, WebScripts.ElementObject + "(" + ElementArgs(w, at.Frame) + ")", false, token);
+            if (!element.TryGetValue("objectId", out object objectId)) throw new InvalidOperationException("Upload: the element is gone.");
+            var kind = (Dictionary<string, object>)Cdp(w.Browser, tab, "Runtime.callFunctionOn", new Dictionary<string, object>
+            {
+                { "objectId", objectId }, { "functionDeclaration", "function () { return this.tagName + ':' + (this.type || ''); }" }, { "returnByValue", true }
+            }, token, CallTimeoutMs, at.Session);
+            string what = Convert.ToString(((Dictionary<string, object>)kind["result"])["value"]);
+            if (!string.Equals(what, "INPUT:file", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Upload: the element is not a file input (it is " + what.Replace(":", " ").Trim() + "). Use the selector of the input with type=file.");
+            Cdp(w.Browser, tab, "DOM.setFileInputFiles", new Dictionary<string, object> { { "files", files }, { "objectId", objectId } }, token, CallTimeoutMs, at.Session);
+        }
+
+        private void Screenshot(WebSettings w, string text, CancellationToken token)
+        {
+            string path = (text ?? "").Trim();
+            if (path.Length == 0) throw new InvalidOperationException("Screenshot: no file is set.");
+            path = System.IO.Path.GetFullPath(Environment.ExpandEnvironmentVariables(path));
+            string extension = System.IO.Path.GetExtension(path).ToLowerInvariant();
+            if (extension != ".png" && extension != ".jpg" && extension != ".jpeg")
+                throw new InvalidOperationException("Screenshot: the file must end with .png, .jpg or .jpeg (not \"" + extension + "\").");
+            string folder = System.IO.Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(folder) && !System.IO.Directory.Exists(folder)) throw new InvalidOperationException("Screenshot: the folder " + folder + " does not exist.");
+
+            int tab = CurrentTab(w.Browser, token);
+            Cdp(w.Browser, tab, "Page.bringToFront", null, token); // a tab in the background has no size to take a picture of
+            Thread.Sleep(100);
+            var parameters = new Dictionary<string, object> { { "format", extension == ".png" ? "png" : "jpeg" } };
+            if (extension != ".png") parameters["quality"] = 90;
+            if (!string.IsNullOrWhiteSpace(w.Selector))
+            {
+                var at = Locate(w, token, true, false);
+                var box = EvaluateValue(w.Browser, tab, at.Session, WebScripts.Rect + "(" + ElementArgs(w, at.Frame) + ")", token);
+                if (box == null) throw new InvalidOperationException("Screenshot: the element is gone.");
+                var scroll = EvaluateValue(w.Browser, tab, null, "({ x: window.scrollX, y: window.scrollY })", token);
+                double width = Convert.ToDouble(box["w"]), height = Convert.ToDouble(box["h"]);
+                if (width < 1 || height < 1) throw new InvalidOperationException("Screenshot: the element has no size on the page (is it hidden?).");
+                parameters["clip"] = new Dictionary<string, object>
+                {
+                    { "x", Convert.ToDouble(box["x"]) + at.OffsetX + Convert.ToDouble(scroll["x"]) },
+                    { "y", Convert.ToDouble(box["y"]) + at.OffsetY + Convert.ToDouble(scroll["y"]) },
+                    { "width", width }, { "height", height }, { "scale", 1 }
+                };
+                parameters["captureBeyondViewport"] = true;
+            }
+            else if (w.FullPage)
+            {
+                var metrics = (Dictionary<string, object>)Cdp(w.Browser, tab, "Page.getLayoutMetrics", null, token);
+                var size = (Dictionary<string, object>)metrics["cssContentSize"];
+                parameters["clip"] = new Dictionary<string, object> { { "x", 0 }, { "y", 0 }, { "width", Convert.ToDouble(size["width"]) }, { "height", Convert.ToDouble(size["height"]) }, { "scale", 1 } };
+                parameters["captureBeyondViewport"] = true;
+            }
+            var shot = (Dictionary<string, object>)Cdp(w.Browser, tab, "Page.captureScreenshot", parameters, token, 60000);
+            System.IO.File.WriteAllBytes(path, Convert.FromBase64String(Convert.ToString(shot["data"])));
+        }
+
+        /// <summary>Waits for the element to appear or disappear, or for the address, title or text of the page to match.</summary>
+        private void WaitFor(WebSettings w, string text, CancellationToken token)
+        {
+            switch (w.Until)
+            {
+                case WebWaitKind.ElementAppears:
+                    Locate(w, token);
+                    return;
+                case WebWaitKind.ElementDisappears:
+                    var quick = w.Clone();
+                    quick.TimeMs = 0;
+                    var watch = Stopwatch.StartNew();
+                    while (Locate(quick, token, false, true) != null) // still there and visible
+                    {
+                        token.ThrowIfCancellationRequested();
+                        if (watch.ElapsedMilliseconds >= w.TimeMs)
+                            throw new InvalidOperationException("Wait: \"" + w.Selector.Trim() + "\" is still on the page after " + w.TimeMs + " ms.");
+                        Thread.Sleep(200);
+                    }
+                    return;
+            }
+
+            string pattern = (text ?? "").Trim();
+            if (pattern.Length == 0) throw new InvalidOperationException("Wait: no pattern is set.");
+            System.Text.RegularExpressions.Regex regex;
+            try { regex = new System.Text.RegularExpressions.Regex(pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(1000)); }
+            catch (ArgumentException ex) { throw new InvalidOperationException("Wait: the pattern is not a valid regular expression: " + ex.Message); }
+            int tab = CurrentTab(w.Browser, token);
+            var timer = Stopwatch.StartNew();
+            while (true)
+            {
+                token.ThrowIfCancellationRequested();
+                string current;
+                if (w.Until == WebWaitKind.TextOnPage)
+                {
+                    var page = Evaluate(w.Browser, tab, null, "document.body ? document.body.innerText : ''", true, token);
+                    current = page.TryGetValue("value", out object v) ? Convert.ToString(v) : "";
+                }
+                else
+                {
+                    var info = (Dictionary<string, object>)Call(w.Browser, "tabInfo", new Dictionary<string, object> { { "tabId", tab } }, token);
+                    current = Convert.ToString(info[w.Until == WebWaitKind.UrlMatches ? "url" : "title"]) ?? "";
+                }
+                try { if (regex.IsMatch(current)) return; }
+                catch (System.Text.RegularExpressions.RegexMatchTimeoutException) { }
+                if (timer.ElapsedMilliseconds >= w.TimeMs)
+                    throw new InvalidOperationException("Wait: the " + (w.Until == WebWaitKind.UrlMatches ? "address" : w.Until == WebWaitKind.TitleMatches ? "title" : "text of the page") + " did not match \"" + pattern + "\" within " + w.TimeMs + " ms.");
+                Thread.Sleep(200);
             }
         }
 

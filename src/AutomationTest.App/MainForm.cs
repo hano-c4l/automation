@@ -132,6 +132,10 @@ namespace AutomationTest.App
         private readonly HintTextBox _webText = new HintTextBox { Width = 200, Placeholder = "Text" };
         private readonly ToggleSwitch _webTextExpr = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
         private readonly ToggleSwitch _webAccept = new ToggleSwitch { Checked = true, Size = new Size(40, 21) };
+        private readonly ComboBox _webClickType = MakeCombo(typeof(WebClickKind));
+        private readonly ComboBox _webUntil = MakeCombo(typeof(WebWaitKind));
+        private readonly HintTextBox _webTarget = new HintTextBox { Width = 200, Placeholder = "Drop on (CSS selector or text=Label)" };
+        private readonly ToggleSwitch _webFullPage = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
         private readonly TimeBox _webTime = new TimeBox(10000);
         private readonly TimeBox _webDelay = new TimeBox(0);
         // Editor: excel
@@ -424,6 +428,8 @@ namespace AutomationTest.App
             AddRow(webTable, "ID", _webId, Help.WebId); // an ID is always the first field of its group
             AddRow(webTable, "Browser", _webBrowser, Help.WebBrowser);
             AddRow(webTable, "Get", _webGet, Help.WebGet);
+            AddRow(webTable, "Wait for", _webUntil, Help.WebUntil);
+            AddRow(webTable, "Click type", _webClickType, Help.WebClickType);
             AddRow(webTable, "URL", _webUrl, Help.WebUrl);
             AddRow(webTable, "Title", _webTitle, Help.WebTitle);
             AddRow(webTable, "URL", _webUrlPattern, Help.WebUrlPattern);
@@ -431,12 +437,14 @@ namespace AutomationTest.App
             AddRow(webTable, "Selector", _webSelector, Help.WebSelector, null, _webPick);
             AddRow(webTable, "Frame", _webFrame, Help.WebFrame);
             AddRow(webTable, "Index", _webIndex, Help.WebIndex);
+            AddRow(webTable, "Drop on", _webTarget, Help.WebDrag);
             AddRow(webTable, "Attribute", _webAttribute, Help.WebAttribute);
             AddRow(webTable, "Required", _webRequired, Help.WebRequired);
             AddRow(webTable, "Script", _webScript, Help.WebScript);
             AddRow(webTable, "Accept", _webAccept, Help.WebDialog);
             AddRow(webTable, "Text", _webText, Help.WebText);
             AddRow(webTable, "Expression", _webTextExpr, Help.ExpressionText);
+            AddRow(webTable, "Full page", _webFullPage, Help.WebScreenshot);
             AddRow(webTable, "Timeout", _webTime, Help.WebTimeout);
             AddRow(webTable, "Delay", _webDelay, Help.KeyDelay);
             _webBox.Controls.Add(webTable);
@@ -596,6 +604,7 @@ namespace AutomationTest.App
             _cmdKind.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
             _webKind.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
             _webGet.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
+            _webUntil.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
             _xlKind.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
             _xlInfo.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
             _xlSaveAs.CheckedChanged += (s, e) => UpdateEditorVisibility();
@@ -638,27 +647,45 @@ namespace AutomationTest.App
             _webBox.Visible = category == ActionCategory.Web;
             var web = _webKind.SelectedItem as WebKind? ?? WebKind.NewTab;
             var get = _webGet.SelectedItem as WebGetKind? ?? WebGetKind.Text;
+            var until = _webUntil.SelectedItem as WebWaitKind? ?? WebWaitKind.ElementAppears;
             bool pageGet = web == WebKind.GetText && (get == WebGetKind.PageUrl || get == WebGetKind.PageTitle);
-            bool webSelects = web == WebKind.WaitElement || web == WebKind.Input || web == WebKind.Click || (web == WebKind.GetText && !pageGet);
+            bool waitElement = web == WebKind.WaitElement && (until == WebWaitKind.ElementAppears || until == WebWaitKind.ElementDisappears);
+            bool optionalSelector = web == WebKind.PressKey || web == WebKind.Screenshot;
+            bool webSelects = waitElement || web == WebKind.Input || web == WebKind.Click || web == WebKind.Hover || web == WebKind.Drag
+                || web == WebKind.SelectOption || web == WebKind.Upload || (web == WebKind.GetText && !pageGet) || optionalSelector;
+            bool webText = web == WebKind.Input || web == WebKind.Dialog || web == WebKind.PressKey || web == WebKind.SelectOption
+                || web == WebKind.Upload || web == WebKind.Screenshot || (web == WebKind.WaitElement && !waitElement);
             SetRowVisible(_webKind, category == ActionCategory.Web);
             SetRowVisible(_webBrowser, category == ActionCategory.Web);
             SetRowVisible(_webUrl, web == WebKind.NewTab);
             SetRowVisible(_webTitle, web == WebKind.SwitchTab);
             SetRowVisible(_webUrlPattern, web == WebKind.SwitchTab);
             SetRowVisible(_webGet, web == WebKind.GetText);
+            SetRowVisible(_webUntil, web == WebKind.WaitElement);
+            SetRowVisible(_webClickType, web == WebKind.Click);
             SetRowVisible(_webSelector, webSelects);
+            _webSelector.Placeholder = web == WebKind.PressKey ? "Element to focus first (optional)" : web == WebKind.Screenshot ? "Element to capture (empty = the page)"
+                : web == WebKind.Upload ? "The file input (type=file)" : web == WebKind.Drag ? "Element to drag" : "CSS selector or text=Label";
             SetRowVisible(_webFrame, webSelects);
             SetRowVisible(_webIndex, (webSelects && !(web == WebKind.GetText && get == WebGetKind.Count)) || web == WebKind.SwitchTab);
+            SetRowVisible(_webTarget, web == WebKind.Drag);
             SetRowVisible(_webAttribute, web == WebKind.GetText && get == WebGetKind.Attribute);
             SetRowVisible(_webAccept, web == WebKind.Dialog);
+            SetRowVisible(_webFullPage, web == WebKind.Screenshot);
             SetRowVisible(_webTime, web != WebKind.CloseTab && web != WebKind.CloseBrowser); // closing has nothing to wait for
             SetRowVisible(_webId, web == WebKind.GetText || web == WebKind.Script);
             _webId.Placeholder = web == WebKind.Script ? "Variable ID (optional)" : "Variable ID";
             SetRowVisible(_webRequired, web == WebKind.GetText && !pageGet && get != WebGetKind.Count);
             SetRowVisible(_webScript, web == WebKind.Script);
-            _webText.Placeholder = web == WebKind.Dialog ? "Answer of a prompt box" : "Text";
-            SetRowVisible(_webText, web == WebKind.Input || web == WebKind.Dialog);
-            SetRowVisible(_webTextExpr, web == WebKind.Input || web == WebKind.Dialog || web == WebKind.Script);
+            _webText.Placeholder = web == WebKind.Dialog ? "Answer of a prompt box"
+                : web == WebKind.PressKey ? "Key (Enter, Tab, Ctrl+A, F5...)"
+                : web == WebKind.SelectOption ? "Option (its text or its value)"
+                : web == WebKind.Upload ? "File path (several: path1|path2)"
+                : web == WebKind.Screenshot ? "File to save (.png or .jpg)"
+                : web == WebKind.WaitElement ? (until == WebWaitKind.UrlMatches ? "Address pattern (regular expression)" : until == WebWaitKind.TitleMatches ? "Title pattern (regular expression)" : "Text pattern (regular expression)")
+                : "Text";
+            SetRowVisible(_webText, webText);
+            SetRowVisible(_webTextExpr, webText || web == WebKind.Script);
             // Excel
             _excelBox.Visible = category == ActionCategory.Excel;
             var xl = _xlKind.SelectedItem as ExcelKind? ?? ExcelKind.Workbook;
@@ -935,6 +962,10 @@ namespace AutomationTest.App
                         Script = _webScript.Text,
                         Selector = _webSelector.Text.Trim(),
                         Frame = _webFrame.Text.Trim(),
+                        ClickType = (WebClickKind)_webClickType.SelectedItem,
+                        Until = (WebWaitKind)_webUntil.SelectedItem,
+                        TargetSelector = _webTarget.Text.Trim(),
+                        FullPage = _webFullPage.Checked,
                         Id = _webId.Text.Trim(),
                         Required = _webRequired.Checked,
                         Text = _webText.Text,
@@ -1149,6 +1180,10 @@ namespace AutomationTest.App
                     _webBrowser.Enabled = !web.BrowserInherited; // inside a New Tab or Switch Tab the browser is theirs
                     _webSelector.Text = web.Selector;
                     _webFrame.Text = web.Frame;
+                    _webClickType.SelectedItem = web.ClickType;
+                    _webUntil.SelectedItem = web.Until;
+                    _webTarget.Text = web.TargetSelector;
+                    _webFullPage.Checked = web.FullPage;
                     _webId.Text = web.Id;
                     _webRequired.Checked = web.Required;
                     _webText.Text = web.Text;
@@ -1534,9 +1569,38 @@ namespace AutomationTest.App
                         }
                         if (web.Kind == WebKind.GetText && web.Get == WebGetKind.Attribute && web.Attribute.Length == 0) return "Enter the name of the attribute to read (href, src, data-id...).";
                         bool pageGet = web.Kind == WebKind.GetText && (web.Get == WebGetKind.PageUrl || web.Get == WebGetKind.PageTitle);
-                        if ((web.Kind == WebKind.WaitElement || web.Kind == WebKind.Input || web.Kind == WebKind.Click || (web.Kind == WebKind.GetText && !pageGet)) && web.Selector.Length == 0)
+                        bool waitsElement = web.Kind == WebKind.WaitElement && (web.Until == WebWaitKind.ElementAppears || web.Until == WebWaitKind.ElementDisappears);
+                        if ((waitsElement || web.Kind == WebKind.Input || web.Kind == WebKind.Click || web.Kind == WebKind.Hover || web.Kind == WebKind.Drag
+                            || web.Kind == WebKind.SelectOption || web.Kind == WebKind.Upload || (web.Kind == WebKind.GetText && !pageGet)) && web.Selector.Length == 0)
                             return "Enter a CSS selector (for example #email), or text=Label to find an element by its text.";
-                        if ((web.Kind == WebKind.Input || web.Kind == WebKind.Dialog) && web.TextIsExpression) Expression.CheckSyntax(web.Text);
+                        if (web.Kind == WebKind.Drag && web.TargetSelector.Length == 0) return "Enter the selector of the element to drop on.";
+                        if (ScriptRunner.WebTextKind(web) && web.TextIsExpression) Expression.CheckSyntax(web.Text);
+                        if (ScriptRunner.WebTextKind(web) && !web.TextIsExpression && web.Kind != WebKind.Input && web.Kind != WebKind.Dialog && web.Text.Trim().Length == 0)
+                        {
+                            switch (web.Kind)
+                            {
+                                case WebKind.PressKey: return "Enter the key to press, for example Enter, Tab, Ctrl+A.";
+                                case WebKind.SelectOption: return "Enter the option to choose (its text or its value).";
+                                case WebKind.Upload: return "Enter the path of the file to upload.";
+                                case WebKind.Screenshot: return "Enter the file to save the picture in (.png or .jpg).";
+                                default: return "Enter the pattern to wait for (a regular expression).";
+                            }
+                        }
+                        if (web.Kind == WebKind.PressKey && !web.TextIsExpression)
+                        {
+                            string keyProblem = AutomationTest.Core.Web.WebKeys.Parse(web.Text, out int keyModifiers, out var keyDefinition);
+                            if (keyProblem != null) return keyProblem;
+                        }
+                        if (web.Kind == WebKind.Screenshot && !web.TextIsExpression)
+                        {
+                            string shotExtension = System.IO.Path.GetExtension(web.Text.Trim()).ToLowerInvariant();
+                            if (shotExtension != ".png" && shotExtension != ".jpg" && shotExtension != ".jpeg") return "The picture file must end with .png, .jpg or .jpeg.";
+                        }
+                        if (web.Kind == WebKind.WaitElement && !waitsElement && !web.TextIsExpression)
+                        {
+                            try { new System.Text.RegularExpressions.Regex(web.Text); }
+                            catch (ArgumentException ex) { return "The pattern is not a valid regular expression: " + ex.Message; }
+                        }
                         break;
 
                     case ActionCategory.Control:
@@ -2096,6 +2160,17 @@ namespace AutomationTest.App
                             details = (wb.Get == WebGetKind.PageUrl || wb.Get == WebGetKind.PageTitle ? "" : wb.Selector + (wb.Index > 1 ? " #" + wb.Index : "") + " ")
                                 + wb.Get + (wb.Get == WebGetKind.Attribute ? " " + wb.Attribute : "") + " -> " + wb.Id + (wb.Required || wb.Get == WebGetKind.Count ? "" : " (optional)");
                             break;
+                        case WebKind.Hover: details = "hover " + wb.Selector + (wb.Index > 1 ? " #" + wb.Index : ""); break;
+                        case WebKind.Drag: details = wb.Selector + " -> " + wb.TargetSelector; break;
+                        case WebKind.SelectOption: details = wb.Selector + " = " + (wb.TextIsExpression ? wb.Text : "\"" + wb.Text + "\""); break;
+                        case WebKind.PressKey: details = (wb.Selector.Length > 0 ? wb.Selector + ": " : "") + "press " + wb.Text; break;
+                        case WebKind.Upload: details = wb.Selector + " <- " + wb.Text; break;
+                        case WebKind.Screenshot: details = (wb.Selector.Length > 0 ? wb.Selector : wb.FullPage ? "full page" : "page") + " -> " + wb.Text; break;
+                        case WebKind.WaitElement:
+                            details = wb.Until == WebWaitKind.ElementAppears ? wb.Selector
+                                : wb.Until == WebWaitKind.ElementDisappears ? wb.Selector + " disappears"
+                                : (wb.Until == WebWaitKind.UrlMatches ? "address" : wb.Until == WebWaitKind.TitleMatches ? "title" : "page text") + " matches " + wb.Text;
+                            break;
                         case WebKind.CloseTab: details = "close the tab the script is using"; break;
                         case WebKind.CloseBrowser: details = "close all " + wb.Browser + " windows"; break;
                         case WebKind.Script:
@@ -2111,7 +2186,7 @@ namespace AutomationTest.App
                             break;
                         default: details = wb.Selector; break;
                     }
-                    if (wb.Frame.Length > 0 && wb.Kind != WebKind.NewTab && wb.Kind != WebKind.SwitchTab && wb.Kind != WebKind.Script) details = "[" + wb.Frame + "] " + details;
+                    if (wb.Frame.Length > 0 && wb.Kind != WebKind.NewTab && wb.Kind != WebKind.SwitchTab && wb.Kind != WebKind.Script && wb.Kind != WebKind.CloseTab && wb.Kind != WebKind.CloseBrowser) details = "[" + wb.Frame + "] " + details;
                     if (wb.Kind != WebKind.SwitchTab && wb.Kind != WebKind.GetText && wb.Index > 1) details += " #" + wb.Index;
                     if (wb.Kind != WebKind.CloseTab && wb.Kind != WebKind.CloseBrowser) time = TimeBox.Format(wb.TimeMs);
                     delay = TimeBox.Format(wb.DelayMs);

@@ -172,7 +172,7 @@ namespace AutomationTest.Core.Runner
         {
             var w = node.Web;
             string text = null;
-            if (w.Kind == WebKind.Input || w.Kind == WebKind.Dialog) text = w.TextIsExpression ? EvalString(w.Text) : w.Text;
+            if (WebTextKind(w)) text = w.TextIsExpression ? EvalString(w.Text) : w.Text;
             else if (w.Kind == WebKind.Script) text = w.TextIsExpression ? EvalString(w.Script) : w.Script;
             bool keeps = w.Kind == WebKind.GetText || (w.Kind == WebKind.Script && !string.IsNullOrWhiteSpace(w.Id));
             if (keeps && !Expression.IsValidId((w.Id ?? "").Trim()))
@@ -182,6 +182,14 @@ namespace AutomationTest.Core.Runner
             // New Tab and Switch Tab hold the actions that work in that tab (and browser).
             if (node.IsContainer) ExecuteList(node.Children, token);
             Wait(w.DelayMs, token);
+        }
+
+        /// <summary>The Web actions whose Text field is used (and can be an expression).</summary>
+        public static bool WebTextKind(WebSettings w)
+        {
+            return w.Kind == WebKind.Input || w.Kind == WebKind.Dialog || w.Kind == WebKind.PressKey || w.Kind == WebKind.SelectOption
+                || w.Kind == WebKind.Upload || w.Kind == WebKind.Screenshot
+                || (w.Kind == WebKind.WaitElement && w.Until != WebWaitKind.ElementAppears && w.Until != WebWaitKind.ElementDisappears);
         }
 
         private object EvalObject(string text)

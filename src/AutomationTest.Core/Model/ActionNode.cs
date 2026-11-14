@@ -198,6 +198,32 @@ namespace AutomationTest.Core.Model
         /// </summary>
         [DataMember(Order = 15, EmitDefaultValue = false)] public int Index { get; set; }
 
+        /// <summary>Click: the kind of click.</summary>
+        public WebClickKind ClickType { get; set; }
+
+        /// <summary>WaitElement: what to wait for.</summary>
+        public WebWaitKind Until { get; set; }
+
+        /// <summary>Drag: the selector of the element to drop on (same Frame as the dragged element).</summary>
+        [DataMember(Order = 19)] public string TargetSelector { get; set; } = "";
+
+        /// <summary>Screenshot: the whole page, not only what is visible (used when no Selector is given).</summary>
+        [DataMember(Order = 20, EmitDefaultValue = false)] public bool FullPage { get; set; }
+
+        [DataMember(Name = "ClickType", Order = 21)]
+        private string ClickTypeName
+        {
+            get { return ClickType.ToString(); }
+            set { ClickType = ActionNode.Parse(value, WebClickKind.Click); }
+        }
+
+        [DataMember(Name = "Until", Order = 22)]
+        private string UntilName
+        {
+            get { return Until.ToString(); }
+            set { Until = ActionNode.Parse(value, WebWaitKind.ElementAppears); }
+        }
+
         /// <summary>GetText: what to read.</summary>
         public WebGetKind Get { get; set; }
 
@@ -272,6 +298,7 @@ namespace AutomationTest.Core.Model
             Title = "";
             Attribute = "";
             Script = "";
+            TargetSelector = "";
             Id = "";
             Required = true;
             Accept = true;
@@ -292,6 +319,7 @@ namespace AutomationTest.Core.Model
             if (Title == null) Title = "";
             if (Attribute == null) Attribute = "";
             if (Script == null) Script = "";
+            if (TargetSelector == null) TargetSelector = "";
             if (Index < 0) Index = 0;
             if (Id == null) Id = "";
             // Switch Tab of the first Web version held plain text in Text: the same words, as a pattern.
