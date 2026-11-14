@@ -3137,6 +3137,7 @@ namespace AutomationTest.App
             {
                 // Windows is shutting down (possibly because of a Shutdown action): never ask, never block it.
                 _cts?.Cancel();
+                AutomationTest.Core.Excel.ExcelSession.SharedIfCreated?.Dispose(); // an Excel started hidden is not left behind
                 if (SettingsEnabled) SaveWindowSettings();
                 base.OnFormClosing(e);
                 return;
@@ -3151,6 +3152,7 @@ namespace AutomationTest.App
                 return;
             }
             _cts?.Cancel();
+            AutomationTest.Core.Excel.ExcelSession.SharedIfCreated?.Dispose(); // an Excel started hidden is not left behind
             if (SettingsEnabled) SaveWindowSettings();
             base.OnFormClosing(e);
         }
