@@ -417,7 +417,7 @@ you use Excel Close.");
 ON              the Trust Center of your Excel decides: macros run
                 only if it allows them for this file (a trusted
                 location, or a setting that enables all macros).
-                Use it only for files you trust, and for a Excel Macro.");
+                Use it only for files you trust, and for an Excel Macro.");
 
         public static readonly HelpTopic ExcelInsert = new HelpTopic("Insert / Delete rows or columns",
 @"Target   rows or columns
