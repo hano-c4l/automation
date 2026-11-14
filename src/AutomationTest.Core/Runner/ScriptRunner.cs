@@ -22,6 +22,9 @@ namespace AutomationTest.Core.Runner
         private readonly Dictionary<string, IntPtr> _windowCache = new Dictionary<string, IntPtr>();
 
         private readonly VariableStore _vars = new VariableStore();
+
+        /// <summary>The variables of the run (read by tests).</summary>
+        internal VariableStore Variables => _vars;
         private readonly KeyboardController _keyboard;
         private readonly HashSet<int> _heldKeys = new HashSet<int>();
 

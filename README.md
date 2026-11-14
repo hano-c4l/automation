@@ -21,6 +21,7 @@ Người dùng soạn một kịch bản gồm các action xếp thành cây, r�
 AutomationTest.sln
   src/AutomationTest.Core     (netstandard2.0)  model kịch bản, JSON, engine chuột phím, so khớp ảnh, biểu thức, runner, kiểm tra license
   src/AutomationTest.App      (net48 WinForms)  giao diện, overlay chọn điểm/vùng, phím nóng, ghi thao tác
+  tests/AutomationTest.Tests  (net48 console)   bộ test: `run-tests.bat` (thêm `--excel` để chạy cả test dùng Excel thật)
   tools/AutomationTest.KeyGen (net48 console)   công cụ cấp license, chỉ dành cho chủ sản phẩm, không phát hành cùng chương trình
   tools/AutomationTest.IconGen (net48 console)   vẽ lại icon: `dotnet run --project tools/AutomationTest.IconGen -- src/AutomationTest.App/app.ico`
   keys/                                      make-license.bat và khóa riêng (khóa riêng không được commit)

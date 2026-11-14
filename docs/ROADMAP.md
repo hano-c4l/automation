@@ -4,7 +4,7 @@ Tài liệu này ghi các tính năng đã được yêu cầu nhưng chưa làm
 Tình trạng hiện tại xem `docs/STATUS.md`, yêu cầu gốc và quyết định kỹ thuật xem `docs/PROJECT.md`.
 Mỗi giai đoạn là một nhánh `feature_xxx` tách từ `preview`, xong thì PR vào `preview` (quy ước git trong `CLAUDE.md`).
 
-Cập nhật lần cuối: 2026-11-15. Trạng thái: **chưa bắt đầu mục nào**.
+Cập nhật lần cuối: 2026-11-15. Trạng thái: **P0 (bộ test trong repo) đã xong phần chính**; các giai đoạn còn lại chưa bắt đầu. P0 chưa có: test cho Web (cần trình duyệt và extension), RecordConverter, overlay/hook/phím nóng và Image trên cửa sổ thật.
 
 ## 1. Danh sách yêu cầu
 
@@ -108,7 +108,7 @@ Mã R1, R2... dùng để tham chiếu trong các mục sau.
 
 | Giai đoạn | Nội dung | Vì sao đặt ở đây | Cỡ |
 |---|---|---|---|
-| P0 (đề xuất) | Đưa bộ test vào repo (`tests/`): biểu thức, runner, vòng nạp/lưu editor, thư mục tạm, Excel ẩn riêng | Mọi giai đoạn sau đều cần test; hiện test nằm ở thư mục tạm của phiên và mất đi | M |
+| P0 (**xong phần chính**) | Đưa bộ test vào repo (`tests/`): biểu thức, runner, vòng nạp/lưu editor, thư mục tạm, Excel ẩn riêng | Mọi giai đoạn sau đều cần test; trước đây test nằm ở thư mục tạm của phiên và mất đi | M |
 | P1 | R1 Try/Catch/Break/Continue/Return + R14 Section | Nền cho cây và runner; Return cần cho Auto Script | L |
 | P2 | R2 Log, R3 Message, R4 Random Time (hộp Settings) | Log nên ghi được Try/Catch từ đầu; ba ô cùng một hộp | M |
 | P3 | R6 Clipboard, R15 Password, R7 nhớ giá trị Start Selected | Nhỏ, độc lập, Password cần có trước API/Email/Auto Script | M |

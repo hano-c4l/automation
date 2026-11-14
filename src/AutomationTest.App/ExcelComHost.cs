@@ -587,6 +587,7 @@ namespace AutomationTest.App
                 _host.Com(() =>
                 {
                     Sheet.Parent.Activate(); // the sheet may belong to a workbook that is not the active one
+                    try { Sheet.Parent.Windows[1].Activate(); } catch (COMException) { /* a workbook without a window */ }
                     Sheet.Activate();
                     Sheet.Range[area].Select();
                 });
