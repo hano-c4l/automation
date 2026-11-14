@@ -21,6 +21,8 @@ namespace AutomationTest.Core.Web
 
   function esc(s) { return (window.CSS && CSS.escape) ? CSS.escape(s) : s.replace(/[^\w-]/g, '\\$&'); }
   function unique(doc, sel) { try { return doc.querySelectorAll(sel).length === 1; } catch (e) { return false; } }
+  // The document or shadow root an element belongs to (queries run there).
+  function rootOf(el) { var r = el.getRootNode(); return r && r.nodeType === 11 ? r : el.ownerDocument; }
   // Ids made by frameworks (long digit runs, hashes) change between visits: do not rely on them.
   function stableId(id) { return !!id && !/\d{4,}/.test(id) && !/[0-9a-f]{8,}/i.test(id) && !/^(:r|ember|react|radix|mui-)/i.test(id); }
   function textCount(doc, t) {
@@ -32,8 +34,15 @@ namespace AutomationTest.Core.Web
     return hits.filter(function (e) { return !hits.some(function (o) { return o !== e && e.contains(o); }); }).length;
   }
 
+  // For an element inside a shadow root: the selector of its host, then >>> , then the selector inside the root.
   function selectorFor(el) {
-    var doc = el.ownerDocument, tag = el.tagName.toLowerCase(), s;
+    var root = el.getRootNode();
+    if (root && root.nodeType === 11 && root.host) return selectorFor(root.host) + ' >>> ' + selectorIn(el);
+    return selectorIn(el);
+  }
+
+  function selectorIn(el) {
+    var doc = rootOf(el), tag = el.tagName.toLowerCase(), s;
     if (stableId(el.id) && unique(doc, '#' + esc(el.id))) return '#' + esc(el.id);
     var attrs = ['data-testid', 'data-test', 'data-qa', 'data-cy', 'name', 'aria-label', 'placeholder', 'title', 'alt'];
     for (var i = 0; i < attrs.length; i++) {
@@ -45,7 +54,7 @@ namespace AutomationTest.Core.Web
     }
     var label = (el.innerText || el.value || '').trim();
     var clickable = /^(button|a|label|summary)$/.test(tag) || el.getAttribute('role') === 'button';
-    if (clickable && label && label.length <= 40 && label.indexOf('\n') < 0 && textCount(doc, label) === 1) return 'text=' + label;
+    if (clickable && label && label.length <= 40 && label.indexOf('\n') < 0 && doc.nodeType === 9 && textCount(doc, label) === 1) return 'text=' + label;
     var parts = [], cur = el;
     while (cur && cur.nodeType === 1 && cur !== doc.documentElement) {
       var part = cur.tagName.toLowerCase();
@@ -66,8 +75,8 @@ namespace AutomationTest.Core.Web
   }
 
   // Which of the elements that match the selector this one is (1 = the first), as the actions count them.
-  function matchIndex(el, sel) {
-    var doc = el.ownerDocument, list;
+  function matchIndex(el, full) {
+    var doc = rootOf(el), list, sel = full.split('>>>').pop().trim();
     try {
       if (sel.indexOf('text=') === 0) {
         var want = sel.slice(5).trim().toLowerCase();
@@ -96,9 +105,15 @@ namespace AutomationTest.Core.Web
     return [ox, oy];
   }
 
+  // The element under the mouse, also inside an open shadow root (the event is retargeted to the host outside it).
+  function pathTarget(e) {
+    var path = e.composedPath ? e.composedPath() : [];
+    return path.length > 0 && path[0].nodeType === 1 ? path[0] : e.target;
+  }
+
   var hooked = [];
   function onMove(e) {
-    var el = e.target;
+    var el = pathTarget(e);
     if (!el || el.nodeType !== 1) return;
     var r = el.getBoundingClientRect(), o = offsetOf(el);
     box.style.display = 'block';
@@ -108,7 +123,7 @@ namespace AutomationTest.Core.Web
   function swallow(e) { e.preventDefault(); e.stopPropagation(); }
   function onClick(e) {
     swallow(e);
-    var el = e.target;
+    var el = pathTarget(e);
     if (!el || el.nodeType !== 1) return;
     var sel = selectorFor(el);
     top.__atPick = JSON.stringify({ selector: sel, frame: framePath(el), index: matchIndex(el, sel) });

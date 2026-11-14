@@ -119,7 +119,9 @@ async function run(cmd, args) {
     case "cdp": {
       // args: { tabId, method, params }
       await ensureAttached(args.tabId);
-      return await chrome.debugger.sendCommand({ tabId: args.tabId }, args.method, args.params || {});
+      // sessionId: a frame of another site (or any child target) that the tab has attached.
+      const target = args.sessionId ? { tabId: args.tabId, sessionId: args.sessionId } : { tabId: args.tabId };
+      return await chrome.debugger.sendCommand(target, args.method, args.params || {});
     }
     default:
       throw new Error("Unknown command: " + cmd);
@@ -127,7 +129,7 @@ async function run(cmd, args) {
 }
 
 chrome.debugger.onEvent.addListener((source, method, params) => {
-  send({ event: "cdp", tabId: source.tabId, method, params });
+  send({ event: "cdp", tabId: source.tabId, sessionId: source.sessionId || "", method, params });
 });
 chrome.debugger.onDetach.addListener((source) => attached.delete(source.tabId));
 chrome.tabs.onRemoved.addListener((tabId) => attached.delete(tabId));
