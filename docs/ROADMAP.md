@@ -4,13 +4,13 @@ Tài liệu này ghi các tính năng đã được yêu cầu nhưng chưa làm
 Tình trạng hiện tại xem `docs/STATUS.md`, yêu cầu gốc và quyết định kỹ thuật xem `docs/PROJECT.md`.
 Mỗi giai đoạn là một nhánh `feature_xxx` tách từ `preview`, xong thì PR vào `preview` (quy ước git trong `CLAUDE.md`).
 
-Cập nhật lần cuối: 2026-11-15. Trạng thái: **P0 (bộ test trong repo) đã xong phần chính**; các giai đoạn còn lại chưa bắt đầu. P0 chưa có: test cho Web (cần trình duyệt và extension), RecordConverter, overlay/hook/phím nóng và Image trên cửa sổ thật.
+Cập nhật lần cuối: 2026-11-15. Trạng thái: **P0 (bộ test trong repo) đã xong phần chính; P1 (R1 và R14: Try/Catch/Break/Continue/Return và Section) đã xong**; các giai đoạn còn lại chưa bắt đầu. P0 chưa có: test cho Web (cần trình duyệt và extension), RecordConverter, overlay/hook/phím nóng và Image trên cửa sổ thật.
 
 ## 1. Danh sách yêu cầu
 
 Mã R1, R2... dùng để tham chiếu trong các mục sau.
 
-### R1. Try / Catch / Break / Continue / Return (Control)
+### R1. Try / Catch / Break / Continue / Return (Control) – đã làm (P1)
 - **Try** là action chứa con, kèm một nhánh **Catch** ở cuối (cùng kiểu cấu trúc với Condition và Else: nhánh Catch nằm trong Try, không Add trực tiếp vào Try). Lỗi của một action trong Try thì phần còn lại của Try bị bỏ qua và nhánh Catch chạy. Catch có ô ID tùy chọn: biến nhận thông báo lỗi dạng chuỗi.
 - **Break** thoát Loop gần nhất, **Continue** sang vòng kế tiếp của Loop gần nhất, **Return** dừng kịch bản hiện tại (kịch bản chính thì kết thúc lần chạy, kịch bản con của Auto Script thì trở về chỗ gọi). Editor từ chối Break/Continue nằm ngoài Loop.
 - Stop (phím dừng), hủy lần chạy, lệnh tắt máy và các tín hiệu Break/Continue/Return **không** bị Try bắt. **Mọi lỗi khác** của action đều vào Catch, không chỉ `InvalidOperationException`: `WindowLocator` ném `ArgumentException`, còn COM, hết thời gian và lỗi Win32 cũng có thể thoát ra ngoài; nếu chỉ bắt một loại lỗi thì Try mất tác dụng.
@@ -18,7 +18,7 @@ Mã R1, R2... dùng để tham chiếu trong các mục sau.
 - Ảnh hưởng: quy tắc cây (Add/In/Out/Up/Down với Try và Catch giống Condition), cột Time (Try lấy nhánh Try, bỏ qua Catch), Start Selected, Details, Help.
 - **Tương thích:** kiểu Control lạ mà bản cũ không biết bị đọc thành **Loop** với số lần mặc định là 1 (không phải vô hạn). Hậu quả với bản cũ: Section chạy các con một lần (vô tình đúng); Try chạy các con một lần rồi **nhánh Catch cũng chạy vô điều kiện** vì nó cũng thành một Loop; Break/Continue/Return không làm gì. Ghi vào mục cảnh báo bản cũ.
 
-### R14. Section (Control)
+### R14. Section (Control) – đã làm (P1)
 - Action chứa con, không tự làm gì, có Name và State. Chạy = chạy các con một lần. State OFF thì bỏ qua cả nhóm. Cột Time của Section = tổng Time + Delay của các con đang bật, tính như Loop một lượt (`ActionTiming`).
 - Break/Continue/Return đi xuyên qua Section (Section không phải vòng lặp). Có thể thu gọn/mở rộng như các action cha khác.
 - Cùng giai đoạn với R1 vì cùng đụng quy tắc cây và runner.
@@ -109,7 +109,7 @@ Mã R1, R2... dùng để tham chiếu trong các mục sau.
 | Giai đoạn | Nội dung | Vì sao đặt ở đây | Cỡ |
 |---|---|---|---|
 | P0 (**xong phần chính**) | Đưa bộ test vào repo (`tests/`): biểu thức, runner, vòng nạp/lưu editor, thư mục tạm, Excel ẩn riêng | Mọi giai đoạn sau đều cần test; trước đây test nằm ở thư mục tạm của phiên và mất đi | M |
-| P1 | R1 Try/Catch/Break/Continue/Return + R14 Section | Nền cho cây và runner; Return cần cho Auto Script | L |
+| P1 (**xong**) | R1 Try/Catch/Break/Continue/Return + R14 Section | Nền cho cây và runner; Return cần cho Auto Script | L |
 | P2 | R2 Log, R3 Message, R4 Random Time (hộp Settings) | Log nên ghi được Try/Catch từ đầu; ba ô cùng một hộp | M |
 | P3 | R6 Clipboard, R15 Password, R7 nhớ giá trị Start Selected | Nhỏ, độc lập, Password cần có trước API/Email/Auto Script | M |
 | P4 | R13 copy/paste, kéo thả, (Undo/Redo) | Sau P1 để quy tắc cây (Try, Section) đã chốt | L |

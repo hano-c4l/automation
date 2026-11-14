@@ -246,6 +246,22 @@ the keyboard action when a specific program must receive them.
 
 Can be given in milliseconds, seconds, minutes or hours.");
 
+        public static readonly HelpTopic CatchId = new HelpTopic("Error ID (Catch)",
+@"Try runs the actions inside it. When one of them fails, the
+rest of the Try is skipped and the actions inside the Catch line
+at its end run, and the run goes on after the Try.
+
+If you give an ID here, the message of the error is stored in that
+variable (a String), so you can use it: {error}.
+
+Stopping the script with the Stop key is not an error, and the
+Catch does not run. A disabled Catch means errors are not caught.
+An error inside the Catch itself stops the run (or is caught by
+a Try around this one).
+
+Break, Continue and Return inside a Try work as everywhere else:
+they leave the Try and do not count as an error.");
+
         public static readonly HelpTopic CommandId = new HelpTopic("ID (File/Folder)",
 @"The variable that receives the result:
 

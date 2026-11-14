@@ -266,6 +266,7 @@ namespace AutomationTest.App
 
         // Editor: condition / case
         private readonly TextBox _caseExpr = new TextBox { Width = 200 };
+        private readonly HintTextBox _catchId = new HintTextBox { Width = 200, Placeholder = "Variable ID for the error (optional)" };
 
         // Editor: where positions and text come from
         private readonly ComboBox _posSource = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 120, Items = { "Input", "Variable" } };
@@ -303,6 +304,7 @@ namespace AutomationTest.App
             _varDateTime.Value = DateTime.Now;
             _controlKind.Items.Remove(ControlKind.Else); // the else line is created with its Condition, never added by hand
             _controlKind.Items.Remove(ControlKind.Case); // Case is offered only while a line of a Condition is selected
+            _controlKind.Items.Remove(ControlKind.Catch); // the catch line is created with its Try; it is offered only while it is selected
             _posSource.SelectedIndex = 0;
             _category.SelectedItem = ActionCategory.Mouse; // the editor starts on Mouse
             _kbSource.SelectedIndex = 0;
@@ -576,6 +578,7 @@ namespace AutomationTest.App
             AddRow(controlTable, "Position (px)", new Control[] { _varX, _varY }, Help.PositionPick, null, _varPickPos);
             AddRow(controlTable, "Size (px)", new Control[] { _varW, _varH }, null, null, _varPickRange);
             AddRow(controlTable, "Condition", _caseExpr, Help.ExpressionCase);
+            AddRow(controlTable, "Error ID", _catchId, Help.CatchId);
             _controlBox.Controls.Add(controlTable);
 
             // Extra space above the first row of a new group, so related rows read together.
@@ -924,6 +927,7 @@ namespace AutomationTest.App
 
             // Condition and case
             SetRowVisible(_caseExpr, caseKind || condition);
+            SetRowVisible(_catchId, controlKind == ControlKind.Catch);
         }
 
         /// <summary>Scroll actions always use the middle button; the other actions allow all three.</summary>
@@ -1097,6 +1101,16 @@ namespace AutomationTest.App
                             return created;
                         case ControlKind.Case:
                             return ActionNode.NewCase(new CaseSettings { Expression = _caseExpr.Text.Trim() });
+                        case ControlKind.Try:
+                            return ActionNode.NewTry();
+                        case ControlKind.Catch:
+                            return ActionNode.NewCatch(new CatchSettings { Id = _catchId.Text.Trim() });
+                        case ControlKind.Section:
+                            return ActionNode.NewSection();
+                        case ControlKind.Break:
+                        case ControlKind.Continue:
+                        case ControlKind.Return:
+                            return ActionNode.NewJump((ControlKind)_controlKind.SelectedItem);
                         case ControlKind.Wait:
                             return ActionNode.NewWait(new WaitSettings
                             {
@@ -1346,6 +1360,9 @@ namespace AutomationTest.App
                         case ControlKind.Case:
                             _caseExpr.Text = node.Case.Expression;
                             break;
+                        case ControlKind.Catch:
+                            _catchId.Text = node.Catch.Id;
+                            break;
                         case ControlKind.Wait:
                             var w = node.Wait;
                             _waitProcessName.Text = w.Process.ProcessName ?? "";
@@ -1433,6 +1450,16 @@ namespace AutomationTest.App
         /// <summary>Offers Action = Case only while a line inside a Condition is selected.</summary>
         private void RefreshControlKinds()
         {
+            bool catchSelected = _list.SelectedIndices.Count == 1 && !_rows[_list.SelectedIndices[0]].IsEnd && _rows[_list.SelectedIndices[0]].Node.IsKind(ControlKind.Catch);
+            bool hasCatch = _controlKind.Items.Contains(ControlKind.Catch);
+            if (catchSelected && !hasCatch) _controlKind.Items.Add(ControlKind.Catch);
+            else if (!catchSelected && hasCatch)
+            {
+                bool wasCatch = _controlKind.SelectedItem is ControlKind c && c == ControlKind.Catch;
+                _controlKind.Items.Remove(ControlKind.Catch);
+                if (wasCatch) _controlKind.SelectedIndex = 0;
+            }
+
             bool allow = ConditionScopeNode() != null;
             bool has = _controlKind.Items.Contains(ControlKind.Case);
             if (allow == has) return;
@@ -1483,7 +1510,36 @@ namespace AutomationTest.App
 
         private static bool IsBranch(ActionNode node)
         {
-            return node.IsKind(ControlKind.Case) || node.IsKind(ControlKind.Else);
+            return node.IsKind(ControlKind.Case) || node.IsKind(ControlKind.Else) || node.IsKind(ControlKind.Catch);
+        }
+
+        /// <summary>The lines that always stay last in their list: the else of a Condition and the catch of a Try.</summary>
+        private static bool IsTail(ActionNode node)
+        {
+            return node.IsKind(ControlKind.Else) || node.IsKind(ControlKind.Catch);
+        }
+
+        /// <summary>Puts the actions at the end of a container; in a Try that is just before its catch line.</summary>
+        private static void AddInside(ActionNode container, IEnumerable<ActionNode> nodes)
+        {
+            if (container.IsKind(ControlKind.Try) && container.Children.Count > 0 && container.Children[container.Children.Count - 1].IsKind(ControlKind.Catch))
+                container.Children.InsertRange(container.Children.Count - 1, nodes);
+            else container.Children.AddRange(nodes);
+        }
+
+        /// <summary>The Time column of a Try or a Section: what the actions inside take once (the catch line is not counted).</summary>
+        private static string TryTime(ActionNode node)
+        {
+            long? pass = ActionTiming.PerIterationMs(node);
+            return !pass.HasValue ? "?" : node.Children.Exists(c => !c.Disabled && !c.IsKind(ControlKind.Catch)) ? TimeBox.FormatApprox(pass.Value) : "";
+        }
+
+        /// <summary>True when a new action put inside this container (null = the top level) would be inside a Loop.</summary>
+        private bool InsideLoop(ActionNode container)
+        {
+            for (var n = container; n != null; n = ParentOf(n))
+                if (n.IsKind(ControlKind.Loop)) return true;
+            return false;
         }
 
         /// <summary>
@@ -1496,6 +1552,14 @@ namespace AutomationTest.App
             string problem = Validate(node);
             if (problem != null) { SetStatus(problem); return; }
             var selected = SelectedRows();
+
+            if (node.IsKind(ControlKind.Catch)) { SetStatus("A Catch is made together with its Try: add a Try instead."); return; }
+            if (node.IsKind(ControlKind.Break) || node.IsKind(ControlKind.Continue))
+            {
+                // Where the action would go: inside the selected container, or next to the selected action, or at the top.
+                ActionNode where = selected.Count == 1 && selected[0].Node.IsContainer ? selected[0].Node : selected.Count > 0 ? selected[selected.Count - 1].Parent : null;
+                if (!InsideLoop(where)) { SetStatus((node.IsKind(ControlKind.Break) ? "Break" : "Continue") + " only works inside a Loop: select the Loop (or an action inside it) first."); return; }
+            }
 
             if (node.IsKind(ControlKind.Case))
             {
@@ -1511,11 +1575,11 @@ namespace AutomationTest.App
                 return;
             }
             else if (selected.Count == 1 && selected[0].Node.IsContainer)
-                selected[0].Node.Children.Add(node);
+                AddInside(selected[0].Node, new[] { node });
             else if (selected.Count > 0)
             {
                 var last = selected[selected.Count - 1];
-                if (IsBranch(last.Node)) { SetStatus("Select a single case or else to add an action inside it."); return; }
+                if (IsBranch(last.Node)) { SetStatus("Select a single case, else or catch to add an action inside it."); return; }
                 last.Siblings.Insert(last.Siblings.IndexOf(last.Node) + 1, node);
             }
             else
@@ -1855,6 +1919,11 @@ namespace AutomationTest.App
                             if (string.IsNullOrWhiteSpace(node.Case.Expression)) return "Enter the condition, for example {abc} > 3.";
                             Expression.CheckSyntax(node.Case.Expression);
                         }
+                        else if (node.IsKind(ControlKind.Catch))
+                        {
+                            if (node.Catch.Id.Length > 0 && !Expression.IsValidId(node.Catch.Id))
+                                return "The ID may have letters, digits and _, not starting with a digit (and not true, false, now, today); or leave it empty.";
+                        }
                         break;
                 }
             }
@@ -1879,9 +1948,16 @@ namespace AutomationTest.App
             if (problem != null) { SetStatus(problem); return; }
             // A Condition and its Cases keep their structure: they cannot turn into something else or be created by Update.
             if (row.Node.IsKind(ControlKind.Condition) != edited.IsKind(ControlKind.Condition)
-                || row.Node.IsKind(ControlKind.Case) != edited.IsKind(ControlKind.Case))
+                || row.Node.IsKind(ControlKind.Case) != edited.IsKind(ControlKind.Case)
+                || row.Node.IsKind(ControlKind.Try) != edited.IsKind(ControlKind.Try)
+                || row.Node.IsKind(ControlKind.Catch) != edited.IsKind(ControlKind.Catch))
             {
-                SetStatus("A Condition or a Case cannot be changed into another type (and nothing can be changed into one); add a new action instead.");
+                SetStatus("A Condition, Case, Try or Catch cannot be changed into another type (and nothing can be changed into one); add a new action instead.");
+                return;
+            }
+            if ((edited.IsKind(ControlKind.Break) || edited.IsKind(ControlKind.Continue)) && !InsideLoop(row.Parent))
+            {
+                SetStatus((edited.IsKind(ControlKind.Break) ? "Break" : "Continue") + " only works inside a Loop.");
                 return;
             }
             if (!edited.IsContainer && row.Node.Children.Count > 0)
@@ -1930,6 +2006,7 @@ namespace AutomationTest.App
             {
                 if (AncestorSelected(row)) continue; // goes away with its Condition
                 if (row.Node.IsKind(ControlKind.Else)) { SetStatus("The else line cannot be deleted."); return; }
+                if (row.Node.IsKind(ControlKind.Catch)) { SetStatus("The catch line cannot be deleted; delete the whole Try instead."); return; }
                 if (row.Node.IsKind(ControlKind.Case) && !row.Siblings.Any(c => c.IsKind(ControlKind.Case) && !nodes.Contains(c)))
                 {
                     SetStatus("A Condition needs at least one case; delete the whole Condition instead.");
@@ -1951,7 +2028,7 @@ namespace AutomationTest.App
             var selected = SelectedRows();
             if (selected.Count == 0) return;
             if (!SameList(selected)) { SetStatus("Select actions that are in the same list to move them."); return; }
-            if (selected.Any(r => r.Node.IsKind(ControlKind.Else))) { SetStatus("The else line always stays last."); return; }
+            if (selected.Any(r => IsTail(r.Node))) { SetStatus("The else and catch lines always stay last."); return; }
 
             var list = selected[0].Siblings;
             var picked = new HashSet<ActionNode>(selected.Select(r => r.Node));
@@ -1961,7 +2038,7 @@ namespace AutomationTest.App
             {
                 int target = i + delta;
                 // Blocked at the edge, by a neighbour that is selected too, or by an else (which stays last).
-                if (target < 0 || target >= list.Count || picked.Contains(list[target]) || list[target].IsKind(ControlKind.Else)) continue;
+                if (target < 0 || target >= list.Count || picked.Contains(list[target]) || IsTail(list[target])) continue;
                 var node = list[i];
                 list[i] = list[target];
                 list[target] = node;
@@ -1975,13 +2052,13 @@ namespace AutomationTest.App
             var selected = SelectedRows();
             if (selected.Count == 0) return;
             if (!SameList(selected)) { SetStatus("Select actions that are in the same list to move them."); return; }
-            if (selected.Any(r => r.Node.IsKind(ControlKind.Else))) { SetStatus("The else line always stays last."); return; }
+            if (selected.Any(r => IsTail(r.Node))) { SetStatus("The else and catch lines always stay last."); return; }
 
             var list = selected[0].Siblings;
             var picked = new HashSet<ActionNode>(selected.Select(r => r.Node));
             var moving = list.Where(picked.Contains).ToList();
             var rest = list.Where(n => !picked.Contains(n)).ToList();
-            var last = rest.LastOrDefault(n => n.IsKind(ControlKind.Else)); // the else of a Condition stays at the end
+            var last = rest.LastOrDefault(IsTail); // the else of a Condition and the catch of a Try stay at the end
             if (last != null) rest.Remove(last);
             var order = top ? moving.Concat(rest).ToList() : rest.Concat(moving).ToList();
             if (last != null) order.Add(last);
@@ -2019,7 +2096,7 @@ namespace AutomationTest.App
             var selected = SelectedRows();
             if (selected.Count == 0) return;
             if (!SameList(selected)) { SetStatus("Select actions that are in the same list to move them."); return; }
-            if (selected.Any(r => IsBranch(r.Node))) { SetStatus("Cases and else stay inside their Condition."); return; }
+            if (selected.Any(r => IsBranch(r.Node))) { SetStatus("Cases, else and catch lines stay inside their Condition or Try."); return; }
 
             var list = selected[0].Siblings;
             var picked = new HashSet<ActionNode>(selected.Select(r => r.Node));
@@ -2038,12 +2115,12 @@ namespace AutomationTest.App
             }
             if (container == null || !container.IsContainer)
             {
-                SetStatus("In: the action right before the selection must be a Loop, Wait or Image.");
+                SetStatus("In: the action right before the selection must be a Loop, Wait, Image, Try or Section.");
                 return;
             }
             var moving = list.Where(picked.Contains).ToList();
             foreach (var node in moving) list.Remove(node);
-            container.Children.AddRange(moving);
+            AddInside(container, moving);
             RefreshList(picked);
         }
 
@@ -2053,7 +2130,7 @@ namespace AutomationTest.App
             var selected = SelectedRows();
             if (selected.Count == 0) return;
             if (!SameList(selected)) { SetStatus("Select actions that are in the same list to move them."); return; }
-            if (selected.Any(r => IsBranch(r.Node))) { SetStatus("Cases and else stay inside their Condition."); return; }
+            if (selected.Any(r => IsBranch(r.Node))) { SetStatus("Cases, else and catch lines stay inside their Condition or Try."); return; }
             var parent = selected[0].Parent;
             if (parent == null) { SetStatus("Out: the selected actions are already at the top level."); return; }
 
@@ -2473,6 +2550,22 @@ namespace AutomationTest.App
                             action = "Else";
                             name = "else";
                             break;
+                        case ControlKind.Try:
+                            action = "Try";
+                            time = TryTime(n);
+                            break;
+                        case ControlKind.Catch:
+                            action = "Catch";
+                            name = string.IsNullOrWhiteSpace(n.Name) ? "catch" : n.Name;
+                            details = string.IsNullOrWhiteSpace(n.Catch.Id) ? "" : "error -> " + n.Catch.Id;
+                            break;
+                        case ControlKind.Section:
+                            action = "Section";
+                            time = TryTime(n);
+                            break;
+                        case ControlKind.Break: action = "Break"; details = "leave the loop"; break;
+                        case ControlKind.Continue: action = "Continue"; details = "next pass of the loop"; break;
+                        case ControlKind.Return: action = "Return"; details = "end the script"; break;
                         default:
                             action = "Loop";
                             switch (n.Loop.Mode)
@@ -3283,7 +3376,7 @@ namespace AutomationTest.App
             var list = FindListOrNull(last.Node);
             if (list == null) { _script.Actions.AddRange(nodes); return; } // the selection no longer exists
             if (selected.Count == 1 && last.Node.IsContainer && !last.Node.IsKind(ControlKind.Condition))
-                last.Node.Children.AddRange(nodes);
+                AddInside(last.Node, nodes);
             else
                 list.InsertRange(list.IndexOf(last.Node) + 1, nodes);
         }
@@ -3376,7 +3469,7 @@ namespace AutomationTest.App
             // keeps its own state, so a disabled action inside a chosen Loop is still skipped.
             var chosen = new HashSet<ActionNode>(rows.Select(r => r.Node));
             var nodes = plan.RunNodes.Select(n => { var copy = n.Clone(); if (chosen.Contains(n)) copy.Disabled = false; return copy; }).ToList();
-            await RunAsync((runner, token) => runner.Run(nodes, values, token), RunKind.Selected);
+            await RunAsync((runner, token) => runner.Run(nodes, values, token, partial: true), RunKind.Selected);
         }
 
         /// <summary>Runs something on the script runner in the background with the status messages, locking the window meanwhile.</summary>

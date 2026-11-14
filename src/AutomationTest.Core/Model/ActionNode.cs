@@ -638,6 +638,30 @@ namespace AutomationTest.Core.Model
         }
     }
 
+    /// <summary>Settings of a Catch (the last line of a Try).</summary>
+    [DataContract]
+    public sealed class CatchSettings
+    {
+        /// <summary>Optional: the variable that receives the message of the error (a String).</summary>
+        [DataMember(Order = 1)] public string Id { get; set; } = "";
+
+        [OnDeserializing]
+        private void SetDefaults(StreamingContext context)
+        {
+            Id = "";
+        }
+
+        public CatchSettings Clone()
+        {
+            return (CatchSettings)MemberwiseClone();
+        }
+
+        internal void Normalize()
+        {
+            if (Id == null) Id = "";
+        }
+    }
+
     /// <summary>Settings of a Case (one branch of a Condition).</summary>
     [DataContract]
     public sealed class CaseSettings
@@ -704,6 +728,7 @@ namespace AutomationTest.Core.Model
         [DataMember(Order = 11, EmitDefaultValue = false)] public CaseSettings Case { get; set; }
         [DataMember(Order = 12, EmitDefaultValue = false)] public WebSettings Web { get; set; }
         [DataMember(Order = 13, EmitDefaultValue = false)] public ExcelSettings Excel { get; set; }
+        [DataMember(Order = 14, EmitDefaultValue = false)] public CatchSettings Catch { get; set; }
 
         public List<ActionNode> Children { get; set; } = new List<ActionNode>();
 
@@ -713,8 +738,14 @@ namespace AutomationTest.Core.Model
             {
                 if (Category == ActionCategory.Web) return Web != null && (Web.Kind == WebKind.NewTab || Web.Kind == WebKind.SwitchTab);
                 if (Category == ActionCategory.Excel) return Excel != null && (Excel.Kind == ExcelKind.Workbook || Excel.Kind == ExcelKind.SelectSheet || Excel.Kind == ExcelKind.Find);
-                return Category == ActionCategory.Control && Control != ControlKind.Variable;
+                return Category == ActionCategory.Control && Control != ControlKind.Variable && !IsJump;
             }
+        }
+
+        /// <summary>Break, Continue and Return: actions that only change where the run goes next, with nothing inside them.</summary>
+        public bool IsJump
+        {
+            get { return Category == ActionCategory.Control && (Control == ControlKind.Break || Control == ControlKind.Continue || Control == ControlKind.Return); }
         }
 
         public bool IsKind(ControlKind kind)
@@ -776,6 +807,30 @@ namespace AutomationTest.Core.Model
             return node;
         }
 
+        /// <summary>A Try always ends with its Catch.</summary>
+        public static ActionNode NewTry()
+        {
+            var node = new ActionNode { Category = ActionCategory.Control, Control = ControlKind.Try };
+            node.Children.Add(NewCatch(null));
+            return node;
+        }
+
+        public static ActionNode NewCatch(CatchSettings settings)
+        {
+            return new ActionNode { Category = ActionCategory.Control, Control = ControlKind.Catch, Catch = settings ?? new CatchSettings() };
+        }
+
+        public static ActionNode NewSection()
+        {
+            return new ActionNode { Category = ActionCategory.Control, Control = ControlKind.Section };
+        }
+
+        /// <summary>Break, Continue or Return.</summary>
+        public static ActionNode NewJump(ControlKind kind)
+        {
+            return new ActionNode { Category = ActionCategory.Control, Control = kind };
+        }
+
         public static ActionNode NewImage(ImageSettings settings)
         {
             return new ActionNode { Category = ActionCategory.Control, Control = ControlKind.Image, Image = settings ?? new ImageSettings() };
@@ -834,6 +889,7 @@ namespace AutomationTest.Core.Model
             copy.Image = Image?.Clone();
             copy.Variable = Variable?.Clone();
             copy.Case = Case?.Clone();
+            copy.Catch = Catch?.Clone();
             copy.Children = Children.Select(c => c.Clone()).ToList();
             return copy;
         }
@@ -853,6 +909,21 @@ namespace AutomationTest.Core.Model
             Children = new List<ActionNode>(cases) { otherwise };
         }
 
+        /// <summary>Keeps a Try valid: its own actions, then exactly one Catch as the last line.</summary>
+        private void RepairTry()
+        {
+            var body = new List<ActionNode>();
+            ActionNode handler = null;
+            foreach (var child in Children)
+            {
+                if (child.IsKind(ControlKind.Catch)) { if (handler == null) handler = child; }
+                else body.Add(child);
+            }
+            if (handler == null) handler = NewCatch(null);
+            body.Add(handler);
+            Children = body;
+        }
+
         /// <summary>Repairs values that a hand-edited file may have left invalid, and keeps only the sub-object that applies.</summary>
         internal void Normalize()
         {
@@ -869,12 +940,14 @@ namespace AutomationTest.Core.Model
             var image = Category == ActionCategory.Control && Control == ControlKind.Image ? (Image ?? new ImageSettings()) : null;
             var variable = Category == ActionCategory.Control && Control == ControlKind.Variable ? (Variable ?? new VariableSettings()) : null;
             var caseSettings = Category == ActionCategory.Control && Control == ControlKind.Case ? (Case ?? new CaseSettings()) : null;
-            Mouse = mouse; Keyboard = keyboard; Command = command; Web = web; Excel = excel; Loop = loop; Wait = wait; Image = image; Variable = variable; Case = caseSettings;
+            var catchSettings = Category == ActionCategory.Control && Control == ControlKind.Catch ? (Catch ?? new CatchSettings()) : null;
+            Mouse = mouse; Keyboard = keyboard; Command = command; Web = web; Excel = excel; Loop = loop; Wait = wait; Image = image; Variable = variable; Case = caseSettings; Catch = catchSettings;
             mouse?.Normalize(); keyboard?.Normalize(); command?.Normalize(); web?.Normalize(); excel?.Normalize(); loop?.Normalize(); wait?.Normalize(); image?.Normalize();
-            variable?.Normalize(); caseSettings?.Normalize();
+            variable?.Normalize(); caseSettings?.Normalize(); catchSettings?.Normalize();
 
             if (!IsContainer) Children.Clear();
             if (IsKind(ControlKind.Condition)) RepairCondition();
+            if (IsKind(ControlKind.Try)) RepairTry();
             foreach (var child in Children) child.Normalize();
         }
     }
