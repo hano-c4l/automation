@@ -9,6 +9,9 @@ namespace AutomationTest.App
         [STAThread]
         private static void Main()
         {
+            // Only one copy runs at a time: a second start brings the running copy to the front and ends.
+            if (!SingleInstance.TryStart()) return;
+
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
 

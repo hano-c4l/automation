@@ -3414,6 +3414,12 @@ namespace AutomationTest.App
 
         protected override void WndProc(ref Message m)
         {
+            if (m.Msg == SingleInstance.ShowMessage && SingleInstance.ShowMessage != 0)
+            {
+                // The program was started a second time: show this window (also from the notification-area icon or the minimized state).
+                if (!_closing) ShowFromTray();
+                return;
+            }
             if (m.Msg == HotKeyNative.WM_HOTKEY)
             {
                 int id = m.WParam.ToInt32();

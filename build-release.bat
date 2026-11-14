@@ -15,6 +15,8 @@ set "OUT=%~dp0Release"
 set "KEEP=%TEMP%\AutomationTest_release_keep"
 
 echo Putting the user's files aside...
+rem A run that was stopped half way leaves the user's files in %KEEP%: put back what is missing before starting again, so they are not lost.
+if exist "%KEEP%" call :restoremissing
 if exist "%KEEP%" rmdir /s /q "%KEEP%"
 mkdir "%KEEP%\AutomationTest" "%KEEP%\AutomationKeyGen"
 if exist "%OUT%\AutomationTest\Setting.ini" copy /y "%OUT%\AutomationTest\Setting.ini" "%KEEP%\AutomationTest\" >nul
@@ -63,6 +65,14 @@ if not exist "%OUT%\AutomationKeyGen" mkdir "%OUT%\AutomationKeyGen"
 if exist "%KEEP%\AutomationTest\Setting.ini" copy /y "%KEEP%\AutomationTest\Setting.ini" "%OUT%\AutomationTest\" >nul
 if exist "%KEEP%\AutomationTest\license.lic" copy /y "%KEEP%\AutomationTest\license.lic" "%OUT%\AutomationTest\" >nul
 if exist "%KEEP%\AutomationKeyGen\license-private.key" copy /y "%KEEP%\AutomationKeyGen\license-private.key" "%OUT%\AutomationKeyGen\" >nul
+exit /b 0
+
+:restoremissing
+if not exist "%OUT%\AutomationTest" mkdir "%OUT%\AutomationTest"
+if not exist "%OUT%\AutomationKeyGen" mkdir "%OUT%\AutomationKeyGen"
+if exist "%KEEP%\AutomationTest\Setting.ini" if not exist "%OUT%\AutomationTest\Setting.ini" copy "%KEEP%\AutomationTest\Setting.ini" "%OUT%\AutomationTest\" >nul
+if exist "%KEEP%\AutomationTest\license.lic" if not exist "%OUT%\AutomationTest\license.lic" copy "%KEEP%\AutomationTest\license.lic" "%OUT%\AutomationTest\" >nul
+if exist "%KEEP%\AutomationKeyGen\license-private.key" if not exist "%OUT%\AutomationKeyGen\license-private.key" copy "%KEEP%\AutomationKeyGen\license-private.key" "%OUT%\AutomationKeyGen\" >nul
 exit /b 0
 
 :end
