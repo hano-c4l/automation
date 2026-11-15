@@ -163,7 +163,9 @@ namespace AutomationTest.Core.Model
         /// <summary>Moves the window so that its top left corner is at X, Y on the screen.</summary>
         WindowMove,
         /// <summary>Gives the window the Width and Height.</summary>
-        WindowResize
+        WindowResize,
+        /// <summary>Runs another script file as part of this one (inputs in, results out); its variables are its own.</summary>
+        AutoScript
     }
 
     /// <summary>Which category an action of <see cref="CommandKind"/> belongs to.</summary>

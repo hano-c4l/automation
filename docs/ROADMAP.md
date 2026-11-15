@@ -4,7 +4,7 @@ Tài liệu này ghi các tính năng đã được yêu cầu nhưng chưa làm
 Tình trạng hiện tại xem `docs/STATUS.md`, yêu cầu gốc và quyết định kỹ thuật xem `docs/PROJECT.md`.
 Mỗi giai đoạn là một nhánh `feature_xxx` tách từ `preview`, xong thì PR vào `preview` (quy ước git trong `CLAUDE.md`).
 
-Cập nhật lần cuối: 2026-11-15. Trạng thái: **P0 (bộ test trong repo) đã xong phần chính; P1 (R1 và R14: Try/Catch/Break/Continue/Return và Section) P2 (R2 Log, R3 Message, R4 Random Time) và P3 (R6 Clipboard, R15 Password, R7 Start Selected nhớ giá trị) P4 (R13 copy/paste, kéo thả, Undo/Redo) và P5 (R5 category Program và thao tác cửa sổ) và P6 (R10 Image thành kiểu Variable, R11 OCR) đã xong**; các giai đoạn còn lại chưa bắt đầu. P0 chưa có: test cho Web (cần trình duyệt và extension), RecordConverter, overlay/hook/phím nóng và Image trên cửa sổ thật.
+Cập nhật lần cuối: 2026-11-15. Trạng thái: **P0 (bộ test trong repo) đã xong phần chính; P1 (R1 và R14: Try/Catch/Break/Continue/Return và Section) P2 (R2 Log, R3 Message, R4 Random Time) và P3 (R6 Clipboard, R15 Password, R7 Start Selected nhớ giá trị) P4 (R13 copy/paste, kéo thả, Undo/Redo) và P5 (R5 category Program và thao tác cửa sổ) P6 (R10 Image thành kiểu Variable, R11 OCR) và P7 (R12 Auto Script) đã xong**; các giai đoạn còn lại chưa bắt đầu. P0 chưa có: test cho Web (cần trình duyệt và extension), RecordConverter, overlay/hook/phím nóng và Image trên cửa sổ thật.
 
 ## 1. Danh sách yêu cầu
 
@@ -91,7 +91,7 @@ Mã R1, R2... dùng để tham chiếu trong các mục sau.
 - Cách kết nối chưa chốt, xem mục quyết định (Outlook COM hay SMTP/IMAP).
 - Tài khoản và mật khẩu không lưu trong JSON: dùng biến Password (R15) hoặc thông tin đăng nhập có sẵn của Outlook.
 
-### R12. Utilities: Auto Script
+### R12. Utilities: Auto Script – đã làm (P7)
 - Nhóm **Auto Script** trong Utilities: chạy một kịch bản con từ file JSON đã lưu để dùng lại.
 - Trường: đường dẫn file (tương đối so với thư mục kịch bản cha được), danh sách **tham số vào** (tên = biểu thức), danh sách **biến trả về** (sao chép về kịch bản cha khi xong), cô lập biến (kịch bản con có kho biến riêng, chỉ nhận tham số vào).
 - Phiên Excel và Web (workbook, sheet, tab đang dùng) của kịch bản con: **dùng chung** với kịch bản cha (để kịch bản con làm việc trên workbook cha vừa mở); biến thì cô lập. Lỗi trong kịch bản con đi lên cha như lỗi của chính action Auto Script, nên Try của cha bắt được. Kiểm tra `Version` của file con và báo rõ khi không đọc được.
@@ -116,7 +116,7 @@ Mã R1, R2... dùng để tham chiếu trong các mục sau.
 | P4 (**xong**) | R13 copy/paste, kéo thả, (Undo/Redo) | Sau P1 để quy tắc cây (Try, Section) đã chốt | L |
 | P5 (**xong**) | R5 Category Program + thao tác cửa sổ | Tách category kéo theo chuyển đổi file | M |
 | P6 (**xong**) | R10 Image → Variable, R11 OCR | Thay đổi phá vỡ lớn nhất; OCR cần thử công cụ trước | L |
-| P7 | R12 Auto Script | Cần Return (P1), biến/Password (P3) | M |
+| P7 (**xong**) | R12 Auto Script | Cần Return (P1), biến/Password (P3) | M |
 | P8 | R8 API | Cần giá trị JSON trong biểu thức | L |
 | P9 | R9 Email | Phụ thuộc quyết định kết nối | L |
 

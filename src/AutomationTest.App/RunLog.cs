@@ -97,8 +97,8 @@ namespace AutomationTest.App
         public void Node(ActionNode node)
         {
             string path;
-            if (!_paths.TryGetValue(node, out path)) path = "?";
-            Line("Action " + path + ": " + Describe(node));
+            if (_paths.TryGetValue(node, out path)) Line("Action " + path + ": " + Describe(node));
+            else Line("Action (in an Auto Script): " + Describe(node)); // its place is in the other script, not in this one
         }
 
         /// <summary>The kind of action, and its name when it has one; never the values in its fields.</summary>

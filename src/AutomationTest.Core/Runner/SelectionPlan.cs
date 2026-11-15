@@ -80,8 +80,7 @@ namespace AutomationTest.Core.Runner
                 if (defined.Contains(name) || !needed.Add(name)) continue;
                 needs.Add(new VariableNeed { Name = name });
             }
-            string id = Defines(node);
-            if (id != null) defined.Add(id);
+            foreach (string id in DefinesAll(node)) defined.Add(id);
             foreach (var child in node.Children) Walk(child, false, defined, needed, needs);
         }
 
@@ -108,6 +107,12 @@ namespace AutomationTest.Core.Runner
             if (node.Category == ActionCategory.Utilities || node.Category == ActionCategory.Program)
             {
                 var c = node.Command;
+                if (c.Kind == CommandKind.AutoScript)
+                {
+                    var texts = new List<string> { c.ValueIsExpression ? c.Value : null };
+                    foreach (var pair in ScriptRunner.ParseScriptInputs(c.Params, out _)) texts.Add(pair.Value);
+                    return ReadsOf(texts.ToArray());
+                }
                 if (CommandKinds.IsProgram(c.Kind)) return ReadsOf(c.ValueIsExpression ? c.Value : null);
                 return ScriptRunner.CommandIsFileSystem(c.Kind) ? ReadsOf(c.ValueIsExpression ? c.Value : null, c.TargetIsExpression ? c.Target : null) : new string[0];
             }
@@ -135,6 +140,15 @@ namespace AutomationTest.Core.Runner
             if (string.IsNullOrWhiteSpace(text)) return new string[0];
             try { return Expression.ReferencedVariables(text, list); }
             catch (ExpressionException) { return new string[0]; } // a broken expression is reported when it runs
+        }
+
+        /// <summary>Everything the action sets: one variable for most actions, the returned ones for an Auto Script.</summary>
+        private static IEnumerable<string> DefinesAll(ActionNode node)
+        {
+            if ((node.Category == ActionCategory.Utilities) && node.Command.Kind == CommandKind.AutoScript)
+                return ScriptRunner.ParseScriptReturns(node.Command.Returns, out _);
+            string one = Defines(node);
+            return one == null ? new string[0] : new[] { one };
         }
 
         private static string Defines(ActionNode node)
