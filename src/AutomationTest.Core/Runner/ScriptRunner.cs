@@ -471,6 +471,26 @@ namespace AutomationTest.Core.Runner
             string id = (v.Id ?? "").Trim();
             if (!Expression.IsValidId(id))
                 throw new InvalidOperationException("Variable: \"" + v.Id + "\" is not a valid ID (letters, digits and _, not starting with a digit).");
+            if (v.Type == VariableType.Image)
+            {
+                var im = node.Image;
+                if (im == null || !im.HasImage) throw new InvalidOperationException("Variable {" + id + "}: no picture is set (Capture or load one).");
+                LocateResult found = ImageLocator.Locate(im, im.Process, token);
+                _vars.Set(id, ToImageValue(im, found));
+                if (!found.Found)
+                {
+                    string best = found.Score >= 0 ? " (best match " + (int)Math.Round(found.Score * 100) + "%, needs " + im.Accuracy + "%)" : "";
+                    Message?.Invoke("Image {" + id + "} not found" + best + ".");
+                }
+                return;
+            }
+            if (v.Type == VariableType.OCR)
+            {
+                var area = node.Image ?? new ImageSettings();
+                RawImage picture = ImageLocator.CaptureRange(area, area.Process);
+                _vars.Set(id, WindowsOcr.Recognize(picture, area.OcrLanguage));
+                return;
+            }
             if (v.Type == VariableType.Clipboard)
             {
                 if (ClipboardReader == null) throw new InvalidOperationException("Variable {" + id + "}: the clipboard cannot be read here.");

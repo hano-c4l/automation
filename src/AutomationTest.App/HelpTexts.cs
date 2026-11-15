@@ -284,6 +284,24 @@ The Automation Test program itself is never closed. If no program
 matches, Close does nothing (a note is shown, it is not an error);
 the Window actions fail with an error instead.");
 
+        public static readonly HelpTopic OcrLanguage = new HelpTopic("Language (OCR)",
+@"OCR reads the text in an area of the screen with the text
+recognition that comes with Windows 10 and 11, and stores it in the
+variable as a String. Set the area like for Image: the Process
+window, the Anchor, and a Range (Width and Height at 0 = the whole
+window, or the whole screen without a Process).
+
+Language: a tag such as vi, en-US or ja. Empty = the languages of
+your Windows profile. Windows can only read the languages that have
+OCR installed (Settings, Time and language, Language and region,
+add the language and its text recognition). If the language is not
+installed the action fails and names the ones that are.
+
+Text on a plain background, large enough to read (about 10 pixels
+or more for a letter), works best. Run the action alone with Start
+Selected to see what is read: the variable can be used in a
+Condition or typed with Keyboard Text.");
+
         public static readonly HelpTopic WindowPlace = new HelpTopic("Window Move and Resize",
 @"The window is found like the programs of Close: by its Title
 (a regular expression), the process Name, the Path of the program

@@ -166,8 +166,9 @@ namespace AutomationTest.Core.Runner
                 {
                     if (node.IsKind(ControlKind.Variable) && string.Equals(node.Variable.Id?.Trim(), need.Name, StringComparison.OrdinalIgnoreCase) && !need.Type.HasValue)
                     {
-                        need.Type = node.Variable.Type;
-                        if (!node.Variable.UseExpression)
+                        if (node.Variable.Type == VariableType.Image) need.IsImage = true; // its value is Found, Position and Size
+                        else need.Type = node.Variable.Type == VariableType.OCR ? VariableType.String : node.Variable.Type;
+                        if (!node.Variable.UseExpression && !node.Variable.HasNoStoredValue)
                         {
                             try { need.Default = node.Variable.GetLiteral(); }
                             catch (ExpressionException) { }

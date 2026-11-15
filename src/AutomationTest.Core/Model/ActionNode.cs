@@ -518,6 +518,9 @@ namespace AutomationTest.Core.Model
         /// <summary>Minimum similarity in percent (1-100) for the picture to count as found.</summary>
         [DataMember(Order = 7)] public int Accuracy { get; set; } = 90;
 
+        /// <summary>OCR: the language to read, as a tag such as vi or en-US; empty = the languages of the user's Windows profile.</summary>
+        [DataMember(Order = 12, EmitDefaultValue = false)] public string OcrLanguage { get; set; }
+
         /// <summary>Optional variable ID. The result (found or not, Position, Size) is stored there for later actions.</summary>
         [DataMember(Order = 11, EmitDefaultValue = false)] public string Id { get; set; }
 
@@ -610,7 +613,13 @@ namespace AutomationTest.Core.Model
         /// <summary>Clipboard and Password have no value of their own: whatever a hand-edited file or an old field left is dropped.</summary>
         public bool HasNoStoredValue
         {
-            get { return Type == VariableType.Clipboard || Type == VariableType.Password; }
+            get { return Type == VariableType.Clipboard || Type == VariableType.Password || Type == VariableType.Image || Type == VariableType.OCR; }
+        }
+
+        /// <summary>Image and OCR keep their settings in the Image of the action, not in the Variable.</summary>
+        public bool UsesScreenArea
+        {
+            get { return Type == VariableType.Image || Type == VariableType.OCR; }
         }
 
         /// <summary>A Password is never written to a file: this runs before every save and before the text used to tell whether a script changed.</summary>
@@ -649,7 +658,9 @@ namespace AutomationTest.Core.Model
                 case VariableType.String: return Text ?? "";
                 case VariableType.Clipboard:
                 case VariableType.Password:
-                    return ""; // the value comes from the clipboard or from the user when the script runs
+                case VariableType.Image:
+                case VariableType.OCR:
+                    return ""; // the value comes from the clipboard, the user or the screen when the script runs
                 default: return Coercion.To(Type, Text ?? "");
             }
         }
@@ -972,7 +983,8 @@ namespace AutomationTest.Core.Model
             var excel = Category == ActionCategory.Excel ? (Excel ?? new ExcelSettings()) : null;
             var loop = Category == ActionCategory.Control && Control == ControlKind.Loop ? (Loop ?? new LoopSettings()) : null;
             var wait = Category == ActionCategory.Control && Control == ControlKind.Wait ? (Wait ?? new WaitSettings()) : null;
-            var image = Category == ActionCategory.Control && Control == ControlKind.Image ? (Image ?? new ImageSettings()) : null;
+            bool screenVariable = Category == ActionCategory.Control && Control == ControlKind.Variable && Variable != null && Variable.UsesScreenArea;
+            var image = Category == ActionCategory.Control && (Control == ControlKind.Image || screenVariable) ? (Image ?? new ImageSettings()) : null;
             var variable = Category == ActionCategory.Control && Control == ControlKind.Variable ? (Variable ?? new VariableSettings()) : null;
             var caseSettings = Category == ActionCategory.Control && Control == ControlKind.Case ? (Case ?? new CaseSettings()) : null;
             var catchSettings = Category == ActionCategory.Control && Control == ControlKind.Catch ? (Catch ?? new CatchSettings()) : null;

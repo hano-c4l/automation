@@ -237,7 +237,11 @@ namespace AutomationTest.Core.Model
         /// <summary>Takes the text that is in the clipboard when the action runs (a copy: the variable does not follow the clipboard afterwards).</summary>
         Clipboard,
         /// <summary>Asked from the user when the script runs; never stored in the script file or the log.</summary>
-        Password
+        Password,
+        /// <summary>Looks for a picture on the screen; the variable holds Found, Position and Size (the settings are in the action's Image).</summary>
+        Image,
+        /// <summary>Reads the text in an area of the screen with the OCR of Windows; the variable is a String.</summary>
+        OCR
     }
 
     public enum LoopType

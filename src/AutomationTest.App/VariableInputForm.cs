@@ -95,10 +95,10 @@ namespace AutomationTest.App
         {
             var row = new Row { Name = need.Name };
             // A Clipboard variable is asked for as text here (the clipboard is read only when the script runs it).
-            var typeNames = Enum.GetValues(typeof(VariableType)).Cast<object>().Select(t => t.ToString()).Where(t => t != VariableType.Clipboard.ToString()).Concat(new[] { ImageType }).ToArray();
+            var typeNames = Enum.GetValues(typeof(VariableType)).Cast<object>().Select(t => t.ToString()).Where(t => t != VariableType.Clipboard.ToString() && t != VariableType.OCR.ToString() && t != ImageType).Concat(new[] { ImageType }).ToArray();
             row.Type = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 100, Margin = new Padding(6, 3, 6, 3) };
             row.Type.Items.AddRange(typeNames);
-            string selected = need.IsImage ? ImageType : need.Type == VariableType.Clipboard ? VariableType.String.ToString() : (need.Type ?? VariableType.Number).ToString();
+            string selected = need.IsImage ? ImageType : need.Type == VariableType.Clipboard || need.Type == VariableType.OCR ? VariableType.String.ToString() : (need.Type ?? VariableType.Number).ToString();
             row.Type.SelectedItem = selected;
 
             row.Text = new TextBox { Width = 180 };
