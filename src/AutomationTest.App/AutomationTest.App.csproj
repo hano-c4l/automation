@@ -17,5 +17,6 @@
     <ProjectReference Include="..\AutomationTest.Core\AutomationTest.Core.csproj" />
     <EmbeddedResource Include="app.ico" LogicalName="app.ico" />
     <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.Security" />
   </ItemGroup>
 </Project>
