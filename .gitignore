@@ -17,3 +17,6 @@ Setting.ini
 
 # Clean build for users (made by build-release.bat)
 /Release/
+
+# Run logs written next to the program (Settings, Log)
+Logs/

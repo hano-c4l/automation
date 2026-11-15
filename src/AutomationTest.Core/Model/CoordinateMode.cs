@@ -19,7 +19,11 @@ namespace AutomationTest.Core.Model
         /// <summary>Drives a web browser through the browser extension.</summary>
         Web,
         /// <summary>Drives Microsoft Excel (workbooks, sheets, cells).</summary>
-        Excel
+        Excel,
+        /// <summary>Opens, closes and arranges programs and their windows (the settings are those of <see cref="CommandSettings"/>).</summary>
+        Program,
+        /// <summary>Sends and reads mail through an SMTP / IMAP account (a profile).</summary>
+        Email
     }
 
     public enum WebKind
@@ -131,7 +135,93 @@ namespace AutomationTest.Core.Model
         /// <summary>Sends a harmless input event and asks Windows to stay awake, so a long run is not taken for being idle (lock, screen off, sleep).</summary>
         Active,
         /// <summary>Waits Time, then shuts the computer down.</summary>
-        Shutdown
+        Shutdown,
+        /// <summary>Closes running programs found by window title, process name, file path or process id.</summary>
+        Close,
+        // File/Folder actions: they work on a file or a folder, whichever is at the path.
+        /// <summary>Copies a file or a folder (with everything in it) to a destination.</summary>
+        FsCopy,
+        FsMove,
+        /// <summary>Gives a file or folder a new name in the same place.</summary>
+        FsRename,
+        FsDelete,
+        /// <summary>Makes a folder (and the folders above it that are missing).</summary>
+        FsCreate,
+        /// <summary>Stores true or false in a variable: is there a file or folder at the path.</summary>
+        FsExists,
+        /// <summary>Reads a text file into a variable.</summary>
+        FsRead,
+        /// <summary>Writes (or appends) text to a file.</summary>
+        FsWrite,
+        /// <summary>Lists the files and folders of a folder into a table variable.</summary>
+        FsList,
+        // Window actions (category Program): they act on the first window found (every window found with All).
+        /// <summary>Brings the window to the front.</summary>
+        WindowActivate,
+        WindowMinimize,
+        WindowMaximize,
+        /// <summary>Back to normal size after minimizing or maximizing.</summary>
+        WindowRestore,
+        /// <summary>Moves the window so that its top left corner is at X, Y on the screen.</summary>
+        WindowMove,
+        /// <summary>Gives the window the Width and Height.</summary>
+        WindowResize,
+        /// <summary>Runs another script file as part of this one (inputs in, results out); its variables are its own.</summary>
+        AutoScript,
+        // API actions: they call a web address; the answer goes to the variable of the ID.
+        ApiGet,
+        ApiPost,
+        ApiPut,
+        ApiPatch,
+        ApiDelete,
+        /// <summary>Asks only for the headers of the answer.</summary>
+        ApiHead,
+        /// <summary>Saves the answer in a file.</summary>
+        ApiDownload
+    }
+
+    /// <summary>Which category an action of <see cref="CommandKind"/> belongs to.</summary>
+    public static class CommandKinds
+    {
+        /// <summary>Open, Close and the window actions are in the category Program; the others (File/Folder, System) in Utilities.</summary>
+        public static bool IsProgram(CommandKind kind)
+        {
+            return kind == CommandKind.Open || kind == CommandKind.Close || IsWindow(kind);
+        }
+
+        public static bool IsApi(CommandKind kind)
+        {
+            return kind >= CommandKind.ApiGet && kind <= CommandKind.ApiDownload;
+        }
+
+        /// <summary>The API kinds that can send a body.</summary>
+        public static bool ApiSendsBody(CommandKind kind)
+        {
+            return kind == CommandKind.ApiPost || kind == CommandKind.ApiPut || kind == CommandKind.ApiPatch || kind == CommandKind.ApiDelete;
+        }
+
+        public static bool IsWindow(CommandKind kind)
+        {
+            return kind >= CommandKind.WindowActivate && kind <= CommandKind.WindowResize;
+        }
+
+        public static ActionCategory CategoryOf(CommandKind kind)
+        {
+            return IsProgram(kind) ? ActionCategory.Program : ActionCategory.Utilities;
+        }
+    }
+
+    /// <summary>How the Close action finds the programs to close.</summary>
+    public enum ProgramMatch
+    {
+        /// <summary>A regular expression on the title of the main window.</summary>
+        Title,
+        /// <summary>The process name, for example notepad (with or without .exe).</summary>
+        Name,
+        /// <summary>The full path of the program file.</summary>
+        Path,
+        /// <summary>The process id.</summary>
+        Id
     }
 
     public enum ControlKind
@@ -145,7 +235,19 @@ namespace AutomationTest.Core.Model
         /// <summary>One branch of a Condition; runs when its expression is true and no earlier case was.</summary>
         Case,
         /// <summary>The last branch of a Condition; runs when no case matched.</summary>
-        Else
+        Else,
+        /// <summary>Runs its actions; when one of them fails the rest are skipped and the Catch at its end runs instead of the run stopping.</summary>
+        Try,
+        /// <summary>The last line of a Try; runs when an action of the Try failed. Made together with its Try, never added by hand.</summary>
+        Catch,
+        /// <summary>Leaves the nearest Loop.</summary>
+        Break,
+        /// <summary>Goes on with the next pass of the nearest Loop.</summary>
+        Continue,
+        /// <summary>Ends the script (a script called by Auto Script: goes back to the caller).</summary>
+        Return,
+        /// <summary>Groups actions under a name. Runs the actions inside it once.</summary>
+        Section
     }
 
     public enum VariableType
@@ -156,7 +258,15 @@ namespace AutomationTest.Core.Model
         Number,
         Boolean,
         Date,
-        DateTime
+        DateTime,
+        /// <summary>Takes the text that is in the clipboard when the action runs (a copy: the variable does not follow the clipboard afterwards).</summary>
+        Clipboard,
+        /// <summary>Asked from the user when the script runs; never stored in the script file or the log.</summary>
+        Password,
+        /// <summary>Looks for a picture on the screen; the variable holds Found, Position and Size (the settings are in the action's Image).</summary>
+        Image,
+        /// <summary>Reads the text in an area of the screen with the OCR of Windows; the variable is a String.</summary>
+        OCR
     }
 
     public enum LoopType
@@ -208,7 +318,44 @@ namespace AutomationTest.Core.Model
         RunMacro,
         Save,
         CloseWorkbook,
-        CloseExcel
+        CloseExcel,
+        /// <summary>Makes a copy of a sheet, in the same workbook or another open one.</summary>
+        SheetCopy,
+        /// <summary>Moves a sheet to another place in its workbook, or into another open workbook.</summary>
+        SheetMove,
+        /// <summary>Hides or shows a sheet.</summary>
+        SheetVisible,
+        /// <summary>Hides rows or columns.</summary>
+        HideCells,
+        /// <summary>Shows hidden rows or columns again.</summary>
+        ShowCells,
+        /// <summary>Moves cells (everything in them) to another place.</summary>
+        CutCells,
+        /// <summary>Replaces text in the cells of an area.</summary>
+        ReplaceText
+    }
+
+    /// <summary>What a Range Copy pastes.</summary>
+    public enum ExcelPasteKind
+    {
+        /// <summary>Values, formulas and formatting.</summary>
+        All,
+        /// <summary>Only the values (formulas arrive as their results).</summary>
+        Values,
+        /// <summary>The formulas (relative references shift like in a paste); values stay as they are.</summary>
+        Formulas,
+        /// <summary>Only the formatting.</summary>
+        Formats,
+        /// <summary>Only the column widths of the area.</summary>
+        ColumnWidths
+    }
+
+    public enum ExcelVisibility
+    {
+        Visible,
+        Hidden,
+        /// <summary>Hidden so that the user cannot unhide it from Excel's menu.</summary>
+        VeryHidden
     }
 
     public enum ExcelTarget

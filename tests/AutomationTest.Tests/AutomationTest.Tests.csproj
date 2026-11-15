@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The tests of the program: a console program that runs every suite and exits with 1 when something fails.
+    Run it with run-tests.bat. It needs no test framework, so it also
+    runs where loading test host DLLs is blocked. Excel and window tests start their own programs and clean them up.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>AutomationTest.Tests</RootNamespace>
+    <UseWindowsForms>true</UseWindowsForms>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\AutomationTest.Core\AutomationTest.Core.csproj" />
+    <ProjectReference Include="..\..\src\AutomationTest.App\AutomationTest.App.csproj" />
+    <ProjectReference Include="..\AutomationTest.Tests.Dummy\AutomationTest.Tests.Dummy.csproj" ReferenceOutputAssembly="false" />
+    <Reference Include="Microsoft.CSharp" />
+  </ItemGroup>
+
+  <!-- The dummy window program is started by the tests, so it goes next to the test program. -->
+  <Target Name="CopyDummyApp" AfterTargets="Build">
+    <Copy SourceFiles="$(MSBuildThisFileDirectory)..\AutomationTest.Tests.Dummy\bin\$(Configuration)\net48\AtDummyApp.exe" DestinationFolder="$(OutDir)" />
+  </Target>
+
+</Project>

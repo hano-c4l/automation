@@ -26,6 +26,15 @@ namespace AutomationTest.App
         /// <summary>With a process, Pick waits for the Pick key (or Freeze now) before it takes the picture.</summary>
         public bool AdvancedPositionPicker { get; set; }
 
+        /// <summary>Log: every run writes a log file in the Logs folder (default off).</summary>
+        public bool LogRuns { get; set; }
+
+        /// <summary>Message: a notice is shown when a run finishes or fails (default off).</summary>
+        public bool NotifyEnd { get; set; }
+
+        /// <summary>Random Time: Time and Delay of each action are made 10 to 20 percent longer at random (default off).</summary>
+        public bool RandomTime { get; set; }
+
         public int StartCode { get { return KeyCodes.ParseKey(Start); } }
         public int StartSelectedCode { get { return KeyCodes.ParseKey(StartSelected); } }
         public int RecordCode { get { return KeyCodes.ParseKey(Record); } }
@@ -51,7 +60,10 @@ namespace AutomationTest.App
                 Record = Key(ini, "Record", DefaultRecord),
                 Pick = Key(ini, "Pick", DefaultPick),
                 RecordAllEvent = ini.Get(OptionSection, "RecordAllEvent") == "1",
-                AdvancedPositionPicker = ini.Get(OptionSection, "AdvancedPositionPicker") == "1"
+                AdvancedPositionPicker = ini.Get(OptionSection, "AdvancedPositionPicker") == "1",
+                LogRuns = ini.Get(OptionSection, "Log") == "1",
+                NotifyEnd = ini.Get(OptionSection, "Message") == "1",
+                RandomTime = ini.Get(OptionSection, "RandomTime") == "1"
             };
             if (settings.Validate() != null)
             {
@@ -76,6 +88,9 @@ namespace AutomationTest.App
             ini.Set(HotkeySection, "Pick", Pick);
             ini.Set(OptionSection, "RecordAllEvent", RecordAllEvent ? "1" : "0");
             ini.Set(OptionSection, "AdvancedPositionPicker", AdvancedPositionPicker ? "1" : "0");
+            ini.Set(OptionSection, "Log", LogRuns ? "1" : "0");
+            ini.Set(OptionSection, "Message", NotifyEnd ? "1" : "0");
+            ini.Set(OptionSection, "RandomTime", RandomTime ? "1" : "0");
         }
 
         /// <summary>Null when the keys can be used together; otherwise what is wrong, in words for the user.</summary>

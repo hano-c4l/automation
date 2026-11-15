@@ -18,7 +18,7 @@ using AutomationTest.Core.Windows;
 
 namespace AutomationTest.App
 {
-    public sealed class MainForm : Form
+    public sealed partial class MainForm : Form
     {
         private const int HotKeyToggleId = 1;
         private const int HotKeyRecordId = 3;
@@ -76,6 +76,12 @@ namespace AutomationTest.App
         private AppSettings _settings = AppSettings.Defaults();
 
         private enum RunKind { None, All, Selected }
+
+        /// <summary>What the last Start Selected dialog was given, by variable name (type name and value); never a password.</summary>
+        private Dictionary<string, Tuple<string, object>> _lastEntered;
+
+        /// <summary>Passwords typed in that dialog, to be hidden in the messages and the log of the run that follows.</summary>
+        private List<string> _pendingSecrets = new List<string>();
         private RunKind _runKind;
         private readonly InputRecorder _recorder = new InputRecorder();
         private bool _recording;
@@ -113,6 +119,28 @@ namespace AutomationTest.App
         // Editor: command
         private readonly ComboBox _cmdKind = MakeCombo(typeof(CommandKind));
         private readonly HintTextBox _cmdValue = new HintTextBox { Width = 200, Placeholder = "Process Path" };
+        private Button _cmdBrowse;
+        private readonly ComboBox _cmdGroup = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 120 };
+        private readonly ToggleSwitch _cmdValueExpr = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
+        private readonly ComboBox _cmdMatch = MakeCombo(typeof(ProgramMatch));
+        private readonly TimeBox _apiTimeout = new TimeBox(30000);
+        private readonly ToggleSwitch _cmdFailOnError = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
+        private readonly TextBox _cmdParams = new TextBox { Width = 200, Multiline = true, Height = 64, AcceptsReturn = true, ScrollBars = ScrollBars.Vertical };
+        private readonly HintTextBox _cmdReturns = new HintTextBox { Width = 200, Placeholder = "Names of the results to bring back" };
+        private readonly NumberBox _cmdX = new NumberBox { Width = 200, Minimum = -100000, Maximum = 100000, Placeholder = "X (left edge on the screen)" };
+        private readonly NumberBox _cmdY = new NumberBox { Width = 200, Minimum = -100000, Maximum = 100000, Placeholder = "Y (top edge on the screen)" };
+        private readonly NumberBox _cmdW = new NumberBox { Width = 200, Minimum = 0, Maximum = 100000, Placeholder = "Width (pixels)" };
+        private readonly NumberBox _cmdH = new NumberBox { Width = 200, Minimum = 0, Maximum = 100000, Placeholder = "Height (pixels)" };
+        private readonly ToggleSwitch _cmdAll = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
+        private readonly TimeBox _cmdTimeout = new TimeBox(5000);
+        private readonly ToggleSwitch _cmdKill = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
+        private readonly HintTextBox _cmdTarget = new HintTextBox { Width = 200, Placeholder = "Destination" };
+        private readonly ToggleSwitch _cmdTargetExpr = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
+        private readonly ToggleSwitch _cmdOverwrite = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
+        private readonly ToggleSwitch _cmdRecurse = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
+        private readonly ToggleSwitch _cmdAppend = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
+        private readonly ToggleSwitch _cmdDelForce = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
+        private readonly HintTextBox _cmdId = new HintTextBox { Width = 200, Placeholder = "Variable ID" };
 
         // Editor: web
         private readonly ComboBox _webGroup = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 120 };
@@ -184,7 +212,10 @@ namespace AutomationTest.App
         private readonly NumberBox _xlFilterField = new NumberBox { Width = 200, Minimum = 1, Maximum = 16384, Placeholder = "Column of the area (1 = first)", Text = "1" };
         private readonly HintTextBox _xlCriteria = new HintTextBox { Width = 200, Placeholder = "Criterion (>5, =Hanoi, <>, *text*)" };
         private readonly ToggleSwitch _xlClearFilter = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
-        private readonly ToggleSwitch _xlValuesOnly = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
+        private readonly ComboBox _xlPaste = MakeCombo(typeof(ExcelPasteKind));
+        private readonly ToggleSwitch _xlTranspose = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
+        private readonly HintTextBox _xlReplaceWith = new HintTextBox { Width = 200, Placeholder = "Replace with (empty removes the text)" };
+        private readonly ComboBox _xlVisibility = MakeCombo(typeof(ExcelVisibility));
         private readonly HintTextBox _xlMacro = new HintTextBox { Width = 200, Placeholder = "Macro (Module1.Report)" };
         private readonly TimeBox _xlTime = new TimeBox(30000);
         private readonly TimeBox _xlDelay = new TimeBox(0);
@@ -228,7 +259,8 @@ namespace AutomationTest.App
         private readonly Button _imgCapture = new Button { Text = "Capture", AutoSize = true };
         private readonly Button _imgLoad = new Button { Text = "Pick", AutoSize = true };
         private readonly Button _imgFind = new Button { Text = "Check", AutoSize = true };
-        private readonly TextBox _imgId = new TextBox { Width = 200 };
+        private readonly TextBox _imgId = new TextBox { Width = 200 }; // not shown: the ID of a Variable of the type Image is the ID of the Variable
+        private readonly HintTextBox _ocrLanguage = new HintTextBox { Width = 200, Placeholder = "Language tag (empty = your Windows languages)" };
         private RawImage _imageRaw;
 
         // Editor: variable
@@ -249,6 +281,7 @@ namespace AutomationTest.App
 
         // Editor: condition / case
         private readonly TextBox _caseExpr = new TextBox { Width = 200 };
+        private readonly HintTextBox _catchId = new HintTextBox { Width = 200, Placeholder = "Variable ID for the error (optional)" };
 
         // Editor: where positions and text come from
         private readonly ComboBox _posSource = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 120, Items = { "Input", "Variable" } };
@@ -286,6 +319,8 @@ namespace AutomationTest.App
             _varDateTime.Value = DateTime.Now;
             _controlKind.Items.Remove(ControlKind.Else); // the else line is created with its Condition, never added by hand
             _controlKind.Items.Remove(ControlKind.Case); // Case is offered only while a line of a Condition is selected
+            _controlKind.Items.Remove(ControlKind.Image); // Image is a type of the Variable action now
+            _controlKind.Items.Remove(ControlKind.Catch); // the catch line is created with its Try; it is offered only while it is selected
             _posSource.SelectedIndex = 0;
             _category.SelectedItem = ActionCategory.Mouse; // the editor starts on Mouse
             _kbSource.SelectedIndex = 0;
@@ -386,10 +421,11 @@ namespace AutomationTest.App
             common.Padding = new Padding(GroupInset, 0, 0, 0);
             AddRow(common, "Name", _name);
             AddRow(common, "State", _enabled);
-            AddRow(common, "Category", _category);
+            AddRow(common, "Category", _category, null, null, _mailButton);
             AddRow(common, "Action", _mouseAction);
             AddRow(common, "Action", _kbAction);
-            AddRow(common, "Action", _cmdKind);
+            AddRow(common, "Group", _cmdGroup);
+            AddRow(common, "Type", _cmdKind);
             AddRow(common, "Group", _webGroup);
             AddRow(common, "Type", _webKind);
             AddRow(common, "Group", _xlGroup);
@@ -426,7 +462,28 @@ namespace AutomationTest.App
 
             // Utilities
             var cmdTable = NewTable();
-            AddRow(cmdTable, "Path", _cmdValue, null, null, MakeButton("Browse", (s, e) => BrowseCommandPath()));
+            AddRow(cmdTable, "ID", _cmdId, Help.CommandId); // an ID is always the first field of its group
+            AddRow(cmdTable, "Match", _cmdMatch, Help.CloseMatch);
+            _cmdBrowse = MakeButton("Browse", (s, e) => BrowseCommandPath());
+            AddRow(cmdTable, "Path", _cmdValue, null, null, _cmdBrowse);
+            AddRow(cmdTable, "Expr. (path)", _cmdValueExpr, Help.ExpressionText);
+            AddRow(cmdTable, "Inputs", _cmdParams, Help.AutoScript);
+            AddRow(cmdTable, "Timeout", _apiTimeout, Help.Api);
+            AddRow(cmdTable, "Fail on error", _cmdFailOnError, Help.Api);
+            AddRow(cmdTable, "Returns", _cmdReturns, Help.AutoScript);
+            AddRow(cmdTable, "X", _cmdX, Help.WindowPlace);
+            AddRow(cmdTable, "Y", _cmdY, Help.WindowPlace);
+            AddRow(cmdTable, "Width", _cmdW, Help.WindowPlace);
+            AddRow(cmdTable, "Height", _cmdH, Help.WindowPlace);
+            AddRow(cmdTable, "Destination", _cmdTarget, Help.FileTarget);
+            AddRow(cmdTable, "Expr. (dest.)", _cmdTargetExpr, Help.ExpressionText);
+            AddRow(cmdTable, "Overwrite", _cmdOverwrite, Help.FileOverwrite);
+            AddRow(cmdTable, "Recurse", _cmdRecurse, Help.FileRecurse);
+            AddRow(cmdTable, "Append", _cmdAppend, Help.FileAppend);
+            AddRow(cmdTable, "Force", _cmdDelForce, Help.FileForce);
+            AddRow(cmdTable, "All matches", _cmdAll, Help.CloseAll);
+            AddRow(cmdTable, "Timeout", _cmdTimeout, Help.CloseTimeout);
+            AddRow(cmdTable, "Kill", _cmdKill, Help.CloseKill);
             AddRow(cmdTable, "Time", _cmdTime, Help.ShutdownTime);
             AddRow(cmdTable, "Force", _cmdForce, Help.ShutdownForce);
             AddRow(cmdTable, "Delay", _cmdDelay, Help.KeyDelay);
@@ -486,7 +543,10 @@ namespace AutomationTest.App
             AddRow(xlTable, "Expr. (value)", _xlValueExpr, Help.ExpressionText);
             AddRow(xlTable, "To workbook", _xlDestWorkbook, Help.ExcelCopy);
             AddRow(xlTable, "To sheet", _xlDestSheet, Help.ExcelCopy);
-            AddRow(xlTable, "Values only", _xlValuesOnly, Help.ExcelCopy);
+            AddRow(xlTable, "Paste", _xlPaste, Help.ExcelCopy);
+            AddRow(xlTable, "Transpose", _xlTranspose, Help.ExcelCopy);
+            AddRow(xlTable, "Replace with", _xlReplaceWith, Help.ExcelReplace);
+            AddRow(xlTable, "Visibility", _xlVisibility, Help.ExcelVisibility);
             AddRow(xlTable, "Num. format", _xlNumberFormat, Help.ExcelFormat);
             AddRow(xlTable, "Bold", _xlBold, Help.ExcelFormat);
             AddRow(xlTable, "Italic", _xlItalic, Help.ExcelFormat);
@@ -508,6 +568,8 @@ namespace AutomationTest.App
             AddRow(xlTable, "Delay", _xlDelay, Help.KeyDelay);
             _excelBox.Controls.Add(xlTable);
 
+            BuildEmailEditor(common);
+
             // Control
             var controlTable = NewTable();
             AddRow(controlTable, "ID", _forId, Help.LoopForId); // an ID is always the first field of its group
@@ -523,7 +585,8 @@ namespace AutomationTest.App
             AddRow(controlTable, "Timeout", _waitTime, Help.WaitTime);
             AddRow(controlTable, "Wait", _waitSettle, Help.WaitSettle);
             AddRow(controlTable, "Retry (times)", _waitRetry, Help.Retry);
-            AddRow(controlTable, "ID", _imgId, Help.Id);
+            AddRow(controlTable, "ID", _varId, Help.Id);
+            AddRow(controlTable, "Value type", _varType, Help.ValueType);
             AddRow(controlTable, "Process", _imgProcessName, null, null, _imgPickProcess);
             AddRow(controlTable, "", _imgProcessTitle, Help.TitleRegex);
             AddRow(controlTable, "Anchor", _imgAnchor, Help.RangeAnchor);
@@ -531,8 +594,7 @@ namespace AutomationTest.App
             AddRow(controlTable, "", new Control[] { _imgW, _imgH }, null, null, _imgPickRange);
             AddRow(controlTable, "Picture", Stack(_imgPreview, _imgInfo), null, null, Stack(_imgCapture, _imgLoad), _imgPreview);
             AddRow(controlTable, "Accuracy (%)", _imgAccuracy, Help.Accuracy, null, _imgFind);
-            AddRow(controlTable, "ID", _varId, Help.Id);
-            AddRow(controlTable, "Value type", _varType, Help.ValueType);
+            AddRow(controlTable, "Language", _ocrLanguage, Help.OcrLanguage);
             AddRow(controlTable, "", _varUseExpr);
             AddRow(controlTable, "Expression", _varExpr, Help.ExpressionVariable);
             AddRow(controlTable, "Value", _varText);
@@ -542,11 +604,12 @@ namespace AutomationTest.App
             AddRow(controlTable, "Position (px)", new Control[] { _varX, _varY }, Help.PositionPick, null, _varPickPos);
             AddRow(controlTable, "Size (px)", new Control[] { _varW, _varH }, null, null, _varPickRange);
             AddRow(controlTable, "Condition", _caseExpr, Help.ExpressionCase);
+            AddRow(controlTable, "Error ID", _catchId, Help.CatchId);
             _controlBox.Controls.Add(controlTable);
 
             // Extra space above the first row of a new group, so related rows read together.
             const int Group = 12, Small = 6;
-            Space(_enabled, Small); Space(_category, Small); Space(_mouseAction, Small); Space(_kbAction, Small); Space(_cmdKind, Small); Space(_controlKind, Small);
+            Space(_enabled, Small); Space(_category, Small); Space(_mouseAction, Small); Space(_kbAction, Small); Space(_cmdGroup, Small); Space(_controlKind, Small);
             common.Padding = new Padding(GroupInset, 0, 0, 10); // Padding (not Margin): a docked table ignores its margin
             Space(_time, Group); Space(_processName, Group);                     // Mouse: after Type, after Delay
             Space(_kbTime, Group);                                               // Keyboard: before Time
@@ -569,6 +632,7 @@ namespace AutomationTest.App
             _editArea.Controls.Add(_controlBox);
             _editArea.Controls.Add(_webBox);
             _editArea.Controls.Add(_excelBox);
+            _editArea.Controls.Add(_emailBox);
             _editArea.Controls.Add(_commandBox);
             _editArea.Controls.Add(_keyboardBox);
             _editArea.Controls.Add(_mouseBox);
@@ -592,9 +656,19 @@ namespace AutomationTest.App
             _list.ColumnWidthChanging += (s, e) => { if (e.NewWidth < MinColumnWidth) e.NewWidth = MinColumnWidth; };
             _list.ColumnWidthChanged += (s, e) => { if (_list.Columns[e.ColumnIndex].Width < MinColumnWidth) _list.Columns[e.ColumnIndex].Width = MinColumnWidth; };
             _list.MouseDown += (s, e) => ListMouseDown(e);
+            _list.AllowDrop = true;
+            _list.ItemDrag += (s, e) => ListItemDrag(e);
+            _list.DragOver += (s, e) => ListDragOver(e);
+            _list.DragDrop += (s, e) => ListDragDrop(e);
+            _list.DragLeave += (s, e) => _dropLine.Visible = false;
             _list.KeyDown += (s, e) =>
             {
                 if (e.KeyCode == Keys.Delete) DeleteActions();
+                else if (e.Control && e.KeyCode == Keys.C) { CopyActions(false); e.SuppressKeyPress = true; }
+                else if (e.Control && e.KeyCode == Keys.X) { CopyActions(true); e.SuppressKeyPress = true; }
+                else if (e.Control && e.KeyCode == Keys.V) { PasteActions(); e.SuppressKeyPress = true; }
+                else if (e.Control && e.KeyCode == Keys.Z && !e.Shift) { UndoAction(); e.SuppressKeyPress = true; }
+                else if (e.Control && (e.KeyCode == Keys.Y || (e.KeyCode == Keys.Z && e.Shift))) { RedoAction(); e.SuppressKeyPress = true; }
                 else if (e.KeyCode == Keys.Left || e.KeyCode == Keys.Right)
                 {
                     // Like a tree: Left collapses, Right expands the selected action.
@@ -611,10 +685,13 @@ namespace AutomationTest.App
                     e.SuppressKeyPress = true;
                 }
             };
-            _category.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
+            _category.SelectedIndexChanged += (s, e) => { FillCmdGroups(); UpdateEditorVisibility(); };
             _mouseAction.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
             _kbAction.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
-            _cmdKind.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
+            _cmdGroup.SelectedIndexChanged += (s, e) => { FillCmdKinds(); if (!_grouping) UpdateEditorVisibility(); };
+            _cmdKind.SelectedIndexChanged += (s, e) => { if (!_grouping) UpdateEditorVisibility(); };
+            _cmdMatch.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
+            _cmdKill.CheckedChanged += (s, e) => UpdateEditorVisibility(); // Timeout means nothing when the program is ended at once
             InitGroups();
             _webGroup.SelectedIndexChanged += (s, e) => { FillWebKinds(); if (!_grouping) UpdateEditorVisibility(); };
             _xlGroup.SelectedIndexChanged += (s, e) => { FillXlKinds(); if (!_grouping) UpdateEditorVisibility(); };
@@ -653,9 +730,48 @@ namespace AutomationTest.App
             var category = (ActionCategory)_category.SelectedItem;
             _mouseBox.Visible = category == ActionCategory.Mouse;
             _keyboardBox.Visible = category == ActionCategory.Keyboard;
-            _commandBox.Visible = category == ActionCategory.Utilities;
+            _commandBox.Visible = category == ActionCategory.Utilities || category == ActionCategory.Program;
+            UpdateEmailVisibility(category);
             var cmdKind = _cmdKind.SelectedItem as CommandKind? ?? CommandKind.Open;
-            SetRowVisible(_cmdValue, cmdKind == CommandKind.Open); // only Open has a path
+            var cmdMatch = _cmdMatch.SelectedItem as ProgramMatch? ?? ProgramMatch.Title;
+            bool fs = ScriptRunner.CommandIsFileSystem(cmdKind);
+            bool close = cmdKind == CommandKind.Close;
+            bool window = CommandKinds.IsWindow(cmdKind);
+            bool matched = close || window; // the programs or windows are found by Title, Name, Path or Id
+            bool hasTarget = cmdKind == CommandKind.FsCopy || cmdKind == CommandKind.FsMove || cmdKind == CommandKind.FsRename || cmdKind == CommandKind.FsWrite
+                || CommandKinds.ApiSendsBody(cmdKind) || cmdKind == CommandKind.ApiDownload;
+            bool script = cmdKind == CommandKind.AutoScript;
+            bool api = CommandKinds.IsApi(cmdKind);
+            SetRowVisible(_cmdParams, script || api);
+            SetLabel(_cmdParams, api ? "Headers" : "Inputs");
+            SetRowVisible(_cmdReturns, script);
+            SetRowVisible(_apiTimeout, api);
+            SetRowVisible(_cmdFailOnError, api);
+            SetRowVisible(_cmdValue, cmdKind == CommandKind.Open || matched || fs || script || api);
+            SetLabel(_cmdValue, api ? "URL" : script ? "File" : cmdKind == CommandKind.Open ? "Path" : matched ? (cmdMatch == ProgramMatch.Title ? "Title" : cmdMatch == ProgramMatch.Name ? "Name" : cmdMatch == ProgramMatch.Path ? "Path" : "Process id") : cmdKind == CommandKind.FsList ? "Folder" : "Path");
+            _cmdValue.Placeholder = api ? "https://..." : script ? "Script file (.json)" : cmdKind == CommandKind.Open ? "Program or document to open"
+                : matched ? (cmdMatch == ProgramMatch.Title ? "Window title (regular expression)" : cmdMatch == ProgramMatch.Name ? "Process name, e.g. notepad" : cmdMatch == ProgramMatch.Path ? "Full path of the program file" : "Process id (a number)")
+                : cmdKind == CommandKind.FsCreate ? "Folder to make" : cmdKind == CommandKind.FsList ? "Folder to list" : "File or folder";
+            _cmdBrowse.Visible = script || cmdKind == CommandKind.Open || (matched && cmdMatch == ProgramMatch.Path) || fs; // a title, a name or an id is typed
+            SetRowVisible(_cmdValueExpr, cmdKind == CommandKind.Open || matched || fs || script || api);
+            SetRowVisible(_cmdMatch, matched);
+            SetRowVisible(_cmdAll, matched);
+            SetRowVisible(_cmdX, cmdKind == CommandKind.WindowMove);
+            SetRowVisible(_cmdY, cmdKind == CommandKind.WindowMove);
+            SetRowVisible(_cmdW, cmdKind == CommandKind.WindowResize);
+            SetRowVisible(_cmdH, cmdKind == CommandKind.WindowResize);
+            SetRowVisible(_cmdTimeout, close && !_cmdKill.Checked);
+            SetRowVisible(_cmdKill, close);
+            SetRowVisible(_cmdTarget, hasTarget);
+            SetLabel(_cmdTarget, cmdKind == CommandKind.FsRename ? "New name" : cmdKind == CommandKind.FsWrite ? "Text" : CommandKinds.ApiSendsBody(cmdKind) ? "Body" : cmdKind == CommandKind.ApiDownload ? "Save to" : "Destination");
+            _cmdTarget.Placeholder = cmdKind == CommandKind.FsRename ? "New name (no folder)" : cmdKind == CommandKind.FsWrite ? "Text to write"
+                : CommandKinds.ApiSendsBody(cmdKind) ? "Text to send (JSON or plain text)" : cmdKind == CommandKind.ApiDownload ? "File to save the answer in" : "Destination (a folder or a new path)";
+            SetRowVisible(_cmdTargetExpr, hasTarget);
+            SetRowVisible(_cmdOverwrite, cmdKind == CommandKind.FsCopy || cmdKind == CommandKind.FsMove || cmdKind == CommandKind.ApiDownload);
+            SetRowVisible(_cmdRecurse, cmdKind == CommandKind.FsDelete || cmdKind == CommandKind.FsList);
+            SetRowVisible(_cmdAppend, cmdKind == CommandKind.FsWrite);
+            SetRowVisible(_cmdDelForce, cmdKind == CommandKind.FsDelete);
+            SetRowVisible(_cmdId, ScriptRunner.CommandKeeps(cmdKind));
             SetRowVisible(_cmdTime, cmdKind == CommandKind.Shutdown);
             SetRowVisible(_cmdForce, cmdKind == CommandKind.Shutdown);
             SetRowVisible(_cmdDelay, cmdKind != CommandKind.Shutdown); // Shutdown has no "after" delay: the machine is gone
@@ -709,11 +825,12 @@ namespace AutomationTest.App
             var xlInfo = _xlInfo.SelectedItem as ExcelInfoKind? ?? ExcelInfoKind.LastRow;
             bool xlOn = category == ActionCategory.Excel;
             bool infoCell = xl == ExcelKind.GetInfo && (xlInfo == ExcelInfoKind.LastRow || xlInfo == ExcelInfoKind.LastColumn);
-            bool xlArea = xl == ExcelKind.Select || xl == ExcelKind.Clear || xl == ExcelKind.Copy || xl == ExcelKind.Format || xl == ExcelKind.Sort
-                || (xl == ExcelKind.Filter && !_xlClearFilter.Checked) || xl == ExcelKind.InsertCells || xl == ExcelKind.DeleteCells;
-            bool xlCell = xl == ExcelKind.GetCell || xl == ExcelKind.SetCell || xl == ExcelKind.GetRange || xl == ExcelKind.SetRange || xl == ExcelKind.Find || infoCell || xlArea;
+            bool xlArea = xl == ExcelKind.Select || xl == ExcelKind.Clear || xl == ExcelKind.Copy || xl == ExcelKind.CutCells || xl == ExcelKind.Format || xl == ExcelKind.Sort
+                || (xl == ExcelKind.Filter && !_xlClearFilter.Checked) || xl == ExcelKind.InsertCells || xl == ExcelKind.DeleteCells || xl == ExcelKind.HideCells || xl == ExcelKind.ShowCells;
+            bool xlCell = xl == ExcelKind.ReplaceText || xl == ExcelKind.GetCell || xl == ExcelKind.SetCell || xl == ExcelKind.GetRange || xl == ExcelKind.SetRange || xl == ExcelKind.Find || infoCell || xlArea;
             bool xlValue = ScriptRunner.ExcelValueKind(xl) || xl == ExcelKind.SetRange;
-            bool insertDelete = xl == ExcelKind.InsertCells || xl == ExcelKind.DeleteCells;
+            bool insertDelete = xl == ExcelKind.InsertCells || xl == ExcelKind.DeleteCells || xl == ExcelKind.HideCells || xl == ExcelKind.ShowCells;
+            bool xlSheetOnly = xl == ExcelKind.SheetCopy || xl == ExcelKind.SheetMove || xl == ExcelKind.SheetVisible; // a whole sheet, not cells
             SetRowVisible(_xlKind, xlOn);
             SetRowVisible(_xlGroup, xlOn);
             SetRowVisible(_xlId, xl == ExcelKind.GetCell || xl == ExcelKind.GetRange || xl == ExcelKind.GetInfo || xl == ExcelKind.Find || xl == ExcelKind.Evaluate || xl == ExcelKind.RunMacro);
@@ -723,26 +840,29 @@ namespace AutomationTest.App
             SetRowVisible(_xlReadOnly, xl == ExcelKind.Workbook);
             SetRowVisible(_xlVisible, xl == ExcelKind.Workbook);
             SetRowVisible(_xlAllowMacros, xl == ExcelKind.Workbook);
-            SetRowVisible(_xlSheetName, xl == ExcelKind.SelectSheet || xl == ExcelKind.CreateSheet || xl == ExcelKind.DeleteSheet || xl == ExcelKind.RenameSheet);
-            _xlSheetName.Placeholder = xl == ExcelKind.CreateSheet ? "Name of the new sheet (optional)" : xl == ExcelKind.RenameSheet ? "Sheet to rename (regular expr.; empty = this one)" : "Sheet name (regular expression)";
-            SetRowVisible(_xlIndex, xl == ExcelKind.SelectSheet || xl == ExcelKind.DeleteSheet || xl == ExcelKind.RenameSheet);
-            _xlIndex.Placeholder = xl == ExcelKind.DeleteSheet || xl == ExcelKind.RenameSheet ? "Index (empty = the current sheet)" : "Index (1 = first)";
-            SetRowVisible(_xlPosition, xl == ExcelKind.CreateSheet);
-            SetRowVisible(_xlSelectNew, xl == ExcelKind.CreateSheet);
+            SetRowVisible(_xlSheetName, xl == ExcelKind.SelectSheet || xl == ExcelKind.CreateSheet || xl == ExcelKind.DeleteSheet || xl == ExcelKind.RenameSheet || xlSheetOnly);
+            _xlSheetName.Placeholder = xlSheetOnly ? "Sheet (regular expr.; empty = this one)" : xl == ExcelKind.CreateSheet ? "Name of the new sheet (optional)" : xl == ExcelKind.RenameSheet ? "Sheet to rename (regular expr.; empty = this one)" : "Sheet name (regular expression)";
+            SetRowVisible(_xlIndex, xl == ExcelKind.SelectSheet || xl == ExcelKind.DeleteSheet || xl == ExcelKind.RenameSheet || xlSheetOnly);
+            _xlIndex.Placeholder = xl == ExcelKind.DeleteSheet || xl == ExcelKind.RenameSheet || xlSheetOnly ? "Index (empty = the current sheet)" : "Index (1 = first)";
+            SetRowVisible(_xlPosition, xl == ExcelKind.CreateSheet || xl == ExcelKind.SheetCopy || xl == ExcelKind.SheetMove);
+            SetRowVisible(_xlSelectNew, xl == ExcelKind.CreateSheet || xl == ExcelKind.SheetCopy || xl == ExcelKind.SheetMove);
+            SetRowVisible(_xlVisibility, xl == ExcelKind.SheetVisible);
             SetRowVisible(_xlGet, xl == ExcelKind.GetCell || xl == ExcelKind.GetRange);
             SetRowVisible(_xlInfo, xl == ExcelKind.GetInfo);
             SetRowVisible(_xlTarget, insertDelete);
             SetRowVisible(_xlCount, insertDelete);
             SetRowVisible(_xlClearWhat, xl == ExcelKind.Clear);
-            bool xlUse = xlCell || xl == ExcelKind.Evaluate || xl == ExcelKind.GetInfo || (xl == ExcelKind.Filter && _xlClearFilter.Checked);
+            bool xlUse = xlCell || xlSheetOnly || xl == ExcelKind.Evaluate || xl == ExcelKind.GetInfo || (xl == ExcelKind.Filter && _xlClearFilter.Checked);
             SetRowVisible(_xlUseWorkbook, xlUse && !(xl == ExcelKind.GetInfo && xlInfo == ExcelInfoKind.Selection));
-            SetRowVisible(_xlUseSheet, xlUse && !XlWorkbookInfoOnly(xl, xlInfo));
-            SetRowVisible(_xlDestWorkbook, xl == ExcelKind.Copy);
-            SetRowVisible(_xlDestSheet, xl == ExcelKind.Copy);
+            SetRowVisible(_xlUseSheet, xlUse && !xlSheetOnly && !XlWorkbookInfoOnly(xl, xlInfo));
+            SetRowVisible(_xlDestWorkbook, xl == ExcelKind.Copy || xl == ExcelKind.CutCells || xl == ExcelKind.SheetCopy || xl == ExcelKind.SheetMove);
+            SetRowVisible(_xlDestSheet, xl == ExcelKind.Copy || xl == ExcelKind.CutCells);
             SetRowVisible(_xlCell, xlCell);
             SetRowVisible(_xlPick, xlCell);
             _xlCell.Placeholder = xl == ExcelKind.GetRange ? "Area to read (A1:D20)" : xl == ExcelKind.SetRange ? "Top-left cell (A1)"
                 : xl == ExcelKind.Find ? "Area to search (empty = whole sheet)"
+                : xl == ExcelKind.ReplaceText ? "Area (empty = whole sheet)"
+                : xl == ExcelKind.CutCells ? "Area to move (A1:C5)"
                 : xl == ExcelKind.GetInfo ? (xlInfo == ExcelInfoKind.LastRow ? "A cell in the column (B1)" : "A cell in the row (B1)")
                 : insertDelete ? "A cell in the first row or column (B5)"
                 : xl == ExcelKind.Select ? "Cell or area to select"
@@ -754,9 +874,11 @@ namespace AutomationTest.App
             SetRowVisible(_xlValue, xlValue);
             _xlValue.Placeholder = xl == ExcelKind.SetRange ? "Table variable, for example {t}" : xl == ExcelKind.Find ? "Text to find"
                 : xl == ExcelKind.Evaluate ? "Formula, for example SUM(A1:A10)" : xl == ExcelKind.RenameSheet ? "New name of the sheet"
-                : xl == ExcelKind.Copy ? "Destination (its top-left cell)" : xl == ExcelKind.RunMacro ? "Argument (optional)" : "Value";
+                : xl == ExcelKind.Copy || xl == ExcelKind.CutCells ? "Destination (its top-left cell)" : xl == ExcelKind.ReplaceText ? "Text to find" : xl == ExcelKind.SheetCopy ? "Name of the copy (optional)" : xl == ExcelKind.RunMacro ? "Argument (optional)" : "Value";
             SetRowVisible(_xlValueExpr, xlValue && xl != ExcelKind.SetRange); // Range Set always takes a variable
-            SetRowVisible(_xlValuesOnly, xl == ExcelKind.Copy);
+            SetRowVisible(_xlPaste, xl == ExcelKind.Copy);
+            SetRowVisible(_xlTranspose, xl == ExcelKind.Copy);
+            SetRowVisible(_xlReplaceWith, xl == ExcelKind.ReplaceText);
             SetRowVisible(_xlNumberFormat, xl == ExcelKind.Format);
             SetRowVisible(_xlBold, xl == ExcelKind.Format);
             SetRowVisible(_xlItalic, xl == ExcelKind.Format);
@@ -770,8 +892,8 @@ namespace AutomationTest.App
             SetRowVisible(_xlFilterField, xl == ExcelKind.Filter && !_xlClearFilter.Checked);
             SetRowVisible(_xlCriteria, xl == ExcelKind.Filter && !_xlClearFilter.Checked);
             SetRowVisible(_xlMacro, xl == ExcelKind.RunMacro);
-            SetRowVisible(_xlMatchCase, xl == ExcelKind.Find);
-            SetRowVisible(_xlWholeCell, xl == ExcelKind.Find);
+            SetRowVisible(_xlMatchCase, xl == ExcelKind.Find || xl == ExcelKind.ReplaceText);
+            SetRowVisible(_xlWholeCell, xl == ExcelKind.Find || xl == ExcelKind.ReplaceText);
             SetRowVisible(_xlSaveAs, xl == ExcelKind.Save);
             SetRowVisible(_xlSavePath, xl == ExcelKind.Save && _xlSaveAs.Checked);
             SetRowVisible(_xlSaveChanges, xl == ExcelKind.CloseWorkbook || xl == ExcelKind.CloseExcel);
@@ -779,7 +901,8 @@ namespace AutomationTest.App
             SetRowVisible(_xlDelay, xlOn);
             SetRowVisible(_mouseAction, category == ActionCategory.Mouse);
             SetRowVisible(_kbAction, category == ActionCategory.Keyboard);
-            SetRowVisible(_cmdKind, category == ActionCategory.Utilities);
+            SetRowVisible(_cmdKind, category == ActionCategory.Utilities || category == ActionCategory.Program);
+            SetRowVisible(_cmdGroup, category == ActionCategory.Utilities || category == ActionCategory.Program);
             SetRowVisible(_controlKind, category == ActionCategory.Control);
 
             // Mouse
@@ -811,8 +934,10 @@ namespace AutomationTest.App
             var controlKind = (ControlKind)_controlKind.SelectedItem;
             bool loop = controlKind == ControlKind.Loop;
             bool wait = controlKind == ControlKind.Wait;
-            bool image = controlKind == ControlKind.Image;
             bool variable = controlKind == ControlKind.Variable;
+            var typeNow = _varType.SelectedItem as VariableType? ?? VariableType.Number;
+            bool image = variable && typeNow == VariableType.Image;
+            bool ocr = variable && typeNow == VariableType.OCR;
             bool caseKind = controlKind == ControlKind.Case;
             bool condition = controlKind == ControlKind.Condition;
             var loopType = (LoopType)_loopType.SelectedItem;
@@ -830,19 +955,24 @@ namespace AutomationTest.App
             SetRowVisible(_waitSettle, wait);
             SetRowVisible(_waitRetry, wait);
             SetRowVisible(_waitPick, wait);
-            foreach (var c in new Control[] { _imgId, _imgProcessName, _imgProcessTitle, _imgPickProcess, _imgAnchor, _imgX, _imgY, _imgW, _imgH,
-                                              _imgPickRange, _imgPreview, _imgInfo, _imgCapture, _imgLoad, _imgAccuracy, _imgFind })
+            // The area (process, anchor, range) is shared by Image and OCR; the picture and the accuracy are only for Image.
+            foreach (var c in new Control[] { _imgProcessName, _imgProcessTitle, _imgPickProcess, _imgAnchor, _imgX, _imgY, _imgW, _imgH, _imgPickRange })
+                SetRowVisible(c, image || ocr);
+            foreach (var c in new Control[] { _imgPreview, _imgInfo, _imgCapture, _imgLoad, _imgAccuracy, _imgFind })
                 SetRowVisible(c, image);
+            SetRowVisible(_ocrLanguage, ocr);
             _imgAnchor.Enabled = _imgProcessName.Text.Trim().Length > 0 || _imgProcessTitle.Text.Trim().Length > 0;
 
             // Variable
             var varType = (VariableType)_varType.SelectedItem;
-            bool expr = _varUseExpr.Checked;
-            bool literal = variable && !expr;
+            // Clipboard and Password get their value when the script runs: no literal and no expression
+            bool noValue = varType == VariableType.Clipboard || varType == VariableType.Password || varType == VariableType.Image || varType == VariableType.OCR;
+            bool expr = _varUseExpr.Checked && !noValue;
+            bool literal = variable && !expr && !noValue;
             bool geometry = literal && (varType == VariableType.Position || varType == VariableType.Range);
             SetRowVisible(_varId, variable);
             SetRowVisible(_varType, variable);
-            SetRowVisible(_varUseExpr, variable);
+            SetRowVisible(_varUseExpr, variable && !noValue);
             SetRowVisible(_varExpr, variable && expr);
             SetRowVisible(_varText, literal && (varType == VariableType.String || varType == VariableType.Number));
             SetRowVisible(_varBool, literal && varType == VariableType.Boolean);
@@ -857,6 +987,7 @@ namespace AutomationTest.App
 
             // Condition and case
             SetRowVisible(_caseExpr, caseKind || condition);
+            SetRowVisible(_catchId, controlKind == ControlKind.Catch);
         }
 
         /// <summary>Scroll actions always use the middle button; the other actions allow all three.</summary>
@@ -915,13 +1046,34 @@ namespace AutomationTest.App
                     });
 
                 case ActionCategory.Utilities:
+                case ActionCategory.Program:
+                    var ck = (CommandKind)_cmdKind.SelectedItem;
+                    bool cfs = ScriptRunner.CommandIsFileSystem(ck), cclose = ck == CommandKind.Close, cwindow = CommandKinds.IsWindow(ck), cscript = ck == CommandKind.AutoScript, capi = CommandKinds.IsApi(ck);
+                    bool ctarget = ck == CommandKind.FsCopy || ck == CommandKind.FsMove || ck == CommandKind.FsRename || ck == CommandKind.FsWrite
+                        || CommandKinds.ApiSendsBody(ck) || ck == CommandKind.ApiDownload;
                     return ActionNode.NewCommand(new CommandSettings
                     {
-                        Kind = (CommandKind)_cmdKind.SelectedItem,
-                        Value = (CommandKind)_cmdKind.SelectedItem == CommandKind.Open ? _cmdValue.Text.Trim() : "",
-                        DelayMs = (CommandKind)_cmdKind.SelectedItem == CommandKind.Shutdown ? 0 : _cmdDelay.Milliseconds,
-                        TimeMs = (CommandKind)_cmdKind.SelectedItem == CommandKind.Shutdown ? _cmdTime.Milliseconds : 0,
-                        Force = (CommandKind)_cmdKind.SelectedItem == CommandKind.Shutdown && _cmdForce.Checked
+                        Kind = ck,
+                        Value = ck == CommandKind.Open || cclose || cwindow || cfs || cscript || capi ? _cmdValue.Text.Trim() : "",
+                        ValueIsExpression = (ck == CommandKind.Open || cclose || cwindow || cfs || cscript || capi) && _cmdValueExpr.Checked,
+                        Params = cscript || capi ? _cmdParams.Text.Trim() : "",
+                        FailOnError = capi && _cmdFailOnError.Checked,
+                        Returns = cscript ? _cmdReturns.Text.Trim() : "",
+                        Match = cclose || cwindow ? (ProgramMatch)_cmdMatch.SelectedItem : ProgramMatch.Title,
+                        All = (cclose || cwindow) && _cmdAll.Checked,
+                        X = ck == CommandKind.WindowMove ? (int)_cmdX.Value : 0,
+                        Y = ck == CommandKind.WindowMove ? (int)_cmdY.Value : 0,
+                        Width = ck == CommandKind.WindowResize ? (int)_cmdW.Value : 0,
+                        Height = ck == CommandKind.WindowResize ? (int)_cmdH.Value : 0,
+                        Target = ctarget ? (ck == CommandKind.FsWrite ? _cmdTarget.Text : _cmdTarget.Text.Trim()) : "",
+                        TargetIsExpression = ctarget && _cmdTargetExpr.Checked,
+                        Overwrite = (ck == CommandKind.FsCopy || ck == CommandKind.FsMove || ck == CommandKind.ApiDownload) && _cmdOverwrite.Checked,
+                        Recurse = (ck == CommandKind.FsDelete || ck == CommandKind.FsList) && _cmdRecurse.Checked,
+                        Append = ck == CommandKind.FsWrite && _cmdAppend.Checked,
+                        Id = ScriptRunner.CommandKeeps(ck) ? _cmdId.Text.Trim() : "",
+                        DelayMs = ck == CommandKind.Shutdown ? 0 : _cmdDelay.Milliseconds,
+                        TimeMs = ck == CommandKind.Shutdown ? _cmdTime.Milliseconds : cclose ? _cmdTimeout.Milliseconds : capi ? _apiTimeout.Milliseconds : 0,
+                        Force = ck == CommandKind.Shutdown ? _cmdForce.Checked : cclose ? _cmdKill.Checked : ck == CommandKind.FsDelete && _cmdDelForce.Checked
                     });
 
                 case ActionCategory.Excel:
@@ -935,10 +1087,10 @@ namespace AutomationTest.App
                         Visible = _xlVisible.Checked,
                         SheetName = _xlSheetName.Text.Trim(),
                         Index = (int)_xlIndex.Value,
-                        UseWorkbook = XlUses(xk) && !(xk == ExcelKind.GetInfo && (ExcelInfoKind)_xlInfo.SelectedItem == ExcelInfoKind.Selection) ? _xlUseWorkbook.Text.Trim() : "",
+                        UseWorkbook = (XlUses(xk) || xk == ExcelKind.SheetCopy || xk == ExcelKind.SheetMove || xk == ExcelKind.SheetVisible) && !(xk == ExcelKind.GetInfo && (ExcelInfoKind)_xlInfo.SelectedItem == ExcelInfoKind.Selection) ? _xlUseWorkbook.Text.Trim() : "",
                         UseSheet = XlUses(xk) && !XlWorkbookInfoOnly(xk, (ExcelInfoKind)_xlInfo.SelectedItem) ? _xlUseSheet.Text.Trim() : "",
-                        DestWorkbook = xk == ExcelKind.Copy ? _xlDestWorkbook.Text.Trim() : "",
-                        DestSheet = xk == ExcelKind.Copy ? _xlDestSheet.Text.Trim() : "",
+                        DestWorkbook = xk == ExcelKind.Copy || xk == ExcelKind.CutCells || xk == ExcelKind.SheetCopy || xk == ExcelKind.SheetMove ? _xlDestWorkbook.Text.Trim() : "",
+                        DestSheet = xk == ExcelKind.Copy || xk == ExcelKind.CutCells ? _xlDestSheet.Text.Trim() : "",
                         Position = (ExcelSheetPosition)_xlPosition.SelectedItem,
                         SelectNew = _xlSelectNew.Checked,
                         Cell = _xlCell.Text.Trim(),
@@ -968,13 +1120,19 @@ namespace AutomationTest.App
                         FilterField = Math.Max(1, (int)_xlFilterField.Value),
                         Criteria = _xlCriteria.Text.Trim(),
                         ClearFilter = _xlClearFilter.Checked,
-                        ValuesOnly = _xlValuesOnly.Checked,
+                        Paste = xk == ExcelKind.Copy ? (ExcelPasteKind)_xlPaste.SelectedItem : ExcelPasteKind.All,
+                        Transpose = xk == ExcelKind.Copy && _xlTranspose.Checked,
+                        ReplaceWith = xk == ExcelKind.ReplaceText ? _xlReplaceWith.Text : "",
+                        Visibility = xk == ExcelKind.SheetVisible ? (ExcelVisibility)_xlVisibility.SelectedItem : ExcelVisibility.Visible,
                         Macro = _xlMacro.Text.Trim(),
                         AllowMacros = _xlAllowMacros.Checked,
                         Id = _xlId.Text.Trim(),
                         TimeMs = _xlTime.Milliseconds,
                         DelayMs = _xlDelay.Milliseconds
                     });
+
+                case ActionCategory.Email:
+                    return BuildEmailNode();
 
                 case ActionCategory.Web:
                     return ActionNode.NewWeb(new WebSettings
@@ -1008,13 +1166,36 @@ namespace AutomationTest.App
                         case ControlKind.Image:
                             return ActionNode.NewImage(BuildImageSettings());
                         case ControlKind.Variable:
-                            return ActionNode.NewVariable(BuildVariableSettings());
+                            var settings = BuildVariableSettings();
+                            var created2 = ActionNode.NewVariable(settings);
+                            if (settings.UsesScreenArea)
+                            {
+                                var area = BuildImageSettings();
+                                area.Id = settings.Id;
+                                if (settings.Type == VariableType.OCR)
+                                {
+                                    area.ImageData = null; area.ImageWidth = 0; area.ImageHeight = 0; // OCR reads the screen: no picture
+                                    area.OcrLanguage = _ocrLanguage.Text.Trim();
+                                }
+                                created2.Image = area;
+                            }
+                            return created2;
                         case ControlKind.Condition:
                             var created = ActionNode.NewCondition();
                             created.Children[0].Case.Expression = _caseExpr.Text.Trim();
                             return created;
                         case ControlKind.Case:
                             return ActionNode.NewCase(new CaseSettings { Expression = _caseExpr.Text.Trim() });
+                        case ControlKind.Try:
+                            return ActionNode.NewTry();
+                        case ControlKind.Catch:
+                            return ActionNode.NewCatch(new CatchSettings { Id = _catchId.Text.Trim() });
+                        case ControlKind.Section:
+                            return ActionNode.NewSection();
+                        case ControlKind.Break:
+                        case ControlKind.Continue:
+                        case ControlKind.Return:
+                            return ActionNode.NewJump((ControlKind)_controlKind.SelectedItem);
                         case ControlKind.Wait:
                             return ActionNode.NewWait(new WaitSettings
                             {
@@ -1046,13 +1227,14 @@ namespace AutomationTest.App
             {
                 Id = _varId.Text.Trim(),
                 Type = type,
-                UseExpression = _varUseExpr.Checked,
-                Expression = _varExpr.Text.Trim(),
+                UseExpression = _varUseExpr.Checked && !NoValueType(type),
+                Expression = NoValueType(type) ? "" : _varExpr.Text.Trim(),
                 X = (int)_varX.Value,
                 Y = (int)_varY.Value,
                 Width = (int)_varW.Value,
                 Height = (int)_varH.Value
             };
+            if (NoValueType(type)) { v.X = v.Y = v.Width = v.Height = 0; return v; } // nothing is stored for these
             switch (type)
             {
                 case VariableType.String:
@@ -1076,6 +1258,12 @@ namespace AutomationTest.App
                     break;
             }
             return v;
+        }
+
+        /// <summary>The Variable types that have no value to type in: it comes from the clipboard, the user, or the screen when the script runs.</summary>
+        private static bool NoValueType(VariableType type)
+        {
+            return type == VariableType.Clipboard || type == VariableType.Password || type == VariableType.Image || type == VariableType.OCR;
         }
 
         private ImageSettings BuildImageSettings()
@@ -1189,12 +1377,19 @@ namespace AutomationTest.App
                     _xlFilterField.Text = xs.FilterField.ToString();
                     _xlCriteria.Text = xs.Criteria;
                     _xlClearFilter.Checked = xs.ClearFilter;
-                    _xlValuesOnly.Checked = xs.ValuesOnly;
+                    _xlPaste.SelectedItem = xs.Paste;
+                    _xlTranspose.Checked = xs.Transpose;
+                    _xlReplaceWith.Text = xs.ReplaceWith ?? "";
+                    _xlVisibility.SelectedItem = xs.Visibility;
                     _xlMacro.Text = xs.Macro;
                     _xlAllowMacros.Checked = xs.AllowMacros;
                     _xlId.Text = xs.Id;
                     _xlTime.Milliseconds = xs.TimeMs;
                     _xlDelay.Milliseconds = xs.DelayMs;
+                    break;
+
+                case ActionCategory.Email:
+                    LoadEmailNode(node.Email);
                     break;
 
                 case ActionCategory.Web:
@@ -1225,11 +1420,33 @@ namespace AutomationTest.App
                     break;
 
                 case ActionCategory.Utilities:
-                    _cmdKind.SelectedItem = node.Command.Kind;
-                    _cmdValue.Text = node.Command.Value;
-                    _cmdDelay.Milliseconds = node.Command.DelayMs;
-                    _cmdTime.Milliseconds = node.Command.TimeMs;
-                    _cmdForce.Checked = node.Command.Force;
+                case ActionCategory.Program:
+                    var cs = node.Command;
+                    SetCommandKind(cs.Kind);
+                    _cmdX.Value = Clamp(_cmdX, cs.X);
+                    _cmdY.Value = Clamp(_cmdY, cs.Y);
+                    _cmdW.Value = Clamp(_cmdW, cs.Width);
+                    _cmdH.Value = Clamp(_cmdH, cs.Height);
+                    _cmdValue.Text = cs.Value;
+                    _cmdValueExpr.Checked = cs.ValueIsExpression;
+                    _cmdParams.Text = (cs.Params ?? "").Replace("\r\n", "\n").Replace("\n", "\r\n");
+                    _cmdReturns.Text = cs.Returns ?? "";
+                    _cmdFailOnError.Checked = CommandKinds.IsApi(cs.Kind) && cs.FailOnError;
+                    _apiTimeout.Milliseconds = CommandKinds.IsApi(cs.Kind) && cs.TimeMs > 0 ? cs.TimeMs : 30000;
+                    _cmdMatch.SelectedItem = cs.Match;
+                    _cmdAll.Checked = cs.All;
+                    _cmdTarget.Text = cs.Target ?? "";
+                    _cmdTargetExpr.Checked = cs.TargetIsExpression;
+                    _cmdOverwrite.Checked = cs.Overwrite;
+                    _cmdRecurse.Checked = cs.Recurse;
+                    _cmdAppend.Checked = cs.Append;
+                    _cmdId.Text = cs.Id ?? "";
+                    _cmdDelay.Milliseconds = cs.DelayMs;
+                    _cmdTime.Milliseconds = cs.Kind == CommandKind.Shutdown ? cs.TimeMs : 0;
+                    _cmdTimeout.Milliseconds = cs.Kind == CommandKind.Close ? cs.TimeMs : 5000;
+                    _cmdForce.Checked = cs.Kind == CommandKind.Shutdown && cs.Force;
+                    _cmdKill.Checked = cs.Kind == CommandKind.Close && cs.Force;
+                    _cmdDelForce.Checked = cs.Kind == CommandKind.FsDelete && cs.Force;
                     break;
 
                 default:
@@ -1241,12 +1458,20 @@ namespace AutomationTest.App
                             break;
                         case ControlKind.Variable:
                             LoadVariableSettings(node.Variable);
+                            if (node.Variable.UsesScreenArea && node.Image != null)
+                            {
+                                LoadImageSettings(node.Image);
+                                _ocrLanguage.Text = node.Image.OcrLanguage ?? "";
+                            }
                             break;
                         case ControlKind.Condition:
                             _caseExpr.Text = node.Children[0].Case.Expression; // the first case; Update writes it back
                             break;
                         case ControlKind.Case:
                             _caseExpr.Text = node.Case.Expression;
+                            break;
+                        case ControlKind.Catch:
+                            _catchId.Text = node.Catch.Id;
                             break;
                         case ControlKind.Wait:
                             var w = node.Wait;
@@ -1324,6 +1549,241 @@ namespace AutomationTest.App
         // ---------------------------------------------------------------- tree editing
 
         /// <summary>The Condition that the single selected line belongs to (its Begin/End line, a case, the else, or anything inside), if any.</summary>
+        // ---------------------------------------------------------------- undo, redo, copy, paste and drag and drop
+
+        private const int UndoLimit = 50;
+        private readonly List<string> _undo = new List<string>();
+        private readonly List<string> _redo = new List<string>();
+        private List<ActionNode> _dragNodes;
+        private readonly Panel _dropLine = new Panel { Height = 2, BackColor = Color.FromArgb(0, 120, 215), Visible = false };
+
+        /// <summary>The script as text, to go back to it.</summary>
+        private string Snapshot()
+        {
+            return ScriptSerializer.ToJson(_script);
+        }
+
+        /// <summary>Runs a change of the script; when it really changed something, the script as it was before can be got back with Undo.</summary>
+        private void Edit(Action change)
+        {
+            string before = Snapshot();
+            change();
+            if (Snapshot() == before) return;
+            _undo.Add(before);
+            if (_undo.Count > UndoLimit) _undo.RemoveAt(0);
+            _redo.Clear();
+        }
+
+        private void ClearHistory()
+        {
+            _undo.Clear();
+            _redo.Clear();
+        }
+
+        /// <summary>Puts back the script as it was before the last change.</summary>
+        private void UndoAction()
+        {
+            if (_running || _recording) return;
+            if (_undo.Count == 0) { SetStatus("Nothing to undo."); return; }
+            _redo.Add(Snapshot());
+            RestoreSnapshot(_undo[_undo.Count - 1]);
+            _undo.RemoveAt(_undo.Count - 1);
+            SetStatus("Undone.");
+        }
+
+        private void RedoAction()
+        {
+            if (_running || _recording) return;
+            if (_redo.Count == 0) { SetStatus("Nothing to redo."); return; }
+            _undo.Add(Snapshot());
+            RestoreSnapshot(_redo[_redo.Count - 1]);
+            _redo.RemoveAt(_redo.Count - 1);
+            SetStatus("Redone.");
+        }
+
+        private void RestoreSnapshot(string json)
+        {
+            _script = ScriptSerializer.FromJson(json);
+            _collapsed.Clear();
+            RefreshList(null);
+        }
+
+        /// <summary>The selected actions that are not inside another selected action (what a copy takes: the inside comes with them).</summary>
+        private List<ActionNode> SelectedRoots(out string problem)
+        {
+            problem = null;
+            var rows = SelectedRows().Where(r => !r.IsEnd).ToList();
+            var chosen = new HashSet<ActionNode>(rows.Select(r => r.Node));
+            var roots = new List<ActionNode>();
+            foreach (var row in rows)
+            {
+                if (IsBranch(row.Node)) { problem = "Copy the whole Condition or Try, not one of its case, else or catch lines."; return null; }
+                bool inside = false;
+                for (var p = row.Parent; p != null && !inside; p = ParentOf(p)) inside = chosen.Contains(p);
+                if (!inside) roots.Add(row.Node);
+            }
+            return roots;
+        }
+
+        private void CopyActions(bool cut)
+        {
+            if (_running || _recording) return;
+            string problem;
+            var roots = SelectedRoots(out problem);
+            if (roots == null) { SetStatus(problem); return; }
+            if (roots.Count == 0) { SetStatus("Select the actions to " + (cut ? "cut" : "copy") + " first."); return; }
+            try { ActionClipboard.Copy(roots); }
+            catch (System.Runtime.InteropServices.ExternalException) { SetStatus("The clipboard is in use by another program."); return; }
+            if (cut) Edit(DeleteActionsCore);
+            SetStatus((cut ? "Cut " : "Copied ") + roots.Count + " action(s).");
+        }
+
+        /// <summary>Paste: like Add, the actions go inside the selected container, otherwise after the selected action, otherwise at the end.</summary>
+        private void PasteActions()
+        {
+            if (_running || _recording) return;
+            List<ActionNode> nodes;
+            try { nodes = ActionClipboard.Paste(); }
+            catch (System.Runtime.InteropServices.ExternalException) { SetStatus("The clipboard is in use by another program."); return; }
+            if (nodes.Count == 0) { SetStatus("There are no copied actions to paste."); return; }
+            var selected = SelectedRows();
+            if (selected.Count == 1 && selected[0].Node.IsKind(ControlKind.Condition))
+            {
+                SetStatus("A Condition holds cases: select a case or the else to paste actions inside it.");
+                return;
+            }
+            if (selected.Count > 1 || (selected.Count == 1 && !selected[0].Node.IsContainer))
+            {
+                var last = selected[selected.Count - 1];
+                if (IsBranch(last.Node)) { SetStatus("Select a single case, else or catch to paste actions inside it."); return; }
+            }
+            Edit(() => InsertNodes(nodes, selected));
+            RefreshList(nodes);
+            SetStatus("Pasted " + nodes.Count + " action(s).");
+        }
+
+        private enum DropWhere { Before, After, Into }
+
+        /// <summary>
+        /// Moves (or copies) actions next to or inside another action. Returns a message when that is not allowed, otherwise null.
+        /// Cases, else and catch lines stay where they are; nothing goes inside itself; a Condition only holds cases.
+        /// </summary>
+        private string MoveNodesTo(List<ActionNode> nodes, ActionNode target, DropWhere where, bool copy)
+        {
+            if (nodes.Count == 0) return "Nothing to move.";
+            foreach (var n in nodes)
+            {
+                if (IsBranch(n)) return "Cases, else and catch lines stay inside their Condition or Try.";
+                if (ReferenceEquals(n, target) || Contains(n, target)) return "An action cannot be moved into itself.";
+            }
+            ActionNode parent = where == DropWhere.Into ? target : ParentOf(target);
+            if (where == DropWhere.Into)
+            {
+                if (target.IsKind(ControlKind.Condition)) return "A Condition holds cases: drop into a case or the else.";
+                if (!target.IsContainer) return "That action cannot hold other actions.";
+            }
+            else
+            {
+                if (parent != null && parent.IsKind(ControlKind.Condition)) return "A Condition holds cases: drop into a case or the else.";
+                if (IsTail(target) && where == DropWhere.After) return "The else and catch lines always stay last.";
+            }
+
+            var moving = copy ? nodes.Select(n => n.Clone()).ToList() : nodes;
+            if (!copy) foreach (var n in nodes) FindList(n).Remove(n);
+            if (where == DropWhere.Into) AddInside(target, moving);
+            else
+            {
+                var list = FindList(target);
+                list.InsertRange(list.IndexOf(target) + (where == DropWhere.After ? 1 : 0), moving);
+            }
+            RefreshList(moving);
+            return null;
+        }
+
+        private static bool Contains(ActionNode root, ActionNode wanted)
+        {
+            foreach (var child in root.Children)
+                if (ReferenceEquals(child, wanted) || Contains(child, wanted)) return true;
+            return false;
+        }
+
+        /// <summary>Where a drop at this point of the list would go: the row under it and the place relative to the row (null when over nothing).</summary>
+        private Tuple<ActionNode, DropWhere> DropTargetAt(Point clientPoint)
+        {
+            var item = _list.GetItemAt(8, clientPoint.Y);
+            if (item == null) return null;
+            var row = _rows[item.Index];
+            var bounds = item.GetBounds(ItemBoundsPortion.Entire);
+            double fraction = (clientPoint.Y - bounds.Top) / (double)Math.Max(1, bounds.Height);
+            if (row.IsEnd) return Tuple.Create(row.Node, DropWhere.After); // the End line of a Condition: after the whole Condition
+            bool canHold = row.Node.IsContainer && !row.Node.IsKind(ControlKind.Condition);
+            if (canHold && fraction >= 0.25 && fraction <= 0.75) return Tuple.Create(row.Node, DropWhere.Into);
+            return Tuple.Create(row.Node, fraction < 0.5 ? DropWhere.Before : DropWhere.After);
+        }
+
+        private void ListItemDrag(ItemDragEventArgs e)
+        {
+            if (_running || _recording) return;
+            string problem;
+            // Dragging a row that is not selected selects just that row first, like Explorer does.
+            if (e.Item is ListViewItem dragged && !dragged.Selected)
+            {
+                _list.SelectedItems.Clear();
+                dragged.Selected = true;
+            }
+            var roots = SelectedRoots(out problem);
+            if (roots == null) { SetStatus(problem); return; }
+            if (roots.Count == 0) return;
+            _dragNodes = roots;
+            _list.DoDragDrop(new DataObject("AutomationTest.DragRows", "rows"), DragDropEffects.Move | DragDropEffects.Copy);
+            _dragNodes = null;
+            _dropLine.Visible = false;
+        }
+
+        private void ListDragOver(DragEventArgs e)
+        {
+            if (_dragNodes == null) { e.Effect = DragDropEffects.None; return; }
+            var point = _list.PointToClient(new Point(e.X, e.Y));
+            // Near the top or bottom edge the list scrolls, so a far away place can be reached.
+            if (_list.TopItem != null)
+            {
+                if (point.Y < 24 && _list.TopItem.Index > 0) _list.EnsureVisible(_list.TopItem.Index - 1);
+                else if (point.Y > _list.ClientSize.Height - 24)
+                {
+                    var below = _list.GetItemAt(8, _list.ClientSize.Height - 2);
+                    if (below != null && below.Index + 1 < _list.Items.Count) _list.EnsureVisible(below.Index + 1);
+                }
+            }
+            var target = DropTargetAt(point);
+            bool copy = (e.KeyState & 8) != 0; // Ctrl held: copy instead of move
+            e.Effect = target == null ? DragDropEffects.None : copy ? DragDropEffects.Copy : DragDropEffects.Move;
+            if (target == null) { _dropLine.Visible = false; return; }
+            var item = _list.Items[_rows.FindIndex(r => ReferenceEquals(r.Node, target.Item1) && (!r.IsEnd || target.Item2 == DropWhere.After))];
+            var bounds = item.GetBounds(ItemBoundsPortion.Entire);
+            if (target.Item2 == DropWhere.Into) { _dropLine.SetBounds(bounds.Left, bounds.Top, bounds.Width, bounds.Height); _dropLine.BackColor = Color.FromArgb(90, 0, 120, 215); }
+            else
+            {
+                int y = target.Item2 == DropWhere.Before ? bounds.Top : bounds.Bottom - 2;
+                _dropLine.SetBounds(bounds.Left, y, bounds.Width, 2);
+                _dropLine.BackColor = Color.FromArgb(0, 120, 215);
+            }
+            if (_dropLine.Parent != _list) _list.Controls.Add(_dropLine);
+            _dropLine.Visible = true;
+            _dropLine.BringToFront();
+        }
+
+        private void ListDragDrop(DragEventArgs e)
+        {
+            _dropLine.Visible = false;
+            if (_dragNodes == null) return;
+            var target = DropTargetAt(_list.PointToClient(new Point(e.X, e.Y)));
+            if (target == null) return;
+            bool copy = (e.KeyState & 8) != 0;
+            string problem = null;
+            Edit(() => problem = MoveNodesTo(_dragNodes, target.Item1, target.Item2, copy));
+            SetStatus(problem ?? (copy ? "Copied." : "Moved."));
+        }
+
         private ActionNode ConditionScopeNode()
         {
             if (_list.SelectedIndices.Count != 1) return null;
@@ -1335,6 +1795,16 @@ namespace AutomationTest.App
         /// <summary>Offers Action = Case only while a line inside a Condition is selected.</summary>
         private void RefreshControlKinds()
         {
+            bool catchSelected = _list.SelectedIndices.Count == 1 && !_rows[_list.SelectedIndices[0]].IsEnd && _rows[_list.SelectedIndices[0]].Node.IsKind(ControlKind.Catch);
+            bool hasCatch = _controlKind.Items.Contains(ControlKind.Catch);
+            if (catchSelected && !hasCatch) _controlKind.Items.Add(ControlKind.Catch);
+            else if (!catchSelected && hasCatch)
+            {
+                bool wasCatch = _controlKind.SelectedItem is ControlKind c && c == ControlKind.Catch;
+                _controlKind.Items.Remove(ControlKind.Catch);
+                if (wasCatch) _controlKind.SelectedIndex = 0;
+            }
+
             bool allow = ConditionScopeNode() != null;
             bool has = _controlKind.Items.Contains(ControlKind.Case);
             if (allow == has) return;
@@ -1385,19 +1855,58 @@ namespace AutomationTest.App
 
         private static bool IsBranch(ActionNode node)
         {
-            return node.IsKind(ControlKind.Case) || node.IsKind(ControlKind.Else);
+            return node.IsKind(ControlKind.Case) || node.IsKind(ControlKind.Else) || node.IsKind(ControlKind.Catch);
+        }
+
+        /// <summary>The lines that always stay last in their list: the else of a Condition and the catch of a Try.</summary>
+        private static bool IsTail(ActionNode node)
+        {
+            return node.IsKind(ControlKind.Else) || node.IsKind(ControlKind.Catch);
+        }
+
+        /// <summary>Puts the actions at the end of a container; in a Try that is just before its catch line.</summary>
+        private static void AddInside(ActionNode container, IEnumerable<ActionNode> nodes)
+        {
+            if (container.IsKind(ControlKind.Try) && container.Children.Count > 0 && container.Children[container.Children.Count - 1].IsKind(ControlKind.Catch))
+                container.Children.InsertRange(container.Children.Count - 1, nodes);
+            else container.Children.AddRange(nodes);
+        }
+
+        /// <summary>The Time column of a Try or a Section: what the actions inside take once (the catch line is not counted).</summary>
+        private static string TryTime(ActionNode node)
+        {
+            long? pass = ActionTiming.PerIterationMs(node);
+            return !pass.HasValue ? "?" : node.Children.Exists(c => !c.Disabled && !c.IsKind(ControlKind.Catch)) ? TimeBox.FormatApprox(pass.Value) : "";
+        }
+
+        /// <summary>True when a new action put inside this container (null = the top level) would be inside a Loop.</summary>
+        private bool InsideLoop(ActionNode container)
+        {
+            for (var n = container; n != null; n = ParentOf(n))
+                if (n.IsKind(ControlKind.Loop)) return true;
+            return false;
         }
 
         /// <summary>
         /// Add: inside the selected container (Loop, Wait, Image, a Condition's case or else), otherwise right after the
         /// selected action, otherwise at the end. A Case goes into the selected Condition, just before its else.
         /// </summary>
-        private void AddAction()
+        private void AddAction() { Edit(AddActionCore); }
+
+        private void AddActionCore()
         {
             var node = ReadEditor();
             string problem = Validate(node);
             if (problem != null) { SetStatus(problem); return; }
             var selected = SelectedRows();
+
+            if (node.IsKind(ControlKind.Catch)) { SetStatus("A Catch is made together with its Try: add a Try instead."); return; }
+            if (node.IsKind(ControlKind.Break) || node.IsKind(ControlKind.Continue))
+            {
+                // Where the action would go: inside the selected container, or next to the selected action, or at the top.
+                ActionNode where = selected.Count == 1 && selected[0].Node.IsContainer ? selected[0].Node : selected.Count > 0 ? selected[selected.Count - 1].Parent : null;
+                if (!InsideLoop(where)) { SetStatus((node.IsKind(ControlKind.Break) ? "Break" : "Continue") + " only works inside a Loop: select the Loop (or an action inside it) first."); return; }
+            }
 
             if (node.IsKind(ControlKind.Case))
             {
@@ -1413,11 +1922,11 @@ namespace AutomationTest.App
                 return;
             }
             else if (selected.Count == 1 && selected[0].Node.IsContainer)
-                selected[0].Node.Children.Add(node);
+                AddInside(selected[0].Node, new[] { node });
             else if (selected.Count > 0)
             {
                 var last = selected[selected.Count - 1];
-                if (IsBranch(last.Node)) { SetStatus("Select a single case or else to add an action inside it."); return; }
+                if (IsBranch(last.Node)) { SetStatus("Select a single case, else or catch to add an action inside it."); return; }
                 last.Siblings.Insert(last.Siblings.IndexOf(last.Node) + 1, node);
             }
             else
@@ -1436,6 +1945,7 @@ namespace AutomationTest.App
                 case ExcelKind.GetCell: case ExcelKind.SetCell: case ExcelKind.GetRange: case ExcelKind.SetRange: case ExcelKind.Find:
                 case ExcelKind.GetInfo: case ExcelKind.Evaluate: case ExcelKind.Select: case ExcelKind.InsertCells: case ExcelKind.DeleteCells:
                 case ExcelKind.Clear: case ExcelKind.Copy: case ExcelKind.Format: case ExcelKind.Sort: case ExcelKind.Filter:
+                case ExcelKind.CutCells: case ExcelKind.ReplaceText: case ExcelKind.HideCells: case ExcelKind.ShowCells:
                     return true;
             }
             return false;
@@ -1445,6 +1955,62 @@ namespace AutomationTest.App
         private static bool XlWorkbookInfoOnly(ExcelKind kind, ExcelInfoKind info)
         {
             return kind == ExcelKind.GetInfo && (info == ExcelInfoKind.SheetCount || info == ExcelInfoKind.WorkbookName || info == ExcelInfoKind.WorkbookPath || info == ExcelInfoKind.Selection);
+        }
+
+        /// <summary>A message when a Utilities action could never run (an empty path, a bad pattern or id), otherwise null.</summary>
+        private static string ValidateCommand(CommandSettings c)
+        {
+            bool fs = ScriptRunner.CommandIsFileSystem(c.Kind);
+            if (c.Kind == CommandKind.Open && c.Value.Length == 0) return "Enter the program or document to open.";
+            if (c.Kind == CommandKind.Open && c.ValueIsExpression) Expression.CheckSyntax(c.Value);
+            if (c.Kind == CommandKind.WindowResize && (c.Width < 1 || c.Height < 1)) return "Enter a Width and a Height of at least 1.";
+            if (CommandKinds.IsApi(c.Kind))
+            {
+                if (c.Value.Length == 0) return "Enter the web address.";
+                if (c.ValueIsExpression) Expression.CheckSyntax(c.Value);
+                else if (!c.Value.StartsWith("http://", StringComparison.OrdinalIgnoreCase) && !c.Value.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) return "The web address must start with http:// or https://.";
+                string headerProblem;
+                foreach (var header in ApiClient.ParseHeaders(c.Params, out headerProblem)) if (header.Item3) Expression.CheckSyntax(header.Item2);
+                if (headerProblem != null) return "Headers: " + headerProblem;
+                if (CommandKinds.ApiSendsBody(c.Kind) && c.TargetIsExpression && c.Target.Length > 0) Expression.CheckSyntax(c.Target);
+                if (c.Kind == CommandKind.ApiDownload)
+                {
+                    if (c.Target.Length == 0) return "Enter the file to save the answer in.";
+                    if (c.TargetIsExpression) Expression.CheckSyntax(c.Target);
+                }
+                if (c.Id.Length > 0 && !Expression.IsValidId(c.Id)) return "The ID may have letters, digits and _, not starting with a digit (and not true, false, now, today); or leave it empty.";
+            }
+            if (c.Kind == CommandKind.AutoScript)
+            {
+                if (c.Value.Length == 0) return "Enter the script file to run.";
+                if (c.ValueIsExpression) Expression.CheckSyntax(c.Value);
+                string scriptProblem;
+                foreach (var input in ScriptRunner.ParseScriptInputs(c.Params, out scriptProblem)) Expression.CheckSyntax(input.Value);
+                if (scriptProblem != null) return "Inputs: " + scriptProblem;
+                ScriptRunner.ParseScriptReturns(c.Returns, out scriptProblem);
+                if (scriptProblem != null) return "Returns: " + scriptProblem;
+            }
+            if (c.Kind == CommandKind.Close || CommandKinds.IsWindow(c.Kind))
+            {
+                if (c.Value.Length == 0) return "Enter the program or window (a window title, a process name, a path or a process id).";
+                if (c.ValueIsExpression) Expression.CheckSyntax(c.Value);
+                else if (c.Match == ProgramMatch.Title)
+                {
+                    try { new System.Text.RegularExpressions.Regex(c.Value); }
+                    catch (ArgumentException ex) { return "The title is not a valid regular expression: " + ex.Message; }
+                }
+                else if (c.Match == ProgramMatch.Id && !int.TryParse(c.Value, out int pid)) return "The process id is a number.";
+            }
+            if (fs)
+            {
+                if (c.Value.Length == 0) return "Enter the " + (c.Kind == CommandKind.FsList ? "folder" : "path") + ".";
+                if (c.ValueIsExpression) Expression.CheckSyntax(c.Value);
+                if ((c.Kind == CommandKind.FsCopy || c.Kind == CommandKind.FsMove) && c.Target.Trim().Length == 0) return "Enter the destination.";
+                if (c.Kind == CommandKind.FsRename && c.Target.Trim().Length == 0) return "Enter the new name.";
+                if (c.TargetIsExpression && c.Target.Length > 0) Expression.CheckSyntax(c.Target);
+                if (ScriptRunner.CommandKeeps(c.Kind) && !Expression.IsValidId(c.Id)) return "Enter an ID with letters, digits and _, not starting with a digit (and not true, false, now, today).";
+            }
+            return null;
         }
 
         private static string ValidateExcel(ExcelSettings x)
@@ -1499,6 +2065,33 @@ namespace AutomationTest.App
                 case ExcelKind.Clear:
                     if (x.CellIsExpression) Expression.CheckSyntax(x.Cell);
                     else if ((problem = AutomationTest.Core.Excel.ExcelAddress.Check(x.Cell, "area")) != null) return problem;
+                    break;
+                case ExcelKind.SheetCopy:
+                    if ((problem = badPattern(x.SheetName)) != null) return problem;
+                    if (!x.ValueIsExpression && x.Value.Trim().Length > 0 && (x.Value.Trim().Length > 31 || x.Value.IndexOfAny(new[] { ':', '\\', '/', '?', '*', '[', ']' }) >= 0))
+                        return "A sheet name has at most 31 characters and none of : \\ / ? * [ ].";
+                    break;
+                case ExcelKind.SheetMove:
+                case ExcelKind.SheetVisible:
+                    if ((problem = badPattern(x.SheetName)) != null) return problem;
+                    break;
+                case ExcelKind.HideCells:
+                case ExcelKind.ShowCells:
+                    if ((problem = cellProblem(x.Cell, x.CellIsExpression)) != null) return problem;
+                    break;
+                case ExcelKind.CutCells:
+                    if (x.CellIsExpression) Expression.CheckSyntax(x.Cell);
+                    else if ((problem = AutomationTest.Core.Excel.ExcelAddress.Check(x.Cell, "area to move")) != null) return problem;
+                    if (x.Value.Trim().Length == 0) return "Enter the destination cell.";
+                    if (!x.ValueIsExpression && (problem = AutomationTest.Core.Excel.ExcelAddress.Check(x.Value, "destination cell")) != null) return problem;
+                    break;
+                case ExcelKind.ReplaceText:
+                    if (x.Value.Length == 0) return "Enter the text to find.";
+                    if (x.Cell.Length > 0)
+                    {
+                        if (x.CellIsExpression) Expression.CheckSyntax(x.Cell);
+                        else if ((problem = AutomationTest.Core.Excel.ExcelAddress.Check(x.Cell, "area")) != null) return problem;
+                    }
                     break;
                 case ExcelKind.Copy:
                     if (x.CellIsExpression) Expression.CheckSyntax(x.Cell);
@@ -1599,6 +2192,13 @@ namespace AutomationTest.App
                     case ActionCategory.Excel:
                         return ValidateExcel(node.Excel);
 
+                    case ActionCategory.Utilities:
+                    case ActionCategory.Program:
+                        return ValidateCommand(node.Command);
+
+                    case ActionCategory.Email:
+                        return ValidateEmail(node.Email);
+
                     case ActionCategory.Web:
                         var web = node.Web;
                         if (web.Kind == WebKind.SwitchTab)
@@ -1686,6 +2286,14 @@ namespace AutomationTest.App
                                 Expression.CheckSyntax(v.Expression);
                             }
                             else v.GetLiteral();
+                            if (v.Type == VariableType.Image)
+                            {
+                                if (node.Image == null || !node.Image.HasImage) return "Capture or load a picture first.";
+                                if ((node.Image.RangeWidth > 0) != (node.Image.RangeHeight > 0))
+                                    return "Set both Width and Height of the range, or leave both at 0 to search the whole area.";
+                            }
+                            else if (v.Type == VariableType.OCR && node.Image != null && (node.Image.RangeWidth > 0) != (node.Image.RangeHeight > 0))
+                                return "Set both Width and Height of the area to read, or leave both at 0 to read the whole screen.";
                         }
                         else if (node.IsKind(ControlKind.Condition))
                         {
@@ -1697,6 +2305,11 @@ namespace AutomationTest.App
                         {
                             if (string.IsNullOrWhiteSpace(node.Case.Expression)) return "Enter the condition, for example {abc} > 3.";
                             Expression.CheckSyntax(node.Case.Expression);
+                        }
+                        else if (node.IsKind(ControlKind.Catch))
+                        {
+                            if (node.Catch.Id.Length > 0 && !Expression.IsValidId(node.Catch.Id))
+                                return "The ID may have letters, digits and _, not starting with a digit (and not true, false, now, today); or leave it empty.";
                         }
                         break;
                 }
@@ -1712,7 +2325,9 @@ namespace AutomationTest.App
             return null;
         }
 
-        private void UpdateAction()
+        private void UpdateAction() { Edit(UpdateActionCore); }
+
+        private void UpdateActionCore()
         {
             var row = SingleSelectedRow();
             if (row == null) { SetStatus("Select exactly one action to update."); return; }
@@ -1722,9 +2337,16 @@ namespace AutomationTest.App
             if (problem != null) { SetStatus(problem); return; }
             // A Condition and its Cases keep their structure: they cannot turn into something else or be created by Update.
             if (row.Node.IsKind(ControlKind.Condition) != edited.IsKind(ControlKind.Condition)
-                || row.Node.IsKind(ControlKind.Case) != edited.IsKind(ControlKind.Case))
+                || row.Node.IsKind(ControlKind.Case) != edited.IsKind(ControlKind.Case)
+                || row.Node.IsKind(ControlKind.Try) != edited.IsKind(ControlKind.Try)
+                || row.Node.IsKind(ControlKind.Catch) != edited.IsKind(ControlKind.Catch))
             {
-                SetStatus("A Condition or a Case cannot be changed into another type (and nothing can be changed into one); add a new action instead.");
+                SetStatus("A Condition, Case, Try or Catch cannot be changed into another type (and nothing can be changed into one); add a new action instead.");
+                return;
+            }
+            if ((edited.IsKind(ControlKind.Break) || edited.IsKind(ControlKind.Continue)) && !InsideLoop(row.Parent))
+            {
+                SetStatus((edited.IsKind(ControlKind.Break) ? "Break" : "Continue") + " only works inside a Loop.");
                 return;
             }
             if (!edited.IsContainer && row.Node.Children.Count > 0)
@@ -1756,7 +2378,9 @@ namespace AutomationTest.App
             return _rows.FirstOrDefault(r => !r.IsEnd && ReferenceEquals(r.Node, node))?.Parent;
         }
 
-        private void DeleteActions()
+        private void DeleteActions() { Edit(DeleteActionsCore); }
+
+        private void DeleteActionsCore()
         {
             var selected = SelectedRows();
             if (selected.Count == 0) return;
@@ -1773,6 +2397,7 @@ namespace AutomationTest.App
             {
                 if (AncestorSelected(row)) continue; // goes away with its Condition
                 if (row.Node.IsKind(ControlKind.Else)) { SetStatus("The else line cannot be deleted."); return; }
+                if (row.Node.IsKind(ControlKind.Catch)) { SetStatus("The catch line cannot be deleted; delete the whole Try instead."); return; }
                 if (row.Node.IsKind(ControlKind.Case) && !row.Siblings.Any(c => c.IsKind(ControlKind.Case) && !nodes.Contains(c)))
                 {
                     SetStatus("A Condition needs at least one case; delete the whole Condition instead.");
@@ -1789,12 +2414,14 @@ namespace AutomationTest.App
         }
 
         /// <summary>Moves the selected actions one place up (-1) or down (1) within their list; they must share one parent.</summary>
-        private void MoveUpDown(int delta)
+        private void MoveUpDown(int delta) { Edit(() => MoveUpDownCore(delta)); }
+
+        private void MoveUpDownCore(int delta)
         {
             var selected = SelectedRows();
             if (selected.Count == 0) return;
             if (!SameList(selected)) { SetStatus("Select actions that are in the same list to move them."); return; }
-            if (selected.Any(r => r.Node.IsKind(ControlKind.Else))) { SetStatus("The else line always stays last."); return; }
+            if (selected.Any(r => IsTail(r.Node))) { SetStatus("The else and catch lines always stay last."); return; }
 
             var list = selected[0].Siblings;
             var picked = new HashSet<ActionNode>(selected.Select(r => r.Node));
@@ -1804,7 +2431,7 @@ namespace AutomationTest.App
             {
                 int target = i + delta;
                 // Blocked at the edge, by a neighbour that is selected too, or by an else (which stays last).
-                if (target < 0 || target >= list.Count || picked.Contains(list[target]) || list[target].IsKind(ControlKind.Else)) continue;
+                if (target < 0 || target >= list.Count || picked.Contains(list[target]) || IsTail(list[target])) continue;
                 var node = list[i];
                 list[i] = list[target];
                 list[target] = node;
@@ -1813,18 +2440,20 @@ namespace AutomationTest.App
         }
 
         /// <summary>Up to Top / Down to End: moves the selected actions (keeping their order) to the start or the end of their list. An else stays last.</summary>
-        private void MoveToEdge(bool top)
+        private void MoveToEdge(bool top) { Edit(() => MoveToEdgeCore(top)); }
+
+        private void MoveToEdgeCore(bool top)
         {
             var selected = SelectedRows();
             if (selected.Count == 0) return;
             if (!SameList(selected)) { SetStatus("Select actions that are in the same list to move them."); return; }
-            if (selected.Any(r => r.Node.IsKind(ControlKind.Else))) { SetStatus("The else line always stays last."); return; }
+            if (selected.Any(r => IsTail(r.Node))) { SetStatus("The else and catch lines always stay last."); return; }
 
             var list = selected[0].Siblings;
             var picked = new HashSet<ActionNode>(selected.Select(r => r.Node));
             var moving = list.Where(picked.Contains).ToList();
             var rest = list.Where(n => !picked.Contains(n)).ToList();
-            var last = rest.LastOrDefault(n => n.IsKind(ControlKind.Else)); // the else of a Condition stays at the end
+            var last = rest.LastOrDefault(IsTail); // the else of a Condition and the catch of a Try stay at the end
             if (last != null) rest.Remove(last);
             var order = top ? moving.Concat(rest).ToList() : rest.Concat(moving).ToList();
             if (last != null) order.Add(last);
@@ -1857,12 +2486,14 @@ namespace AutomationTest.App
         }
 
         /// <summary>In: moves the selected actions to the end of the Loop, Wait or Image right before them.</summary>
-        private void MoveIn()
+        private void MoveIn() { Edit(MoveInCore); }
+
+        private void MoveInCore()
         {
             var selected = SelectedRows();
             if (selected.Count == 0) return;
             if (!SameList(selected)) { SetStatus("Select actions that are in the same list to move them."); return; }
-            if (selected.Any(r => IsBranch(r.Node))) { SetStatus("Cases and else stay inside their Condition."); return; }
+            if (selected.Any(r => IsBranch(r.Node))) { SetStatus("Cases, else and catch lines stay inside their Condition or Try."); return; }
 
             var list = selected[0].Siblings;
             var picked = new HashSet<ActionNode>(selected.Select(r => r.Node));
@@ -1881,22 +2512,24 @@ namespace AutomationTest.App
             }
             if (container == null || !container.IsContainer)
             {
-                SetStatus("In: the action right before the selection must be a Loop, Wait or Image.");
+                SetStatus("In: the action right before the selection must be a Loop, Wait, Image, Try or Section.");
                 return;
             }
             var moving = list.Where(picked.Contains).ToList();
             foreach (var node in moving) list.Remove(node);
-            container.Children.AddRange(moving);
+            AddInside(container, moving);
             RefreshList(picked);
         }
 
         /// <summary>Out: moves the selected actions out of their container, right after it (after the Condition when they are in a case or else).</summary>
-        private void MoveOut()
+        private void MoveOut() { Edit(MoveOutCore); }
+
+        private void MoveOutCore()
         {
             var selected = SelectedRows();
             if (selected.Count == 0) return;
             if (!SameList(selected)) { SetStatus("Select actions that are in the same list to move them."); return; }
-            if (selected.Any(r => IsBranch(r.Node))) { SetStatus("Cases and else stay inside their Condition."); return; }
+            if (selected.Any(r => IsBranch(r.Node))) { SetStatus("Cases, else and catch lines stay inside their Condition or Try."); return; }
             var parent = selected[0].Parent;
             if (parent == null) { SetStatus("Out: the selected actions are already at the top level."); return; }
 
@@ -2170,7 +2803,14 @@ namespace AutomationTest.App
                         case ExcelKind.InsertCells: details = "insert " + xd.Count + " " + xd.Target.ToString().ToLowerInvariant() + " at " + xd.Cell; break;
                         case ExcelKind.DeleteCells: details = "delete " + xd.Count + " " + xd.Target.ToString().ToLowerInvariant() + " at " + xd.Cell; break;
                         case ExcelKind.Clear: details = "clear " + xd.ClearWhat.ToString().ToLowerInvariant() + " of " + xd.Cell; break;
-                        case ExcelKind.Copy: details = xd.Cell + " -> " + xd.Value + (xd.ValuesOnly ? " (values only)" : ""); break;
+                        case ExcelKind.Copy: details = xd.Cell + " -> " + xd.Value + (xd.Paste != ExcelPasteKind.All ? " (" + xd.Paste.ToString().ToLowerInvariant() + ")" : "") + (xd.Transpose ? " (transpose)" : ""); break;
+                        case ExcelKind.CutCells: details = "move " + xd.Cell + " -> " + xd.Value; break;
+                        case ExcelKind.ReplaceText: details = "replace \"" + xd.Value + "\" with \"" + xd.ReplaceWith + "\"" + (xd.Cell.Length > 0 ? " in " + xd.Cell : ""); break;
+                        case ExcelKind.SheetCopy: details = "copy " + (xd.SheetName.Length > 0 ? "/" + xd.SheetName + "/ " : xd.Index > 0 ? "#" + xd.Index + " " : "this sheet ") + (xd.Value.Length > 0 ? "as \"" + xd.Value + "\" " : "") + "(" + xd.Position + ")"; break;
+                        case ExcelKind.SheetMove: details = "move " + (xd.SheetName.Length > 0 ? "/" + xd.SheetName + "/ " : xd.Index > 0 ? "#" + xd.Index + " " : "this sheet ") + "(" + xd.Position + ")"; break;
+                        case ExcelKind.SheetVisible: details = (xd.SheetName.Length > 0 ? "/" + xd.SheetName + "/ " : xd.Index > 0 ? "#" + xd.Index + " " : "this sheet ") + "-> " + xd.Visibility; break;
+                        case ExcelKind.HideCells: details = "hide " + xd.Count + " " + xd.Target.ToString().ToLowerInvariant() + " at " + xd.Cell; break;
+                        case ExcelKind.ShowCells: details = "show " + xd.Count + " " + xd.Target.ToString().ToLowerInvariant() + " at " + xd.Cell; break;
                         case ExcelKind.Format:
                             details = xd.Cell + ": " + string.Join(", ", new[]
                             {
@@ -2197,10 +2837,17 @@ namespace AutomationTest.App
                     }
                     if (xd.UseWorkbook.Length > 0 || xd.UseSheet.Length > 0)
                         details = "[" + xd.UseWorkbook + "]" + xd.UseSheet + " " + details;
-                    if (xd.Kind == ExcelKind.Copy && (xd.DestWorkbook.Length > 0 || xd.DestSheet.Length > 0))
+                    if ((xd.Kind == ExcelKind.Copy || xd.Kind == ExcelKind.CutCells || xd.Kind == ExcelKind.SheetCopy || xd.Kind == ExcelKind.SheetMove) && (xd.DestWorkbook.Length > 0 || xd.DestSheet.Length > 0))
                         details += " to [" + xd.DestWorkbook + "]" + xd.DestSheet;
                     if (xd.Kind == ExcelKind.Workbook || xd.Kind == ExcelKind.CloseExcel) time = TimeBox.Format(xd.TimeMs);
                     delay = TimeBox.Format(xd.DelayMs);
+                    break;
+
+                case ActionCategory.Email:
+                    action = n.Email.Kind.ToString();
+                    details = EmailDetails(n.Email);
+                    time = n.Email.Kind == EmailKind.Send ? "" : TimeBox.Format(n.Email.TimeMs);
+                    delay = TimeBox.Format(n.Email.DelayMs);
                     break;
 
                 case ActionCategory.Web:
@@ -2249,17 +2896,40 @@ namespace AutomationTest.App
                     break;
 
                 case ActionCategory.Utilities:
-                    action = n.Command.Kind.ToString();
-                    if (n.Command.Kind == CommandKind.Shutdown)
+                case ActionCategory.Program:
+                    var cd = n.Command;
+                    action = ActionGroups.Display(cd.Kind);
+                    switch (cd.Kind)
                     {
-                        details = "shut down the computer" + (n.Command.Force ? " (force)" : "");
-                        time = TimeBox.Format(n.Command.TimeMs);
+                        case CommandKind.Shutdown:
+                            details = "shut down the computer" + (cd.Force ? " (force)" : "");
+                            time = TimeBox.Format(cd.TimeMs);
+                            break;
+                        case CommandKind.Active: details = "sends a harmless input event so the computer does not lock or sleep"; break;
+                        case CommandKind.Open: details = cd.Value; break;
+                        case CommandKind.ApiGet: case CommandKind.ApiPost: case CommandKind.ApiPut: case CommandKind.ApiPatch:
+                        case CommandKind.ApiDelete: case CommandKind.ApiHead: case CommandKind.ApiDownload:
+                            details = (cd.ValueIsExpression ? "= " : "") + ApiClient.SafeUrl(cd.Value)
+                                + (cd.Kind == CommandKind.ApiDownload ? " -> " + cd.Target : "")
+                                + (cd.Id.Length > 0 ? " => {" + cd.Id + "}" : "") + (cd.FailOnError ? " (fail on error)" : "");
+                            break;
+                        case CommandKind.AutoScript:
+                            details = (cd.ValueIsExpression ? "= " : "") + cd.Value
+                                + (cd.Params.Trim().Length > 0 ? " (" + cd.Params.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).Length + " input(s))" : "")
+                                + (cd.Returns.Trim().Length > 0 ? " -> " + cd.Returns.Replace("\r", " ").Replace("\n", " ").Trim() : "");
+                            break;
+                        case CommandKind.Close: details = (cd.ValueIsExpression ? "= " : "") + cd.Match + " " + cd.Value + (cd.All ? " (all)" : "") + (cd.Force ? " (kill)" : ""); break;
+                        case CommandKind.FsCopy: details = cd.Value + " -> " + cd.Target + (cd.Overwrite ? " (overwrite)" : ""); break;
+                        case CommandKind.FsMove: details = cd.Value + " -> " + cd.Target + (cd.Overwrite ? " (overwrite)" : ""); break;
+                        case CommandKind.FsRename: details = cd.Value + " -> " + cd.Target; break;
+                        case CommandKind.FsDelete: details = cd.Value + (cd.Recurse ? " (recurse)" : "") + (cd.Force ? " (force)" : ""); break;
+                        case CommandKind.FsCreate: details = cd.Value; break;
+                        case CommandKind.FsExists: details = cd.Value + " -> " + cd.Id; break;
+                        case CommandKind.FsRead: details = cd.Value + " -> " + cd.Id; break;
+                        case CommandKind.FsWrite: details = (cd.Append ? "append to " : "write ") + cd.Value; break;
+                        case CommandKind.FsList: details = cd.Value + (cd.Recurse ? " (recurse)" : "") + " -> table " + cd.Id; break;
                     }
-                    else
-                    {
-                        details = n.Command.Kind == CommandKind.Active ? "sends a harmless input event so the computer does not lock or sleep" : n.Command.Value;
-                        delay = TimeBox.Format(n.Command.DelayMs);
-                    }
+                    if (cd.Kind != CommandKind.Shutdown) delay = TimeBox.Format(cd.DelayMs);
                     break;
 
                 default:
@@ -2283,6 +2953,19 @@ namespace AutomationTest.App
                             var v = n.Variable;
                             action = "Variable";
                             details = "{" + v.Id + "} (" + v.Type + ") = " + (v.UseExpression ? Shorten(v.Expression) : DescribeLiteral(v));
+                            if (v.Type == VariableType.Clipboard) details = "{" + v.Id + "} (Clipboard) = the text in the clipboard when it runs";
+                            else if (v.Type == VariableType.Password) details = "{" + v.Id + "} (Password) = asked when the script runs";
+                            else if (v.UsesScreenArea && n.Image != null)
+                            {
+                                var area = n.Image;
+                                process = DescribeTarget(area.Process);
+                                string where = area.RangeWidth > 0 && area.RangeHeight > 0
+                                    ? "range " + area.RangeWidth + "x" + area.RangeHeight + " at (" + area.RangeX + ", " + area.RangeY + ")" + (area.Process.IsEmpty ? "" : " " + area.Anchor)
+                                    : "whole area";
+                                details = v.Type == VariableType.Image
+                                    ? "{" + v.Id + "} (Image) " + area.ImageWidth + "x" + area.ImageHeight + " picture, " + area.Accuracy + "%, " + where
+                                    : "{" + v.Id + "} (OCR) text in " + where + (string.IsNullOrWhiteSpace(area.OcrLanguage) ? "" : ", language " + area.OcrLanguage);
+                            }
                             break;
                         case ControlKind.Condition:
                             action = "Condition";
@@ -2298,6 +2981,22 @@ namespace AutomationTest.App
                             action = "Else";
                             name = "else";
                             break;
+                        case ControlKind.Try:
+                            action = "Try";
+                            time = TryTime(n);
+                            break;
+                        case ControlKind.Catch:
+                            action = "Catch";
+                            name = string.IsNullOrWhiteSpace(n.Name) ? "catch" : n.Name;
+                            details = string.IsNullOrWhiteSpace(n.Catch.Id) ? "" : "error -> " + n.Catch.Id;
+                            break;
+                        case ControlKind.Section:
+                            action = "Section";
+                            time = TryTime(n);
+                            break;
+                        case ControlKind.Break: action = "Break"; details = "leave the loop"; break;
+                        case ControlKind.Continue: action = "Continue"; details = "next pass of the loop"; break;
+                        case ControlKind.Return: action = "Return"; details = "end the script"; break;
                         default:
                             action = "Loop";
                             switch (n.Loop.Mode)
@@ -2613,7 +3312,14 @@ namespace AutomationTest.App
 
         private void BrowseCommandPath()
         {
-            using (var dialog = new OpenFileDialog { Filter = "All files (*.*)|*.*" })
+            var kind = _cmdKind.SelectedItem as CommandKind? ?? CommandKind.Open;
+            if (kind == CommandKind.FsCreate || kind == CommandKind.FsList)
+            {
+                using (var folder = new FolderBrowserDialog())
+                    if (folder.ShowDialog(this) == DialogResult.OK) _cmdValue.Text = folder.SelectedPath;
+                return;
+            }
+            using (var dialog = new OpenFileDialog { Filter = kind == CommandKind.AutoScript ? "Automation Test script (*.json)|*.json|All files (*.*)|*.*" : "All files (*.*)|*.*" })
             {
                 if (dialog.ShowDialog(this) == DialogResult.OK) _cmdValue.Text = dialog.FileName;
             }
@@ -2937,6 +3643,7 @@ namespace AutomationTest.App
             _script = new AutomationScript();
             _category.SelectedItem = ActionCategory.Mouse; // a new script starts the editor on Mouse again
             _collapsed.Clear();
+            ClearHistory();
             _currentPath = null;
             RefreshList();
             UpdateTitle();
@@ -2959,6 +3666,7 @@ namespace AutomationTest.App
                 {
                     _script = ScriptSerializer.Load(dialog.FileName);
                     _collapsed.Clear();
+                    ClearHistory();
                     _currentPath = dialog.FileName;
                     RefreshList(_script.Actions.Take(1));
                     UpdateTitle();
@@ -3077,7 +3785,7 @@ namespace AutomationTest.App
             var nodes = RecordConverter.Build(events, InputRecorder.CharOf);
             if (nodes.Count > 0)
             {
-                InsertNodes(nodes, _recordTarget);
+                Edit(() => InsertNodes(nodes, _recordTarget));
                 RefreshList(nodes);
             }
             ApplyBusyState();
@@ -3101,7 +3809,7 @@ namespace AutomationTest.App
             var list = FindListOrNull(last.Node);
             if (list == null) { _script.Actions.AddRange(nodes); return; } // the selection no longer exists
             if (selected.Count == 1 && last.Node.IsContainer && !last.Node.IsKind(ControlKind.Condition))
-                last.Node.Children.AddRange(nodes);
+                AddInside(last.Node, nodes);
             else
                 list.InsertRange(list.IndexOf(last.Node) + 1, nodes);
         }
@@ -3154,7 +3862,7 @@ namespace AutomationTest.App
             if (_script.Actions.Count == 0) { SetStatus("Add at least one action first."); return; }
 
             var snapshot = _script.Clone();
-            await RunAsync((runner, token) => runner.Run(snapshot, token), RunKind.All);
+            await RunAsync((runner, token) => runner.Run(snapshot, token), RunKind.All, snapshot.Actions);
         }
 
         /// <summary>
@@ -3178,10 +3886,12 @@ namespace AutomationTest.App
                 SetToggleHotKey(false); // a shortcut pressed while the dialog is open must not start anything else
                 try
                 {
-                    using (var form = new VariableInputForm(plan.Needs))
+                    using (var form = new VariableInputForm(plan.Needs, _lastEntered))
                     {
-                        if (form.ShowDialog(this) != DialogResult.OK) return;
+                        if (form.ShowDialog(this) != DialogResult.OK) return; // cancelling leaves what was remembered as it was
                         values = form.Values;
+                        _lastEntered = form.Entered; // only the last dialog is remembered: a variable that is not in the next one is forgotten
+                        _pendingSecrets = form.Secrets;
                     }
                 }
                 finally
@@ -3194,46 +3904,109 @@ namespace AutomationTest.App
             // keeps its own state, so a disabled action inside a chosen Loop is still skipped.
             var chosen = new HashSet<ActionNode>(rows.Select(r => r.Node));
             var nodes = plan.RunNodes.Select(n => { var copy = n.Clone(); if (chosen.Contains(n)) copy.Disabled = false; return copy; }).ToList();
-            await RunAsync((runner, token) => runner.Run(nodes, values, token), RunKind.Selected);
+            await RunAsync((runner, token) => runner.Run(nodes, values, token, partial: true), RunKind.Selected, nodes);
         }
 
         /// <summary>Runs something on the script runner in the background with the status messages, locking the window meanwhile.</summary>
-        private async Task RunAsync(Action<ScriptRunner, CancellationToken> run, RunKind kind)
+        private async Task RunAsync(Action<ScriptRunner, CancellationToken> run, RunKind kind, List<ActionNode> tree)
         {
             if (_running) return;
             _cts = new CancellationTokenSource();
             var token = _cts.Token;
-            var runner = new ScriptRunner(_mouse, _keyboard);
+            var runner = new ScriptRunner(_mouse, _keyboard) { RandomTime = _settings.RandomTime, ScriptFolder = _currentPath == null ? null : Path.GetDirectoryName(_currentPath) };
+            runner.ClipboardReader = ReadClipboardText;
+            runner.PasswordPrompt = AskPassword;
+            runner.EmailProfiles = _emailStore;
+            // Passwords are hidden wherever the run shows text: messages, the status, the log and the notice.
+            var secrets = new List<string>(_pendingSecrets ?? new List<string>());
+            _pendingSecrets = new List<string>();
+            Func<string, string> mask = text =>
+            {
+                if (text == null) return null;
+                lock (secrets) foreach (string secret in secrets) text = text.Replace(secret, "****");
+                return text;
+            };
+
+            // Settings: Log. One file for this run; a log that cannot be made never stops the run.
+            RunLog log = null;
+            string logProblem = null;
+            if (_settings.LogRuns)
+            {
+                string scriptName = _currentPath == null ? null : Path.GetFileNameWithoutExtension(_currentPath);
+                log = RunLog.Start(RunLog.Folder, scriptName, kind == RunKind.Selected, tree, _settings.RandomTime, out logProblem);
+                foreach (string secret in secrets) log?.AddSecret(secret);
+            }
+            runner.SecretKnown += secret => { lock (secrets) secrets.Add(secret); log?.AddSecret(secret); };
+
             runner.NodeStarted += node =>
             {
+                log?.Node(node);
                 var line = Describe(new Row { Node = node, Depth = 0 });
                 PostStatus("Running: " + line.Text + "  " + line.SubItems[3].Text);
             };
             var notes = new List<string>();
-            runner.Message += text => { lock (notes) notes.Add(text); PostStatus(text); };
+            runner.Message += text => { text = mask(text); lock (notes) notes.Add(text); log?.Note(text); PostStatus(text); };
 
             _runKind = kind;
             SetRunning(true);
+            RunOutcome? notice = null;
+            string noticeText = null;
             try
             {
                 await Task.Run(() => run(runner, token));
                 string extra;
                 lock (notes) extra = notes.Count == 0 ? "" : "  " + string.Join(" ", notes);
-                SetStatus("Finished." + extra);
+                SetStatus("Finished." + extra + (logProblem != null ? "  " + logProblem : "") + (log != null && log.Problem != null ? "  The log stopped: " + log.Problem : ""));
+                log?.End("finished");
+                notice = RunOutcome.Finished;
             }
             catch (OperationCanceledException)
             {
                 SetStatus("Stopped");
+                log?.End("stopped by the user");
             }
             catch (Exception ex)
             {
-                SetStatus("Error: " + ex.Message);
+                SetStatus("Error: " + mask(ex.Message));
+                log?.Line("Error: " + ex.Message); // the log hides the passwords itself
+                log?.End("failed");
+                notice = RunOutcome.Failed;
+                noticeText = mask(ex.Message);
             }
             finally
             {
+                log?.Dispose();
                 SetRunning(false);
                 LicenseAllowsWork(); // a run that just ended counts as the program being used
             }
+            if (_settings.NotifyEnd && notice.HasValue) ToastForm.ShowNotice(notice.Value, noticeText);
+        }
+
+        /// <summary>The text in the clipboard, read on the window's thread (the clipboard needs it); empty when it holds no text.</summary>
+        private string ReadClipboardText()
+        {
+            if (!IsHandleCreated || IsDisposed) return "";
+            return (string)Invoke(new Func<string>(() =>
+            {
+                for (int attempt = 0; attempt < 10; attempt++)
+                {
+                    try { return Clipboard.ContainsText() ? Clipboard.GetText() : ""; }
+                    catch (System.Runtime.InteropServices.ExternalException) { Thread.Sleep(50); } // another program holds the clipboard for a moment
+                }
+                throw new InvalidOperationException("The clipboard is in use by another program.");
+            }));
+        }
+
+        /// <summary>Asks the user for a Password variable while the script runs; null when they cancel. Closes by itself when the run is stopped.</summary>
+        private string AskPassword(string id, CancellationToken token)
+        {
+            if (!IsHandleCreated || IsDisposed) return null;
+            return (string)Invoke(new Func<string>(() =>
+            {
+                using (var form = new PasswordForm(id))
+                using (token.Register(() => { try { BeginInvoke((Action)(() => form.Close())); } catch (InvalidOperationException) { } }))
+                    return form.ShowDialog() == DialogResult.OK ? form.Password : null;
+            }));
         }
 
         /// <summary>
@@ -3323,7 +4096,7 @@ namespace AutomationTest.App
             HotKeyNative.UnregisterHotKey(Handle, HotKeyToggleId);
             HotKeyNative.UnregisterHotKey(Handle, HotKeyStartSelectedId);
             HotKeyNative.UnregisterHotKey(Handle, HotKeyRecordId);
-            if (!enabled || _running || _recording) return;
+            if (!enabled || !HotKeysEnabled || _running || _recording) return;
             var taken = new List<string>();
             if (!HotKeyNative.RegisterHotKey(Handle, HotKeyToggleId, HotKeyNative.MOD_NOREPEAT, (uint)_settings.StartCode)) taken.Add(_settings.Start + " (Start)");
             if (!HotKeyNative.RegisterHotKey(Handle, HotKeyStartSelectedId, HotKeyNative.MOD_NOREPEAT, (uint)_settings.StartSelectedCode)) taken.Add(_settings.StartSelected + " (Start Selected)");
@@ -3352,6 +4125,9 @@ namespace AutomationTest.App
             });
             if (_startStop.Owner != null) CenterRunButtons(_startStop.Owner); // item widths are known only once shown
         }
+
+        /// <summary>False keeps the program from taking the global hotkeys (the tests create forms while the user may be running the program).</summary>
+        internal bool HotKeysEnabled { get; set; } = true;
 
         protected override void OnHandleCreated(EventArgs e)
         {
@@ -3557,6 +4333,11 @@ namespace AutomationTest.App
             {
                 _xlGroup.Items.AddRange(ActionGroups.ExcelGroups.Cast<object>().ToArray());
                 _webGroup.Items.AddRange(ActionGroups.WebGroups.Cast<object>().ToArray());
+                _cmdGroup.Items.AddRange(ActionGroups.CommandGroupsFor(ActionCategory.Utilities).Cast<object>().ToArray());
+                _cmdKind.FormattingEnabled = true;
+                _cmdKind.Format += (s, e) => { if (e.ListItem is CommandKind k) e.Value = ActionGroups.LabelOf(k); };
+                _cmdGroup.SelectedIndex = 0;
+                FillCmdKinds();
                 _xlKind.FormattingEnabled = true;
                 _xlKind.Format += (s, e) => { if (e.ListItem is ExcelKind k) e.Value = ActionGroups.LabelOf(k); };
                 _webKind.FormattingEnabled = true;
@@ -3580,6 +4361,57 @@ namespace AutomationTest.App
                 _xlKind.SelectedIndex = 0;
             }
             finally { _grouping = before; }
+        }
+
+        /// <summary>The Group box of the Utilities and Program categories shows only the groups of the chosen category.</summary>
+        private void FillCmdGroups()
+        {
+            var category = _category.SelectedItem as ActionCategory? ?? ActionCategory.Mouse;
+            if (category != ActionCategory.Utilities && category != ActionCategory.Program) return;
+            var wanted = ActionGroups.CommandGroupsFor(category);
+            bool same = _cmdGroup.Items.Count == wanted.Count && wanted.Select((g, i) => (string)_cmdGroup.Items[i] == g).All(b => b);
+            if (same) return;
+            bool before = _grouping;
+            _grouping = true;
+            try
+            {
+                _cmdGroup.Items.Clear();
+                _cmdGroup.Items.AddRange(wanted.Cast<object>().ToArray());
+                _cmdGroup.SelectedIndex = 0;
+                FillCmdKinds();
+            }
+            finally { _grouping = before; }
+        }
+
+        private void FillCmdKinds()
+        {
+            bool before = _grouping;
+            _grouping = true;
+            try
+            {
+                _cmdKind.Items.Clear();
+                _cmdKind.Items.AddRange(ActionGroups.CommandKindsOf((string)_cmdGroup.SelectedItem).Cast<object>().ToArray());
+                _cmdKind.SelectedIndex = 0;
+            }
+            finally { _grouping = before; }
+        }
+
+        private void SetCommandKind(CommandKind kind)
+        {
+            bool before = _grouping;
+            _grouping = true;
+            try
+            {
+                _cmdGroup.SelectedItem = ActionGroups.GroupOf(kind);
+                _cmdKind.SelectedItem = kind;
+            }
+            finally { _grouping = before; }
+            if (!before) UpdateEditorVisibility();
+        }
+
+        private void SetLabel(Control field, string text)
+        {
+            if (_rowLabels.TryGetValue(field, out var label)) label.Text = text;
         }
 
         private void FillWebKinds()

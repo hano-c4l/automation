@@ -73,6 +73,17 @@ namespace AutomationTest.Core.Imaging
             return result;
         }
 
+        /// <summary>The picture of the range of the settings (the Process window, the Anchor and the Range), cut to the screen.</summary>
+        /// <exception cref="InvalidOperationException">The window cannot be found, or the range is outside the screen.</exception>
+        public static RawImage CaptureRange(ImageSettings settings, WindowTarget process)
+        {
+            ClientArea range = ResolveRange(settings, process, out ClientArea? window);
+            ScreenCapture.GetVirtualScreen(out int vl, out int vt, out int vw, out int vh);
+            range = Intersect(range, new ClientArea { Left = vl, Top = vt, Width = vw, Height = vh });
+            if (range.Width <= 0 || range.Height <= 0) throw new InvalidOperationException("The area to read is outside the screen.");
+            return ScreenCapture.Capture(range.Left, range.Top, range.Width, range.Height);
+        }
+
         private static ClientArea ResolveRange(ImageSettings s, WindowTarget process, out ClientArea? window)
         {
             window = null;

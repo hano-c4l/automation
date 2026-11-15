@@ -51,7 +51,7 @@ namespace AutomationTest.Core.Runner
             {
                 if (chosen.Contains(node))
                 {
-                    if (node.IsKind(ControlKind.Case) || node.IsKind(ControlKind.Else)) run.AddRange(node.Children);
+                    if (node.IsKind(ControlKind.Case) || node.IsKind(ControlKind.Else) || node.IsKind(ControlKind.Catch)) run.AddRange(node.Children);
                     else run.Add(node);
                 }
                 else
@@ -80,8 +80,7 @@ namespace AutomationTest.Core.Runner
                 if (defined.Contains(name) || !needed.Add(name)) continue;
                 needs.Add(new VariableNeed { Name = name });
             }
-            string id = Defines(node);
-            if (id != null) defined.Add(id);
+            foreach (string id in DefinesAll(node)) defined.Add(id);
             foreach (var child in node.Children) Walk(child, false, defined, needed, needs);
         }
 
@@ -104,6 +103,39 @@ namespace AutomationTest.Core.Runner
                 var x = node.Excel;
                 bool valueKind = ScriptRunner.ExcelValueKind(x.Kind);
                 return ReadsOf(x.CellIsExpression ? x.Cell : null, x.Kind == ExcelKind.SetRange || (valueKind && x.ValueIsExpression) ? x.Value : null);
+            }
+            if (node.Category == ActionCategory.Email)
+            {
+                var m = node.Email;
+                var mailTexts = new List<string>();
+                if (m.Kind == EmailKind.Send)
+                {
+                    if (m.ToIsExpression) { mailTexts.Add(m.To); mailTexts.Add(m.Cc); mailTexts.Add(m.Bcc); }
+                    if (m.BodyIsExpression) mailTexts.Add(m.Body);
+                    if (m.AttachmentsIsExpression) mailTexts.Add(m.Attachments);
+                }
+                if (m.SubjectIsExpression) mailTexts.Add(m.Subject);
+                if (m.DatesAreExpressions) { mailTexts.Add(m.Since); mailTexts.Add(m.Before); }
+                return ReadsOf(mailTexts.ToArray());
+            }
+            if (node.Category == ActionCategory.Utilities || node.Category == ActionCategory.Program)
+            {
+                var c = node.Command;
+                if (CommandKinds.IsApi(c.Kind))
+                {
+                    var texts = new List<string> { c.ValueIsExpression ? c.Value : null, c.TargetIsExpression ? c.Target : null };
+                    string ignored;
+                    foreach (var header in ApiClient.ParseHeaders(c.Params, out ignored)) if (header.Item3) texts.Add(header.Item2);
+                    return ReadsOf(texts.ToArray());
+                }
+                if (c.Kind == CommandKind.AutoScript)
+                {
+                    var texts = new List<string> { c.ValueIsExpression ? c.Value : null };
+                    foreach (var pair in ScriptRunner.ParseScriptInputs(c.Params, out _)) texts.Add(pair.Value);
+                    return ReadsOf(texts.ToArray());
+                }
+                if (CommandKinds.IsProgram(c.Kind)) return ReadsOf(c.ValueIsExpression ? c.Value : null);
+                return ScriptRunner.CommandIsFileSystem(c.Kind) ? ReadsOf(c.ValueIsExpression ? c.Value : null, c.TargetIsExpression ? c.Target : null) : new string[0];
             }
             if (node.IsKind(ControlKind.Loop) && node.Loop.Mode == LoopType.For) return ReadsOf(node.Loop.ForFrom, node.Loop.ForTo, node.Loop.ForStep);
 
@@ -131,6 +163,15 @@ namespace AutomationTest.Core.Runner
             catch (ExpressionException) { return new string[0]; } // a broken expression is reported when it runs
         }
 
+        /// <summary>Everything the action sets: one variable for most actions, the returned ones for an Auto Script.</summary>
+        private static IEnumerable<string> DefinesAll(ActionNode node)
+        {
+            if ((node.Category == ActionCategory.Utilities) && node.Command.Kind == CommandKind.AutoScript)
+                return ScriptRunner.ParseScriptReturns(node.Command.Returns, out _);
+            string one = Defines(node);
+            return one == null ? new string[0] : new[] { one };
+        }
+
         private static string Defines(ActionNode node)
         {
             if (node.Category == ActionCategory.Excel)
@@ -139,6 +180,11 @@ namespace AutomationTest.Core.Runner
                 bool keeps = x.Kind == ExcelKind.GetCell || x.Kind == ExcelKind.GetRange || x.Kind == ExcelKind.GetInfo || x.Kind == ExcelKind.Find || x.Kind == ExcelKind.Evaluate || x.Kind == ExcelKind.RunMacro;
                 return keeps && !string.IsNullOrWhiteSpace(x.Id) ? x.Id.Trim() : null;
             }
+            if (node.Category == ActionCategory.Email)
+                return (node.Email.Kind == EmailKind.Send || string.IsNullOrWhiteSpace(node.Email.Id)) ? null : node.Email.Id.Trim();
+            if (node.IsKind(ControlKind.Catch)) return string.IsNullOrWhiteSpace(node.Catch?.Id) ? null : node.Catch.Id.Trim(); // the error message
+            if (node.Category == ActionCategory.Utilities || node.Category == ActionCategory.Program)
+                return ScriptRunner.CommandKeeps(node.Command.Kind) && !string.IsNullOrWhiteSpace(node.Command.Id) ? node.Command.Id.Trim() : null;
             if (node.IsKind(ControlKind.Loop) && node.Loop.Mode == LoopType.For)
                 return string.IsNullOrWhiteSpace(node.Loop.ForId) ? null : node.Loop.ForId.Trim();
             if (node.Category == ActionCategory.Web)
@@ -157,8 +203,9 @@ namespace AutomationTest.Core.Runner
                 {
                     if (node.IsKind(ControlKind.Variable) && string.Equals(node.Variable.Id?.Trim(), need.Name, StringComparison.OrdinalIgnoreCase) && !need.Type.HasValue)
                     {
-                        need.Type = node.Variable.Type;
-                        if (!node.Variable.UseExpression)
+                        if (node.Variable.Type == VariableType.Image) need.IsImage = true; // its value is Found, Position and Size
+                        else need.Type = node.Variable.Type == VariableType.OCR ? VariableType.String : node.Variable.Type;
+                        if (!node.Variable.UseExpression && !node.Variable.HasNoStoredValue)
                         {
                             try { need.Default = node.Variable.GetLiteral(); }
                             catch (ExpressionException) { }

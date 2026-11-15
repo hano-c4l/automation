@@ -34,10 +34,20 @@ namespace AutomationTest.Core.Model
 
         public static AutomationScript Load(string path)
         {
+            return FromBytes(File.ReadAllBytes(path));
+        }
+
+        /// <summary>Reads a script from the text that <see cref="ToJson"/> gives (the same checks as when a file is opened).</summary>
+        public static AutomationScript FromJson(string json)
+        {
+            return FromBytes(Encoding.UTF8.GetBytes(json ?? ""));
+        }
+
+        private static AutomationScript FromBytes(byte[] bytes)
+        {
             var serializer = new DataContractJsonSerializer(typeof(AutomationScript));
             AutomationScript script;
             // Strip a UTF-8 byte order mark first: many editors add one and the JSON reader rejects it.
-            byte[] bytes = File.ReadAllBytes(path);
             int offset = bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF ? 3 : 0;
             using (var stream = new MemoryStream(bytes, offset, bytes.Length - offset))
             {

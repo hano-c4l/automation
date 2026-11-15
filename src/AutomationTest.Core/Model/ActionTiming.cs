@@ -39,11 +39,14 @@ namespace AutomationTest.Core.Model
                     bool held = k.Action == KeyboardAction.KeyPress || k.Action == KeyboardAction.ComboKey || k.Action == KeyboardAction.Text;
                     return (held ? k.TimeMs : 0) + k.DelayMs;
                 case ActionCategory.Utilities:
+                case ActionCategory.Program:
                     return node.Command.Kind == CommandKind.Shutdown ? node.Command.TimeMs : node.Command.DelayMs;
                 case ActionCategory.Excel:
                     if (!node.IsContainer) return node.Excel.DelayMs;
                     long? within = SumChildren(node);
                     return within.HasValue ? within.Value + node.Excel.DelayMs : (long?)null;
+                case ActionCategory.Email:
+                    return node.Email.DelayMs;
                 case ActionCategory.Web:
                     if (!node.IsContainer) return node.Web.DelayMs;
                     long? inside = SumChildren(node);
@@ -81,6 +84,10 @@ namespace AutomationTest.Core.Model
                     }
                     return longest;
                 case ControlKind.Variable:
+                case ControlKind.Break:
+                case ControlKind.Continue:
+                case ControlKind.Return:
+                case ControlKind.Catch: // the Catch line runs only after a failure: not counted
                     return 0;
                 default: // Wait, Image: what is inside them
                     return SumChildren(node);

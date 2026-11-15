@@ -4,4 +4,10 @@
     <LangVersion>latest</LangVersion>
     <RootNamespace>AutomationTest.Core</RootNamespace>
   </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="AutomationTest.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="MailKit" Version="5.0.0" />
+  </ItemGroup>
 </Project>

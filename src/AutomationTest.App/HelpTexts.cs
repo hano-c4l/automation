@@ -246,6 +246,295 @@ the keyboard action when a specific program must receive them.
 
 Can be given in milliseconds, seconds, minutes or hours.");
 
+        // ---- Email
+        public static readonly HelpTopic EmailId = new HelpTopic("ID (Email)",
+@"Read: the variable that receives the messages, a table with one
+row per message (newest first) and these columns:
+  1 From   2 Subject   3 Date   4 Unread (true/false)
+  5 Body (text)   6 Attachments (names, separated by |)
+For example {mail[1, 2]} is the subject of the first message and
+{mail.Rows} how many were found.
+
+Mark and Delete: the variable receives how many messages were
+changed (a Number). Leave it empty if you do not need it.");
+
+        public static readonly HelpTopic EmailKind = new HelpTopic("Type (Email)",
+@"Send: sends a message.
+Read: reads the messages that match the filters into a table.
+Mark: marks the messages that match the filters as read or unread.
+Delete: deletes the messages that match the filters (into the
+Trash folder, or for good). At least one filter is needed.
+
+No Outlook or mail program is used: the account is an SMTP / IMAP
+profile. Click the mail icon next to Category to add, edit and test
+profiles.");
+
+        public static readonly HelpTopic EmailProfile = new HelpTopic("Profile",
+@"The mail account this action uses. Profiles are made with the
+mail icon next to Category (server, port, security, user and
+password, and a Test button).
+
+A script only holds the NAME of the profile, never the password, so
+the same script runs on another computer that has a profile with
+that name.");
+
+        public static readonly HelpTopic EmailTo = new HelpTopic("To, Cc, Bcc",
+@"Addresses separated by commas or semicolons:
+  ann@example.com, Bob <bob@example.com>
+With Expr. on, each box is an expression that gives the text, for
+example {boss} or ""a@x.com; "" + {other}.");
+
+        public static readonly HelpTopic EmailSubject = new HelpTopic("Subject",
+@"Send: the subject of the message.
+Read, Mark, Delete: only messages whose subject CONTAINS this text
+(letter case does not matter). Empty = any subject.");
+
+        public static readonly HelpTopic EmailBody = new HelpTopic("Message",
+@"The text of the message. With HTML on, the text is sent as HTML
+(for example <b>bold</b>), otherwise as plain text.");
+
+        public static readonly HelpTopic EmailAttach = new HelpTopic("Attach",
+@"The files to attach, one path per line. A relative path starts at
+the folder of the script. A missing file is an error.");
+
+        public static readonly HelpTopic EmailFolder = new HelpTopic("Folder",
+@"The mail folder to look in. Empty = INBOX. Other folders use the
+name the server gives them, for example ""Sent"" or ""Work/Reports"".");
+
+        public static readonly HelpTopic EmailFilter = new HelpTopic("Filters",
+@"Only the messages that match ALL the filters are used:
+  Subject has   the subject contains the text
+  From          the sender address or name contains the text
+  Status        Any, Unread or Read
+  Since/Before  the day received (see the date help)
+Empty filters match everything.");
+
+        public static readonly HelpTopic EmailDates = new HelpTopic("Since, Before",
+@"Days written as yyyy-MM-dd, for example 2026-11-30.
+Since: received on that day or later. Before: received before that
+day. Mail servers compare whole days, not hours.
+With Expr. on, they are expressions, for example today - 7
+(a Date value is turned into its day).");
+
+        public static readonly HelpTopic EmailMax = new HelpTopic("Max",
+@"At most this many messages are used, the newest first
+(Read: how many are read; Mark and Delete: how many are changed).");
+
+        public static readonly HelpTopic EmailMarkRead = new HelpTopic("Mark as read",
+@"Read: mark the messages that were read as read on the server.
+Off leaves unread messages unread.");
+
+        public static readonly HelpTopic EmailSaveTo = new HelpTopic("Save files to",
+@"Read: save the attachments of the messages into this folder (made
+if missing; a name that exists gets (2), (3)...). The Attachments
+column then holds the saved paths. Empty = do not save, the column
+only holds the names.");
+
+        public static readonly HelpTopic EmailDelete = new HelpTopic("For good",
+@"Off: the messages are moved to the Trash folder of the account
+(when the account has no Trash folder nothing is deleted and you get
+an error: turn this on to delete anyway).
+On: the messages are deleted for good and cannot be brought back.");
+
+        public static readonly HelpTopic EmailTimeout = new HelpTopic("Timeout",
+@"How long to wait for the mail server before giving up
+(connecting, logging in, each answer).");
+
+        public static readonly HelpTopic CatchId = new HelpTopic("Error ID (Catch)",
+@"Try runs the actions inside it. When one of them fails, the
+rest of the Try is skipped and the actions inside the Catch line
+at its end run, and the run goes on after the Try.
+
+If you give an ID here, the message of the error is stored in that
+variable (a String), so you can use it: {error}.
+
+Stopping the script with the Stop key is not an error, and the
+Catch does not run. A disabled Catch means errors are not caught.
+An error inside the Catch itself stops the run (or is caught by
+a Try around this one).
+
+Break, Continue and Return inside a Try work as everywhere else:
+they leave the Try and do not count as an error.");
+
+        public static readonly HelpTopic CommandId = new HelpTopic("ID (File/Folder)",
+@"The variable that receives the result:
+
+Exists   true or false (a Boolean)
+Read     the text of the file (a String)
+List     a table of one column with the full paths of the files and
+         folders inside the folder: {id.Rows}, {id[1, 1]}...
+         Use it with Loop (For) to go through them.");
+
+        public static readonly HelpTopic CloseMatch = new HelpTopic("Match (Program Close and Window actions)",
+@"How the programs to close are found:
+
+Title    a regular expression, not case sensitive, on the title of
+         the main window. Programs without a window never match.
+Name     the process name, for example notepad (.exe is optional)
+Path     the full path of the program file
+Id       the process id (a number)
+
+The Automation Test program itself is never closed. If no program
+matches, Close does nothing (a note is shown, it is not an error);
+the Window actions fail with an error instead.");
+
+        public static readonly HelpTopic Api = new HelpTopic("API",
+@"Calls a web address (http or https; the certificate of a secure
+address is always checked) and keeps the answer in the variable of
+the ID.
+
+URL       the address. Expr. makes it an expression, for example
+          ""https://site/items/"" + {id}.
+Headers   one per line: Name: value. A value that starts with = is
+          an expression:  Authorization: = ""Bearer "" + {token}
+Body      Post, Put, Patch, Delete: the text to send. Text that starts
+          with { or [ is sent as JSON, other text as plain text; a
+          Content-Type header overrides that.
+Save to   Download: the file to save the answer in (Overwrite to
+          replace one that exists).
+Timeout   how long to wait for the answer.
+Fail on error
+          ON: a status that is not 2xx (404, 500...) is an error
+          (a Try can catch it). OFF: it is an answer you can test.
+
+The variable holds the whole answer:
+  {r.Status}       the number, 200, 404...
+  {r.Ok}           true for 200 to 299
+  {r.Reason}       the words, OK, Not Found
+  {r.Body}         the answer as text
+  {r.Json}         the answer read as JSON:
+                     {r.Json.data[0].name}   an item, then a name
+                     {r.Json[""first name""]}  a name with a space
+                     {r.Json.items.Count}    how many items
+                   (arrays count from 0; a JSON text, number or
+                   true/false is an ordinary String, Number or Boolean)
+  {r.Headers}      a table of the header names and values
+  {r.ContentType}
+
+Messages and the log name the address without its query (a query
+often holds a key). Keep keys and passwords in a Password variable
+and use it in an expression. Careful with scripts from other
+people: an API action sends data to the address it names.");
+
+        public static readonly HelpTopic AutoScript = new HelpTopic("Auto Script",
+@"Runs another script file (saved from this program) as a part of
+this one, so a job you made once can be used again.
+
+File      the script file. A path without a drive starts in the
+          folder of the script that calls it. Expr. makes it an
+          expression.
+Inputs    the values to hand over, one per line: name = expression.
+          The expression is worked out here, with this script's
+          variables; inside the other script {name} has that value.
+Returns   the names of variables of the other script whose values
+          come back here, separated by commas or lines. If it does
+          not set one of them, the action fails.
+
+The other script has variables of its own: it sees only its
+inputs, and nothing else of it is visible here except the returns.
+A Return inside it ends that script and goes back here. An error
+inside it is an error of this action (a Try around it catches it).
+It shares the Excel workbook, the browser tab and the passwords
+of the run. A script that calls itself, or scripts nested more
+than 16 deep, fail with an error.
+
+Careful with scripts from other people: a script can delete your
+files, close programs or shut the computer down.");
+
+        public static readonly HelpTopic OcrLanguage = new HelpTopic("Language (OCR)",
+@"OCR reads the text in an area of the screen with the text
+recognition that comes with Windows 10 and 11, and stores it in the
+variable as a String. Set the area like for Image: the Process
+window, the Anchor, and a Range (Width and Height at 0 = the whole
+window, or the whole screen without a Process).
+
+Language: a tag such as vi, en-US or ja. Empty = the languages of
+your Windows profile. Windows can only read the languages that have
+OCR installed (Settings, Time and language, Language and region,
+add the language and its text recognition). If the language is not
+installed the action fails and names the ones that are.
+
+Text on a plain background, large enough to read (about 10 pixels
+or more for a letter), works best. Run the action alone with Start
+Selected to see what is read: the variable can be used in a
+Condition or typed with Keyboard Text.");
+
+        public static readonly HelpTopic WindowPlace = new HelpTopic("Window Move and Resize",
+@"The window is found like the programs of Close: by its Title
+(a regular expression), the process Name, the Path of the program
+or the process Id (see Match). Only visible windows with a title
+count. Activate, Minimize, Maximize and Restore need nothing else.
+
+Move  X and Y: where the top left corner of the window goes, in
+      pixels on the screen (the top left of the main screen is 0, 0;
+      a second screen to the left has negative X).
+Resize  Width and Height of the whole window in pixels.
+
+A minimized or maximized window is restored first, so it can be
+moved or resized. If no window is found the action fails with an
+error (a Try can catch it). A window of a program that runs as
+administrator can only be changed when this program runs as
+administrator too.");
+
+        public static readonly HelpTopic CloseAll = new HelpTopic("All matches (Program Close)",
+@"OFF   only the first program that matches is closed (the one with
+      the lowest process id)
+ON    every program that matches is closed
+
+Be careful with a wide pattern: a Title such as .* matches every
+program that has a window.");
+
+        public static readonly HelpTopic CloseTimeout = new HelpTopic("Timeout (Program Close)",
+@"The program is asked to close its window, as if you clicked the X.
+This is how long to wait for it to end. A program that asks whether
+to save first stays open: the action then fails with a message
+(turn on Kill, or give it more time).
+
+Can be given in milliseconds, seconds, minutes or hours.");
+
+        public static readonly HelpTopic CloseKill = new HelpTopic("Kill (Program Close)",
+@"OFF   the program is asked to close and can save its work (default)
+ON    the program is ended at once; unsaved work is lost
+
+A program that runs as administrator can only be closed when this
+program runs as administrator too.");
+
+        public static readonly HelpTopic FileTarget = new HelpTopic("Destination (File/Folder)",
+@"Copy, Move  where the file or folder goes. An existing folder (or a
+             path ending with \) means ""inside it, same name"";
+             anything else is the full new path.
+Rename       the new name only, without a folder.
+Write        the text to write into the file.
+
+Environment variables such as %TEMP% work in paths, and a path
+without a drive is taken from the program's folder.");
+
+        public static readonly HelpTopic FileOverwrite = new HelpTopic("Overwrite (File/Folder)",
+@"OFF   an existing file or folder at the destination is an error
+ON    a file is replaced; a folder is merged into (files with the
+      same name are replaced, the rest stays)");
+
+        public static readonly HelpTopic FileRecurse = new HelpTopic("Recurse (File/Folder)",
+@"Delete  OFF: a folder that is not empty is an error.
+         ON: the folder is deleted with everything inside it.
+List    ON: also lists what is inside the subfolders.
+
+Careful with scripts from other people: Delete removes your files
+and cannot be undone (nothing goes to the Recycle Bin). A whole
+drive is never deleted.");
+
+        public static readonly HelpTopic FileAppend = new HelpTopic("Append (File/Folder)",
+@"OFF   the file is replaced by the text
+ON    the text is added at the end of the file
+
+The file (and the folders above it) are made when they are missing.");
+
+        public static readonly HelpTopic FileForce = new HelpTopic("Force (File/Folder Delete)",
+@"ON   read-only files are deleted too (their read-only mark is
+     removed first)
+
+A path where nothing exists is not an error: a note is shown.");
+
         public static readonly HelpTopic ShutdownTime = new HelpTopic("Time (Shutdown)",
 @"How long to wait before the computer is shut down. The Stop key
 cancels the countdown.
@@ -436,19 +725,49 @@ All        both
 
 Cell is the area, for example A2:D100, or a whole column B:B.");
 
-        public static readonly HelpTopic ExcelCopy = new HelpTopic("Copy",
-@"Copies the area (Cell) to the destination (Value, its top-left cell).
+        public static readonly HelpTopic ExcelCopy = new HelpTopic("Range Copy / Cut and Sheet Copy / Move",
+@"Range Copy: copies the area (Cell) to the destination (Value, its
+top-left cell). Whole rows and columns work too (2:5, B:D).
+Range Cut: moves the area, with everything in it.
+
 To workbook / To sheet (regular expressions on the names, not case
-sensitive) say where the copy goes; empty means the same workbook /
-the same sheet as the area (a workbook given without a sheet: its
+sensitive) say where it goes; empty means the same workbook / the
+same sheet as the area (a workbook given without a sheet: its
 active sheet).
 
-Values only OFF  values, formulas and formatting
-Values only ON   just the values (formulas become their results)
+Paste  All           values, formulas and formatting
+       Values        just the values (formulas become their results)
+       Formulas      the formulas (relative references shift like
+                     in a paste), keeping the formatting there
+       Formats       just the formatting
+       Column widths just the column widths
+Transpose swaps rows and columns.
 
-Formatting can only be copied inside one Excel window; between
-workbooks that are open in separate Excel windows turn Values only
-on (or use Range Get and Range Set).");
+Between workbooks that are open in separate Excel windows only
+Values and Formulas (without Transpose) work; Range Cut and the
+other kinds need both workbooks in the same Excel window. All the
+kinds except Values and Formulas use the clipboard.
+
+Sheet Copy / Sheet Move: the sheet is chosen by Sheet / Index (empty
+= the current sheet). To workbook says where it goes (empty = the
+same workbook, which is open already); Position says where in that
+workbook (before or after its current sheet, at the start or the
+end). Sheet Copy can name the copy (Value). Select it makes the
+copy or the moved sheet the current one.");
+
+        public static readonly HelpTopic ExcelReplace = new HelpTopic("Replace",
+@"Replaces the text that Value finds with this text, in the cells of
+the area (empty area = the whole sheet). Match case and Whole cell
+work as in Find. Leave this empty to remove the text.");
+
+        public static readonly HelpTopic ExcelVisibility = new HelpTopic("Visibility (Sheet Visible)",
+@"Visible      the sheet is shown
+Hidden       the sheet is hidden (the user can unhide it)
+Very hidden  the sheet is hidden and Excel's Unhide menu does not
+             list it
+
+A workbook needs at least one visible sheet. A hidden sheet cannot
+be the current one.");
 
         public static readonly HelpTopic ExcelFormat = new HelpTopic("Format",
 @"Changes only the fields that are filled in; empty fields and Leave

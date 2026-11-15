@@ -88,6 +88,8 @@ namespace AutomationTest.Core.Excel
         IExcelSheet ActiveSheet { get; }
         /// <summary>The sheet at that position, 1 = first.</summary>
         IExcelSheet Sheet(int index);
+        /// <summary>How many sheets are shown (a workbook always keeps at least one).</summary>
+        int VisibleSheetCount { get; }
         IExcelSheet AddSheet(string name, ExcelSheetPosition position, IExcelSheet current, bool select);
         void DeleteSheet(int index);
         void Activate();
@@ -107,16 +109,30 @@ namespace AutomationTest.Core.Excel
         int Index { get; }
         void Activate();
         void Rename(string newName);
+        /// <summary>
+        /// Puts a copy of this sheet into the workbook (which may be this sheet's own, or another one of the same Excel window) at the
+        /// position (Before/After refer to that workbook's active sheet); returns the copy, which is the active sheet when <paramref name="select"/>.
+        /// </summary>
+        IExcelSheet CopySheet(IExcelWorkbook destination, ExcelSheetPosition position, bool select);
+        /// <summary>Moves this sheet (same rules as <see cref="CopySheet"/>).</summary>
+        void MoveSheet(IExcelWorkbook destination, ExcelSheetPosition position, bool select);
+        void SetVisibility(ExcelVisibility visibility);
+        /// <summary>Hides or shows the rows or columns; <paramref name="at"/> is a cell in the first one.</summary>
+        void SetHidden(ExcelTarget target, string at, int count, bool hidden);
+        /// <summary>Moves the area to the destination (its top-left cell) on <paramref name="target"/>; the same Excel window only.</summary>
+        void Cut(string source, IExcelSheet target, string destination);
+        /// <summary>Replaces text in the area (empty = the whole sheet); true when something was replaced.</summary>
+        bool Replace(string area, string what, string with, bool matchCase, bool wholeCell);
         void Select(string area);
 
         void InsertCells(ExcelTarget target, string at, int count);
         void DeleteCells(ExcelTarget target, string at, int count);
         void Clear(string area, ExcelClearKind what);
         /// <summary>
-        /// Copies the area to the destination (its top-left cell) on <paramref name="target"/> (a sheet of the same or another workbook),
-        /// with its formatting or only the values. Copying with formatting between two Excel windows that are separate programs fails.
+        /// Copies the area to the destination (its top-left cell) on <paramref name="target"/> (a sheet of the same or another workbook).
+        /// Values and Formulas without Transpose work between Excel windows that are separate programs; the other kinds do not.
         /// </summary>
-        void Copy(string source, IExcelSheet target, string destination, bool valuesOnly);
+        void Copy(string source, IExcelSheet target, string destination, ExcelPasteKind paste, bool transpose);
         void FormatCells(string area, ExcelFormat format);
         /// <param name="key">The column to sort by, letters.</param>
         void Sort(string area, string key, bool descending, bool hasHeader);

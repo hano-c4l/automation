@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
+using AutomationTest.Core.Email;
 using AutomationTest.Core.Excel;
 using AutomationTest.Core.Expressions;
 using AutomationTest.Core.Imaging;
@@ -17,11 +19,58 @@ namespace AutomationTest.Core.Runner
     {
         private const int SettleAfterActivateMs = 120;
 
+        /// <summary>The mail profiles an Email action can use (the program sets it; null = none).</summary>
+        public IEmailProfiles EmailProfiles { get; set; }
+
         private readonly MouseController _mouse;
         private readonly HashSet<MouseButton> _held = new HashSet<MouseButton>();
         private readonly Dictionary<string, IntPtr> _windowCache = new Dictionary<string, IntPtr>();
 
-        private readonly VariableStore _vars = new VariableStore();
+        private VariableStore _vars = new VariableStore(); // replaced for the time an Auto Script runs
+
+        /// <summary>The folder of the script that is running: a relative path of an Auto Script starts here (the program sets it).</summary>
+        public string ScriptFolder { get; set; }
+
+        private const int MaxScriptDepth = 16;
+        private readonly List<string> _scriptStack = new List<string>(); // the files of the Auto Scripts that are running now
+
+        /// <summary>Where the run goes next after an action: on (None), out of the nearest Loop (Break), to its next pass (Continue) or to the end (Return).</summary>
+        private enum Flow { None, Break, Continue, Return }
+
+        /// <summary>
+        /// Random Time: every Time and Delay of an action (not Timeouts, Retry, Wait, the Shutdown countdown or the length of a Loop)
+        /// is made 10 to 20 percent longer, chosen again each time the action runs. Never shorter.
+        /// </summary>
+        public bool RandomTime { get; set; }
+
+        internal Random RandomSource = new Random();
+
+        /// <summary>Gives the text in the clipboard (set by the program, which knows how to reach the clipboard; null when it cannot).</summary>
+        public Func<string> ClipboardReader { get; set; }
+
+        /// <summary>
+        /// Asks the user for the Password variable with that ID (set by the program). Returns the value, or null when the user cancels,
+        /// which stops the run. It is asked once for each ID in a run.
+        /// </summary>
+        public Func<string, CancellationToken, string> PasswordPrompt { get; set; }
+
+        /// <summary>A secret value has become known (a password): the program hides it in the log, the status and the notice.</summary>
+        public event Action<string> SecretKnown;
+
+        private readonly Dictionary<string, string> _passwords = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>The time with the random extra added when Random Time is on (0 stays 0).</summary>
+        internal long Jitter(long ms)
+        {
+            if (!RandomTime || ms <= 0) return ms;
+            return ms + (long)Math.Round(ms * (0.10 + RandomSource.NextDouble() * 0.10));
+        }
+
+        private Flow _flow;
+        private int _loopDepth; // how many Loops the running action is inside of
+
+        /// <summary>The variables of the run (read by tests).</summary>
+        internal VariableStore Variables => _vars;
         private readonly KeyboardController _keyboard;
         private readonly HashSet<int> _heldKeys = new HashSet<int>();
 
@@ -54,13 +103,21 @@ namespace AutomationTest.Core.Runner
             Run(script.Actions, null, token);
         }
 
-        /// <summary>Runs just these actions (for trying part of a script), starting with the given variable values.</summary>
+        /// <summary>
+        /// Runs just these actions (for trying part of a script), starting with the given variable values. With
+        /// <paramref name="partial"/> (Start Selected) the actions may be the inside of a Loop, so a Break or Continue that is reached
+        /// simply ends the selection instead of being an error.
+        /// </summary>
         /// <exception cref="OperationCanceledException">The token was cancelled.</exception>
-        public void Run(List<ActionNode> actions, IDictionary<string, object> variables, CancellationToken token)
+        public void Run(List<ActionNode> actions, IDictionary<string, object> variables, CancellationToken token, bool partial = false)
         {
             if (actions == null) throw new ArgumentNullException(nameof(actions));
             _windowCache.Clear();
             _vars.Clear();
+            _flow = Flow.None;
+            _loopDepth = partial ? 1 : 0;
+            _passwords.Clear();
+            _scriptStack.Clear();
             (WebSession ?? AutomationTest.Core.Web.WebSession.SharedIfCreated)?.ResetTab(); // every run starts on the tab that is in front
             (ExcelSession ?? AutomationTest.Core.Excel.ExcelSession.SharedIfCreated)?.Reset(); // and on the workbook and sheet that are active
             if (variables != null)
@@ -70,6 +127,8 @@ namespace AutomationTest.Core.Runner
             try
             {
                 ExecuteList(actions, token);
+                if (partial && (_flow == Flow.Break || _flow == Flow.Continue))
+                    Message?.Invoke((_flow == Flow.Break ? "Break" : "Continue") + " reached: the selection ends here (it would act on the Loop around it).");
             }
             catch (ShutdownIssuedException)
             {
@@ -92,6 +151,7 @@ namespace AutomationTest.Core.Runner
                 if (node.Disabled) continue; // a disabled action is skipped with everything inside it
                 NodeStarted?.Invoke(node);
                 Execute(node, token);
+                if (_flow != Flow.None) return; // Break, Continue or Return: the rest of this list is not run
             }
         }
 
@@ -106,6 +166,7 @@ namespace AutomationTest.Core.Runner
                     ExecuteKeyboard(node, token);
                     break;
                 case ActionCategory.Utilities:
+                case ActionCategory.Program:
                     ExecuteCommand(node, token);
                     break;
                 case ActionCategory.Web:
@@ -114,16 +175,29 @@ namespace AutomationTest.Core.Runner
                 case ActionCategory.Excel:
                     ExecuteExcel(node, token);
                     break;
+                case ActionCategory.Email:
+                    ExecuteEmail(node.Email, token);
+                    break;
                 case ActionCategory.Control:
                     switch (node.Control)
                     {
                         case ControlKind.Wait: ExecuteWait(node, token); break;
                         case ControlKind.Image: ExecuteImage(node, token); break;
-                        case ControlKind.Variable: ExecuteVariable(node); break;
+                        case ControlKind.Variable: ExecuteVariable(node, token); break;
                         case ControlKind.Condition: ExecuteCondition(node, token); break;
                         case ControlKind.Case:
                         case ControlKind.Else:
                             throw new InvalidOperationException("A Case or Else can only be inside a Condition.");
+                        case ControlKind.Catch:
+                            throw new InvalidOperationException("A Catch can only be the last line of a Try.");
+                        case ControlKind.Try: ExecuteTry(node, token); break;
+                        case ControlKind.Section: ExecuteList(node.Children, token); break;
+                        case ControlKind.Break:
+                        case ControlKind.Continue:
+                            if (_loopDepth == 0) throw new InvalidOperationException((node.Control == ControlKind.Break ? "Break" : "Continue") + " can only be used inside a Loop.");
+                            _flow = node.Control == ControlKind.Break ? Flow.Break : Flow.Continue;
+                            break;
+                        case ControlKind.Return: _flow = Flow.Return; break;
                         default: ExecuteLoop(node, token); break;
                     }
                     break;
@@ -135,7 +209,7 @@ namespace AutomationTest.Core.Runner
         private void ExecuteKeyboard(ActionNode node, CancellationToken token)
         {
             var k = node.Keyboard;
-            int time = ToInt(k.TimeMs);
+            int time = ToInt(Jitter(k.TimeMs));
             try
             {
                 switch (k.Action)
@@ -165,7 +239,7 @@ namespace AutomationTest.Core.Runner
             {
                 throw new InvalidOperationException(ex.Message);
             }
-            Wait(k.DelayMs, token);
+            Wait(Jitter(k.DelayMs), token);
         }
 
         private void ExecuteWeb(ActionNode node, CancellationToken token)
@@ -181,7 +255,8 @@ namespace AutomationTest.Core.Runner
             if (keeps) _vars.Set(w.Id.Trim(), result ?? "");
             // Tab New and Tab Switch hold the actions that work in that tab (and browser).
             if (node.IsContainer) ExecuteList(node.Children, token);
-            Wait(w.DelayMs, token);
+            if (_flow != Flow.None) return;
+            Wait(Jitter(w.DelayMs), token);
         }
 
         /// <summary>The Web actions whose Text field is used (and can be an expression).</summary>
@@ -201,7 +276,8 @@ namespace AutomationTest.Core.Runner
         /// <summary>The Excel actions whose Value field can be an expression.</summary>
         public static bool ExcelValueKind(ExcelKind kind)
         {
-            return kind == ExcelKind.SetCell || kind == ExcelKind.Find || kind == ExcelKind.Evaluate || kind == ExcelKind.RenameSheet || kind == ExcelKind.Copy || kind == ExcelKind.RunMacro;
+            return kind == ExcelKind.SetCell || kind == ExcelKind.Find || kind == ExcelKind.Evaluate || kind == ExcelKind.RenameSheet || kind == ExcelKind.Copy || kind == ExcelKind.RunMacro
+                || kind == ExcelKind.SheetCopy || kind == ExcelKind.CutCells || kind == ExcelKind.ReplaceText;
         }
 
         private void ExecuteExcel(ActionNode node, CancellationToken token)
@@ -226,7 +302,8 @@ namespace AutomationTest.Core.Runner
                 else Message?.Invoke("Not found in Excel: " + Format.Display(args.Value));
             }
             else if (node.IsContainer) ExecuteList(node.Children, token); // Workbook and Sheet Select hold the actions that work there
-            Wait(x.DelayMs, token);
+            if (_flow != Flow.None) return;
+            Wait(Jitter(x.DelayMs), token);
         }
 
         /// <summary>Counts from a number to another; the counter is a variable that the actions inside can read (a row number, for example).</summary>
@@ -245,7 +322,7 @@ namespace AutomationTest.Core.Runner
             for (double i = from; step > 0 ? i <= to : i >= to; i += step)
             {
                 _vars.Set(id, i);
-                Iterate(loop, token);
+                if (!Iterate(loop, token)) break;
             }
         }
 
@@ -258,33 +335,336 @@ namespace AutomationTest.Core.Runner
 
         private sealed class ShutdownIssuedException : Exception { }
 
+        /// <summary>The Utilities kinds that read or list something into a variable (Id).</summary>
+        public static bool CommandKeeps(CommandKind kind)
+        {
+            return kind == CommandKind.FsExists || kind == CommandKind.FsRead || kind == CommandKind.FsList || CommandKinds.IsApi(kind);
+        }
+
+        /// <summary>The Utilities kinds that work on files and folders.</summary>
+        public static bool CommandIsFileSystem(CommandKind kind)
+        {
+            return kind >= CommandKind.FsCopy && kind <= CommandKind.FsList;
+        }
+
         private void ExecuteCommand(ActionNode node, CancellationToken token)
         {
             var c = node.Command;
-            if (c.Kind == CommandKind.Shutdown)
+            switch (c.Kind)
             {
-                Wait(c.TimeMs, token); // stoppable: the Stop key cancels the countdown
-                token.ThrowIfCancellationRequested();
-                Shutdown.Shutdown(c.Force);
-                throw new ShutdownIssuedException();
+                case CommandKind.Shutdown:
+                    Wait(c.TimeMs, token); // stoppable: the Stop key cancels the countdown
+                    token.ThrowIfCancellationRequested();
+                    Shutdown.Shutdown(c.Force);
+                    throw new ShutdownIssuedException();
+
+                case CommandKind.Active:
+                    KeepAwake.Poke(_mouse);
+                    break;
+
+                case CommandKind.Open:
+                    string toOpen = c.ValueIsExpression ? EvalString(c.Value) : c.Value;
+                    if (string.IsNullOrWhiteSpace(toOpen))
+                        throw new InvalidOperationException("Program Open: no path is set.");
+                    try
+                    {
+                        Process.Start(new ProcessStartInfo(toOpen.Trim()) { UseShellExecute = true });
+                    }
+                    catch (Exception ex) when (ex is System.ComponentModel.Win32Exception || ex is InvalidOperationException)
+                    {
+                        throw new InvalidOperationException("Cannot open \"" + toOpen.Trim() + "\": " + ex.Message);
+                    }
+                    break;
+
+                case CommandKind.WindowActivate:
+                case CommandKind.WindowMinimize:
+                case CommandKind.WindowMaximize:
+                case CommandKind.WindowRestore:
+                case CommandKind.WindowMove:
+                case CommandKind.WindowResize:
+                    int arranged = ProgramActions.Arrange(c.Kind, c.Match, c.ValueIsExpression ? EvalString(c.Value) : c.Value, c.All, c.X, c.Y, c.Width, c.Height);
+                    if (arranged == 0) throw new InvalidOperationException("No window found for " + c.Match + " \"" + (c.ValueIsExpression ? EvalString(c.Value) : c.Value).Trim() + "\" (is the program running, and is its window visible?).");
+                    break;
+
+                case CommandKind.AutoScript:
+                    ExecuteAutoScript(c, token);
+                    break;
+
+                case CommandKind.ApiGet:
+                case CommandKind.ApiPost:
+                case CommandKind.ApiPut:
+                case CommandKind.ApiPatch:
+                case CommandKind.ApiDelete:
+                case CommandKind.ApiHead:
+                case CommandKind.ApiDownload:
+                    ExecuteApi(c, token);
+                    break;
+
+                case CommandKind.Close:
+                    int closed = ProgramActions.Close(c.Match, c.ValueIsExpression ? EvalString(c.Value) : c.Value, c.All, c.Force, c.TimeMs, token);
+                    if (closed == 0) Message?.Invoke("Program Close: no program matches \"" + c.Value.Trim() + "\" (" + c.Match + ").");
+                    break;
+
+                default:
+                    if (!CommandIsFileSystem(c.Kind)) throw new InvalidOperationException("Utilities: the action " + c.Kind + " is not known to this version of the program.");
+                    ExecuteFileSystem(c);
+                    break;
             }
-            if (c.Kind == CommandKind.Active)
+            Wait(Jitter(c.DelayMs), token);
+        }
+
+        /// <summary>The "name = expression" lines of the inputs of an Auto Script (the problem is told in <paramref name="problem"/>).</summary>
+        public static List<KeyValuePair<string, string>> ParseScriptInputs(string text, out string problem)
+        {
+            problem = null;
+            var list = new List<KeyValuePair<string, string>>();
+            foreach (string raw in (text ?? "").Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
             {
-                KeepAwake.Poke(_mouse);
-                Wait(c.DelayMs, token);
-                return;
+                string line = raw.Trim();
+                if (line.Length == 0) continue;
+                int equals = line.IndexOf('=');
+                string name = equals > 0 ? line.Substring(0, equals).Trim() : "";
+                string expression = equals > 0 ? line.Substring(equals + 1).Trim() : "";
+                if (!Expression.IsValidId(name)) { problem = "\"" + line + "\" is not \"name = expression\" with a valid name (letters, digits and _)."; continue; }
+                if (expression.Length == 0) { problem = "The input " + name + " has no expression after the = sign."; continue; }
+                list.Add(new KeyValuePair<string, string>(name, expression));
             }
-            if (string.IsNullOrWhiteSpace(c.Value))
-                throw new InvalidOperationException("Open: no path is set.");
+            return list;
+        }
+
+        /// <summary>The names of the returned variables (separated by commas, semicolons or lines).</summary>
+        public static List<string> ParseScriptReturns(string text, out string problem)
+        {
+            problem = null;
+            var list = new List<string>();
+            foreach (string raw in (text ?? "").Split(new[] { ',', ';', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                string name = raw.Trim();
+                if (name.Length == 0) continue;
+                if (!Expression.IsValidId(name)) { problem = "\"" + name + "\" is not a valid variable name."; continue; }
+                list.Add(name);
+            }
+            return list;
+        }
+
+        /// <summary>
+        /// Runs the other script as part of this run. It has variables of its own: it starts with the inputs (worked out here) and
+        /// only the variables named in Returns come back. A Return in it ends it, not the script that called it; an error in it is
+        /// an error of this action. It shares the Excel workbook, browser tab and passwords of the run.
+        /// </summary>
+        private void ExecuteAutoScript(CommandSettings c, CancellationToken token)
+        {
+            string typed = c.ValueIsExpression ? EvalString(c.Value) : c.Value;
+            if (string.IsNullOrWhiteSpace(typed)) throw new InvalidOperationException("Auto Script: enter the script file.");
+            string expanded = Environment.ExpandEnvironmentVariables(typed.Trim());
+            string path;
             try
             {
-                Process.Start(new ProcessStartInfo(c.Value.Trim()) { UseShellExecute = true });
+                path = System.IO.Path.IsPathRooted(expanded) || string.IsNullOrEmpty(ScriptFolder)
+                    ? System.IO.Path.GetFullPath(expanded)
+                    : System.IO.Path.GetFullPath(System.IO.Path.Combine(ScriptFolder, expanded));
             }
-            catch (Exception ex) when (ex is System.ComponentModel.Win32Exception || ex is InvalidOperationException)
+            catch (Exception ex) when (ex is ArgumentException || ex is NotSupportedException || ex is System.IO.PathTooLongException)
+            { throw new InvalidOperationException("Auto Script: \"" + typed.Trim() + "\" is not a valid path."); }
+
+            string problem;
+            var inputs = ParseScriptInputs(c.Params, out problem);
+            if (problem != null) throw new InvalidOperationException("Auto Script inputs: " + problem);
+            var returns = ParseScriptReturns(c.Returns, out problem);
+            if (problem != null) throw new InvalidOperationException("Auto Script returns: " + problem);
+
+            if (_scriptStack.Any(f => string.Equals(f, path, StringComparison.OrdinalIgnoreCase)))
+                throw new InvalidOperationException("Auto Script: " + System.IO.Path.GetFileName(path) + " calls itself (" + string.Join(" > ", _scriptStack.Select(System.IO.Path.GetFileName)) + " > " + System.IO.Path.GetFileName(path) + ").");
+            if (_scriptStack.Count >= MaxScriptDepth)
+                throw new InvalidOperationException("Auto Script: scripts call each other more than " + MaxScriptDepth + " levels deep.");
+
+            AutomationScript script;
+            try { script = ScriptSerializer.Load(path); }
+            catch (Exception ex) when (ex is System.IO.IOException || ex is UnauthorizedAccessException || ex is System.IO.InvalidDataException
+                                       || ex is System.Runtime.Serialization.SerializationException || ex is System.Xml.XmlException)
+            { throw new InvalidOperationException("Auto Script: cannot open " + path + ": " + ex.Message); }
+
+            // The inputs are worked out here, with the variables of this script.
+            var start = new List<KeyValuePair<string, object>>();
+            foreach (var input in inputs)
             {
-                throw new InvalidOperationException("Cannot open \"" + c.Value.Trim() + "\": " + ex.Message);
+                try { start.Add(new KeyValuePair<string, object>(input.Key, Expression.Evaluate(input.Value, _vars))); }
+                catch (ExpressionException ex) { throw new InvalidOperationException("Auto Script input " + input.Key + ": " + ex.Message); }
             }
-            Wait(c.DelayMs, token);
+
+            var outer = _vars;
+            Flow outerFlow = _flow;
+            int outerDepth = _loopDepth;
+            string folder = ScriptFolder;
+            _vars = new VariableStore();
+            foreach (var pair in start) _vars.Set(pair.Key, pair.Value);
+            _flow = Flow.None;
+            _loopDepth = 0; // a Break or Continue in the script cannot reach a Loop of the script that called it
+            _scriptStack.Add(path);
+            ScriptFolder = System.IO.Path.GetDirectoryName(path);
+            var results = new List<KeyValuePair<string, object>>();
+            try
+            {
+                try
+                {
+                    BrowserInheritance.Propagate(script.Actions);
+                    ExecuteList(script.Actions, token);
+                }
+                catch (InvalidOperationException ex)
+                {
+                    throw new InvalidOperationException("In " + System.IO.Path.GetFileName(path) + ": " + ex.Message);
+                }
+                foreach (string name in returns)
+                {
+                    object value;
+                    if (!_vars.TryGet(name, out value))
+                        throw new InvalidOperationException("Auto Script: " + System.IO.Path.GetFileName(path) + " did not set the variable {" + name + "} that it should return.");
+                    results.Add(new KeyValuePair<string, object>(name, value));
+                }
+            }
+            finally
+            {
+                _scriptStack.RemoveAt(_scriptStack.Count - 1);
+                _vars = outer;
+                _flow = outerFlow;
+                _loopDepth = outerDepth;
+                ScriptFolder = folder;
+            }
+            foreach (var pair in results) _vars.Set(pair.Key, pair.Value);
+        }
+
+        /// <summary>Delete needs at least one filter, so a mistake cannot empty a mailbox.</summary>
+        public static bool EmailHasFilter(EmailSettings e)
+        {
+            return !string.IsNullOrWhiteSpace(e.Subject) || !string.IsNullOrWhiteSpace(e.From) || !string.IsNullOrWhiteSpace(e.Since)
+                || !string.IsNullOrWhiteSpace(e.Before) || e.Status != EmailStatus.Any;
+        }
+
+        private void ExecuteEmail(EmailSettings e, CancellationToken token)
+        {
+            string id = (e.Id ?? "").Trim();
+            if (id.Length > 0 && !Expression.IsValidId(id)) throw new InvalidOperationException("Email: \"" + e.Id + "\" is not a valid ID.");
+            string name = (e.Profile ?? "").Trim();
+            if (name.Length == 0) throw new InvalidOperationException("Email: choose the profile to use (the mail icon next to Category edits the profiles).");
+            var profile = EmailProfiles?.Find(name);
+            if (profile == null) throw new InvalidOperationException("Email: there is no profile named \"" + name + "\" on this computer (profiles are not saved in the script; add it with the mail icon next to Category).");
+            int timeout = (int)Math.Min(Math.Max(e.TimeMs, 1000), int.MaxValue);
+
+            if (e.Kind == EmailKind.Send)
+            {
+                string to = e.ToIsExpression ? EvalString(e.To) : e.To;
+                string cc = e.ToIsExpression && e.Cc.Trim().Length > 0 ? EvalString(e.Cc) : e.Cc;
+                string bcc = e.ToIsExpression && e.Bcc.Trim().Length > 0 ? EvalString(e.Bcc) : e.Bcc;
+                string subject = e.SubjectIsExpression && e.Subject.Trim().Length > 0 ? EvalString(e.Subject) : e.Subject;
+                string body = e.BodyIsExpression && e.Body.Length > 0 ? EvalString(e.Body) : e.Body;
+                string attach = e.AttachmentsIsExpression && e.Attachments.Trim().Length > 0 ? EvalString(e.Attachments) : e.Attachments;
+                var files = new List<string>();
+                foreach (string line in (attach ?? "").Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+                    if (line.Trim().Length > 0) files.Add(FileActions.FullPath(line.Trim(), "file to attach"));
+                var message = EmailClient.BuildMessage(profile, to, cc, bcc, subject, body, e.BodyIsHtml, files);
+                EmailClient.Send(profile, message, timeout, token);
+                Message?.Invoke("Email sent to " + (message.To.Count + message.Cc.Count + message.Bcc.Count) + " recipient(s) with " + name + ".");
+            }
+            else
+            {
+                string subject = e.SubjectIsExpression && e.Subject.Trim().Length > 0 ? EvalString(e.Subject) : e.Subject;
+                string since = e.DatesAreExpressions ? EvalDay(e.Since) : e.Since;
+                string before = e.DatesAreExpressions ? EvalDay(e.Before) : e.Before;
+                var query = EmailClient.BuildQuery(subject, e.From, EmailClient.ParseDay(since, "Since"), EmailClient.ParseDay(before, "Before"), e.Status);
+                if (e.Kind == EmailKind.Delete && !EmailHasFilter(e))
+                    throw new InvalidOperationException("Email Delete: set at least one filter (subject, sender, date or status) so that the whole folder is not deleted.");
+                if (e.Kind == EmailKind.Read)
+                {
+                    string saveTo = string.IsNullOrWhiteSpace(e.SaveTo) ? null : FileActions.FullPath(e.SaveTo.Trim(), "folder for attachments");
+                    var table = EmailClient.Read(profile, e.Folder, query, e.Max, e.MarkRead, saveTo, timeout, token);
+                    if (id.Length > 0) _vars.Set(id, table);
+                    Message?.Invoke("Email read: " + table.Rows + " message(s) from " + name + ".");
+                }
+                else if (e.Kind == EmailKind.Mark)
+                {
+                    int n = EmailClient.Mark(profile, e.Folder, query, e.Max, e.MarkAs == EmailMarkAs.Read, timeout, token);
+                    if (id.Length > 0) _vars.Set(id, (double)n);
+                    Message?.Invoke("Email marked " + n + " message(s) as " + e.MarkAs.ToString().ToLowerInvariant() + ".");
+                }
+                else
+                {
+                    int n = EmailClient.Delete(profile, e.Folder, query, e.Max, e.Permanent, timeout, token);
+                    if (id.Length > 0) _vars.Set(id, (double)n);
+                    Message?.Invoke("Email deleted " + n + " message(s)" + (e.Permanent ? " for good." : "."));
+                }
+            }
+            Wait(Jitter(e.DelayMs), token);
+        }
+
+        /// <summary>A date expression: a Date value becomes yyyy-MM-dd, a text is used as it is.</summary>
+        private string EvalDay(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return "";
+            string shown = EvalString(text);
+            return shown;
+        }
+
+        /// <summary>Calls the web address; the answer goes to the variable of the ID (when there is one).</summary>
+        private void ExecuteApi(CommandSettings c, CancellationToken token)
+        {
+            string id = (c.Id ?? "").Trim();
+            if (id.Length > 0 && !Expression.IsValidId(id)) throw new InvalidOperationException("API: \"" + c.Id + "\" is not a valid ID.");
+            string url = c.ValueIsExpression ? EvalString(c.Value) : c.Value;
+            if (string.IsNullOrWhiteSpace(url)) throw new InvalidOperationException("API: enter the web address.");
+
+            string problem;
+            var request = new ApiRequest { Url = url.Trim(), TimeoutMs = c.TimeMs, Overwrite = c.Overwrite };
+            switch (c.Kind)
+            {
+                case CommandKind.ApiPost: request.Method = "POST"; break;
+                case CommandKind.ApiPut: request.Method = "PUT"; break;
+                case CommandKind.ApiPatch: request.Method = "PATCH"; break;
+                case CommandKind.ApiDelete: request.Method = "DELETE"; break;
+                case CommandKind.ApiHead: request.Method = "HEAD"; break;
+                default: request.Method = "GET"; break;
+            }
+            foreach (var header in ApiClient.ParseHeaders(c.Params, out problem))
+            {
+                string value = header.Item3 ? EvalString(header.Item2) : header.Item2;
+                request.Headers.Add(new KeyValuePair<string, string>(header.Item1, value));
+            }
+            if (problem != null) throw new InvalidOperationException("API headers: " + problem);
+            if (CommandKinds.ApiSendsBody(c.Kind) && !string.IsNullOrEmpty(c.Target)) request.Body = c.TargetIsExpression ? EvalString(c.Target) : c.Target;
+            if (c.Kind == CommandKind.ApiDownload)
+            {
+                string target = c.TargetIsExpression ? EvalString(c.Target) : c.Target;
+                request.SaveTo = FileActions.FullPath(target, "file to save the answer in");
+            }
+
+            ApiValue answer = ApiClient.Send(request, token);
+            if (id.Length > 0) _vars.Set(id, answer);
+            Message?.Invoke("API " + request.Method + " " + ApiClient.SafeUrl(request.Url) + ": " + answer);
+            if (c.FailOnError && !answer.Ok)
+                throw new InvalidOperationException("API: " + request.Method + " " + ApiClient.SafeUrl(request.Url) + " answered " + answer + ".");
+            if (c.Kind == CommandKind.ApiDownload && !answer.Ok)
+                throw new InvalidOperationException("API: nothing was saved, " + ApiClient.SafeUrl(request.Url) + " answered " + answer + ".");
+        }
+
+        private void ExecuteFileSystem(CommandSettings c)
+        {
+            string id = (c.Id ?? "").Trim();
+            if (CommandKeeps(c.Kind) && !Expression.IsValidId(id)) throw new InvalidOperationException("File/Folder: \"" + c.Id + "\" is not a valid ID.");
+            string path = c.ValueIsExpression ? EvalString(c.Value) : c.Value;
+            string target = c.TargetIsExpression ? EvalString(c.Target) : c.Target;
+            switch (c.Kind)
+            {
+                case CommandKind.FsCopy: FileActions.Copy(path, target, c.Overwrite); break;
+                case CommandKind.FsMove: FileActions.Move(path, target, c.Overwrite); break;
+                case CommandKind.FsRename: FileActions.Rename(path, target); break;
+                case CommandKind.FsDelete:
+                    if (!FileActions.Delete(path, c.Recurse, c.Force)) Message?.Invoke("File/Folder Delete: nothing at \"" + path.Trim() + "\".");
+                    break;
+                case CommandKind.FsCreate: FileActions.CreateFolder(path); break;
+                case CommandKind.FsExists: _vars.Set(id, FileActions.Exists(path)); break;
+                case CommandKind.FsRead: _vars.Set(id, FileActions.Read(path)); break;
+                case CommandKind.FsWrite: FileActions.Write(path, target, c.Append); break;
+                case CommandKind.FsList: _vars.Set(id, FileActions.List(path, c.Recurse)); break;
+            }
         }
 
         /// <summary>Releases keys left pressed by a KeyDown action when the run stops early.</summary>
@@ -345,12 +725,52 @@ namespace AutomationTest.Core.Runner
 
         // ---------------------------------------------------------------- variable and condition
 
-        private void ExecuteVariable(ActionNode node)
+        private void ExecuteVariable(ActionNode node, CancellationToken token)
         {
             var v = node.Variable;
             string id = (v.Id ?? "").Trim();
             if (!Expression.IsValidId(id))
                 throw new InvalidOperationException("Variable: \"" + v.Id + "\" is not a valid ID (letters, digits and _, not starting with a digit).");
+            if (v.Type == VariableType.Image)
+            {
+                var im = node.Image;
+                if (im == null || !im.HasImage) throw new InvalidOperationException("Variable {" + id + "}: no picture is set (Capture or load one).");
+                LocateResult found = ImageLocator.Locate(im, im.Process, token);
+                _vars.Set(id, ToImageValue(im, found));
+                if (!found.Found)
+                {
+                    string best = found.Score >= 0 ? " (best match " + (int)Math.Round(found.Score * 100) + "%, needs " + im.Accuracy + "%)" : "";
+                    Message?.Invoke("Image {" + id + "} not found" + best + ".");
+                }
+                return;
+            }
+            if (v.Type == VariableType.OCR)
+            {
+                var area = node.Image ?? new ImageSettings();
+                RawImage picture = ImageLocator.CaptureRange(area, area.Process);
+                _vars.Set(id, WindowsOcr.Recognize(picture, area.OcrLanguage));
+                return;
+            }
+            if (v.Type == VariableType.Clipboard)
+            {
+                if (ClipboardReader == null) throw new InvalidOperationException("Variable {" + id + "}: the clipboard cannot be read here.");
+                _vars.Set(id, ClipboardReader() ?? ""); // a copy of the text now; the variable does not follow the clipboard
+                return;
+            }
+            if (v.Type == VariableType.Password)
+            {
+                string secret;
+                if (!_passwords.TryGetValue(id, out secret))
+                {
+                    if (PasswordPrompt == null) throw new InvalidOperationException("Variable {" + id + "}: a Password can only be asked for by the program.");
+                    secret = PasswordPrompt(id, token);
+                    if (secret == null) throw new OperationCanceledException("The password for {" + id + "} was not given.");
+                    _passwords[id] = secret;
+                    if (secret.Length > 0) SecretKnown?.Invoke(secret);
+                }
+                _vars.Set(id, secret);
+                return;
+            }
             try
             {
                 object value = v.UseExpression ? Expression.Evaluate(v.Expression, _vars) : v.GetLiteral();
@@ -444,17 +864,24 @@ namespace AutomationTest.Core.Runner
             if (!loop.Children.Exists(c => !c.Disabled)) return; // nothing enabled inside: nothing to repeat
 
             var settings = loop.Loop;
+            _loopDepth++;
+            try { RunLoop(loop, settings, token); }
+            finally { _loopDepth--; }
+        }
+
+        private void RunLoop(ActionNode loop, LoopSettings settings, CancellationToken token)
+        {
             switch (settings.Mode)
             {
                 case LoopType.Times:
                     for (long i = 0; settings.Count == 0 || i < settings.Count; i++)
-                        Iterate(loop, token);
+                        if (!Iterate(loop, token)) break;
                     break;
 
                 case LoopType.Duration:
                     var watch = Stopwatch.StartNew();
                     while (watch.ElapsedMilliseconds < settings.DurationMs)
-                        Iterate(loop, token);
+                        if (!Iterate(loop, token)) break;
                     break;
 
                 case LoopType.Until:
@@ -465,7 +892,7 @@ namespace AutomationTest.Core.Runner
                         break;
                     }
                     while (DateTime.Now < until.Value)
-                        Iterate(loop, token);
+                        if (!Iterate(loop, token)) break;
                     break;
 
                 case LoopType.For:
@@ -474,10 +901,42 @@ namespace AutomationTest.Core.Runner
             }
         }
 
-        private void Iterate(ActionNode loop, CancellationToken token)
+        /// <summary>One pass over the body of a Loop. False when the Loop is over: a Break, or a Return on its way out.</summary>
+        private bool Iterate(ActionNode loop, CancellationToken token)
         {
             ExecuteList(loop.Children, token);
+            if (_flow == Flow.Break) { _flow = Flow.None; return false; }
+            if (_flow == Flow.Return) return false;
+            _flow = Flow.None; // a Continue is done: the next pass starts
             Wait(0, token); // a loop whose body has no delay still yields and checks for a stop on every pass
+            return true;
+        }
+
+        // ---------------------------------------------------------------- try
+
+        /// <summary>
+        /// Runs the actions of the Try; when one fails, the rest of them are skipped and the Catch line runs (its ID, if any, gets the
+        /// message). A stop and a shutdown are not errors and go through. A disabled Catch means the error is not handled.
+        /// </summary>
+        private void ExecuteTry(ActionNode node, CancellationToken token)
+        {
+            ActionNode handler = node.Children.LastOrDefault(c => c.IsKind(ControlKind.Catch));
+            var body = node.Children.Where(c => !c.IsKind(ControlKind.Catch)).ToList();
+            string id = (handler?.Catch?.Id ?? "").Trim();
+            if (id.Length > 0 && !Expression.IsValidId(id))
+                throw new InvalidOperationException("Catch: \"" + handler.Catch.Id + "\" is not a valid ID.");
+            try
+            {
+                ExecuteList(body, token);
+            }
+            catch (Exception ex) when (!(ex is OperationCanceledException) && !(ex is ShutdownIssuedException) && handler != null && !handler.Disabled)
+            {
+                _flow = Flow.None;
+                Message?.Invoke("Caught: " + ex.Message);
+                if (id.Length > 0) _vars.Set(id, ex.Message);
+                NodeStarted?.Invoke(handler);
+                ExecuteList(handler.Children, token);
+            }
         }
 
         // ---------------------------------------------------------------- mouse
@@ -509,7 +968,7 @@ namespace AutomationTest.Core.Runner
                     throw new InvalidOperationException("The target window is covered by another window at (" + x + ", " + y + ").");
             }
 
-            _mouse.MoveTo(x, y, ToInt(m.TimeMs), token);
+            _mouse.MoveTo(x, y, ToInt(Jitter(m.TimeMs)), token);
             switch (m.Action)
             {
                 case MouseAction.Click:
@@ -530,7 +989,7 @@ namespace AutomationTest.Core.Runner
                     _mouse.Scroll(-Math.Max(1, m.ScrollNotches));
                     break;
             }
-            Wait(m.DelayMs, token);
+            Wait(Jitter(m.DelayMs), token);
         }
 
         /// <summary>Returns the cached window for the target while it is still valid, otherwise searches again.</summary>

@@ -144,14 +144,66 @@ namespace AutomationTest.Core.Model
         /// <summary>How long to wait after the action before the next one starts (milliseconds).</summary>
         [DataMember(Order = 3, EmitDefaultValue = false)] public long DelayMs { get; set; }
 
-        /// <summary>Shutdown: how long to wait before the computer is shut down (milliseconds).</summary>
+        /// <summary>Shutdown: how long to wait before the computer is shut down. Close: how long to wait for a program to end (milliseconds).</summary>
         [DataMember(Order = 4, EmitDefaultValue = false)] public long TimeMs { get; set; }
 
-        /// <summary>Shutdown: close other programs even if they have unsaved work.</summary>
+        /// <summary>Shutdown: close other programs even if they have unsaved work. Close: end the program at once (it cannot save). Delete: also delete read-only files.</summary>
         [DataMember(Order = 5, EmitDefaultValue = false)] public bool Force { get; set; }
 
-        /// <summary>Open: path of the program or document to open.</summary>
+        /// <summary>Open: path of the program or document to open. Close: what to look for (see <see cref="Match"/>). File/Folder: the path.</summary>
         [DataMember(Order = 2)] public string Value { get; set; } = "";
+
+        /// <summary>The Value is an expression (File/Folder actions).</summary>
+        [DataMember(Order = 6, EmitDefaultValue = false)] public bool ValueIsExpression { get; set; }
+
+        /// <summary>Copy, Move: the destination. Rename: the new name. Write: the text to write.</summary>
+        [DataMember(Order = 7)] public string Target { get; set; } = "";
+
+        /// <summary>The Target is an expression.</summary>
+        [DataMember(Order = 8, EmitDefaultValue = false)] public bool TargetIsExpression { get; set; }
+
+        /// <summary>Copy, Move: replace what is already at the destination.</summary>
+        [DataMember(Order = 9, EmitDefaultValue = false)] public bool Overwrite { get; set; }
+
+        /// <summary>Delete: also delete a folder that is not empty. List: also list what is inside the subfolders.</summary>
+        [DataMember(Order = 10, EmitDefaultValue = false)] public bool Recurse { get; set; }
+
+        /// <summary>Write: add to the end of the file instead of replacing it.</summary>
+        [DataMember(Order = 11, EmitDefaultValue = false)] public bool Append { get; set; }
+
+        /// <summary>API: give an error when the status of the answer is not 2xx (otherwise the answer is kept and {id.Ok} tells).</summary>
+        [DataMember(Order = 21, EmitDefaultValue = false)] public bool FailOnError { get; set; }
+
+        /// <summary>
+        /// Auto Script: the values handed to the script, one per line as "name = expression" (the expression is worked out here, in
+        /// this script). API: the headers, one per line as "Name: value" (a value that starts with = is an expression).
+        /// </summary>
+        [DataMember(Order = 19)] public string Params { get; set; } = "";
+
+        /// <summary>Auto Script: the names of the variables of the script whose values come back here, separated by commas or lines.</summary>
+        [DataMember(Order = 20)] public string Returns { get; set; } = "";
+
+        /// <summary>Window actions: Move gives X and Y, Resize gives Width and Height (pixels on the screen).</summary>
+        [DataMember(Order = 15, EmitDefaultValue = false)] public int X { get; set; }
+        [DataMember(Order = 16, EmitDefaultValue = false)] public int Y { get; set; }
+        [DataMember(Order = 17, EmitDefaultValue = false)] public int Width { get; set; }
+        [DataMember(Order = 18, EmitDefaultValue = false)] public int Height { get; set; }
+
+        /// <summary>Close: close every program that matches, not only the first one. Window actions: act on every window found.</summary>
+        [DataMember(Order = 12, EmitDefaultValue = false)] public bool All { get; set; }
+
+        /// <summary>Exists, Read, List: the variable that receives the result.</summary>
+        [DataMember(Order = 13)] public string Id { get; set; } = "";
+
+        /// <summary>Close: how the programs are found.</summary>
+        public ProgramMatch Match { get; set; }
+
+        [DataMember(Name = "Match", Order = 14)]
+        private string MatchName
+        {
+            get { return Match.ToString(); }
+            set { Match = ActionNode.Parse(value, ProgramMatch.Title); }
+        }
 
         [DataMember(Name = "Kind", Order = 1)]
         private string KindName
@@ -164,6 +216,10 @@ namespace AutomationTest.Core.Model
         private void SetDefaults(StreamingContext context)
         {
             Value = "";
+            Target = "";
+            Id = "";
+            Params = "";
+            Returns = "";
         }
 
         public CommandSettings Clone()
@@ -174,6 +230,10 @@ namespace AutomationTest.Core.Model
         internal void Normalize()
         {
             if (Value == null) Value = "";
+            if (Target == null) Target = "";
+            if (Id == null) Id = "";
+            if (Params == null) Params = "";
+            if (Returns == null) Returns = "";
             if (DelayMs < 0) DelayMs = 0;
             if (TimeMs < 0) TimeMs = 0;
         }
@@ -474,6 +534,9 @@ namespace AutomationTest.Core.Model
         /// <summary>Minimum similarity in percent (1-100) for the picture to count as found.</summary>
         [DataMember(Order = 7)] public int Accuracy { get; set; } = 90;
 
+        /// <summary>OCR: the language to read, as a tag such as vi or en-US; empty = the languages of the user's Windows profile.</summary>
+        [DataMember(Order = 12, EmitDefaultValue = false)] public string OcrLanguage { get; set; }
+
         /// <summary>Optional variable ID. The result (found or not, Position, Size) is stored there for later actions.</summary>
         [DataMember(Order = 11, EmitDefaultValue = false)] public string Id { get; set; }
 
@@ -563,6 +626,34 @@ namespace AutomationTest.Core.Model
             set { Type = ActionNode.Parse(value, VariableType.Number); }
         }
 
+        /// <summary>Clipboard and Password have no value of their own: whatever a hand-edited file or an old field left is dropped.</summary>
+        public bool HasNoStoredValue
+        {
+            get { return Type == VariableType.Clipboard || Type == VariableType.Password || Type == VariableType.Image || Type == VariableType.OCR; }
+        }
+
+        /// <summary>Image and OCR keep their settings in the Image of the action, not in the Variable.</summary>
+        public bool UsesScreenArea
+        {
+            get { return Type == VariableType.Image || Type == VariableType.OCR; }
+        }
+
+        /// <summary>A Password is never written to a file: this runs before every save and before the text used to tell whether a script changed.</summary>
+        [OnSerializing]
+        private void ClearBeforeSaving(StreamingContext context)
+        {
+            DropStoredValue();
+        }
+
+        private void DropStoredValue()
+        {
+            if (!HasNoStoredValue) return;
+            UseExpression = false;
+            Expression = "";
+            Text = "";
+            X = Y = Width = Height = 0;
+        }
+
         [OnDeserializing]
         private void SetDefaults(StreamingContext context)
         {
@@ -581,6 +672,11 @@ namespace AutomationTest.Core.Model
                 case VariableType.Position: return new PointValue(X, Y);
                 case VariableType.Range: return new RangeValue(X, Y, Width, Height);
                 case VariableType.String: return Text ?? "";
+                case VariableType.Clipboard:
+                case VariableType.Password:
+                case VariableType.Image:
+                case VariableType.OCR:
+                    return ""; // the value comes from the clipboard, the user or the screen when the script runs
                 default: return Coercion.To(Type, Text ?? "");
             }
         }
@@ -595,8 +691,33 @@ namespace AutomationTest.Core.Model
             if (Id == null) Id = "";
             if (Expression == null) Expression = "";
             if (Text == null) Text = "";
+            DropStoredValue();
             if (Width < 0) Width = 0;
             if (Height < 0) Height = 0;
+        }
+    }
+
+    /// <summary>Settings of a Catch (the last line of a Try).</summary>
+    [DataContract]
+    public sealed class CatchSettings
+    {
+        /// <summary>Optional: the variable that receives the message of the error (a String).</summary>
+        [DataMember(Order = 1)] public string Id { get; set; } = "";
+
+        [OnDeserializing]
+        private void SetDefaults(StreamingContext context)
+        {
+            Id = "";
+        }
+
+        public CatchSettings Clone()
+        {
+            return (CatchSettings)MemberwiseClone();
+        }
+
+        internal void Normalize()
+        {
+            if (Id == null) Id = "";
         }
     }
 
@@ -666,6 +787,8 @@ namespace AutomationTest.Core.Model
         [DataMember(Order = 11, EmitDefaultValue = false)] public CaseSettings Case { get; set; }
         [DataMember(Order = 12, EmitDefaultValue = false)] public WebSettings Web { get; set; }
         [DataMember(Order = 13, EmitDefaultValue = false)] public ExcelSettings Excel { get; set; }
+        [DataMember(Order = 14, EmitDefaultValue = false)] public CatchSettings Catch { get; set; }
+        [DataMember(Order = 15, EmitDefaultValue = false)] public EmailSettings Email { get; set; }
 
         public List<ActionNode> Children { get; set; } = new List<ActionNode>();
 
@@ -675,8 +798,14 @@ namespace AutomationTest.Core.Model
             {
                 if (Category == ActionCategory.Web) return Web != null && (Web.Kind == WebKind.NewTab || Web.Kind == WebKind.SwitchTab);
                 if (Category == ActionCategory.Excel) return Excel != null && (Excel.Kind == ExcelKind.Workbook || Excel.Kind == ExcelKind.SelectSheet || Excel.Kind == ExcelKind.Find);
-                return Category == ActionCategory.Control && Control != ControlKind.Variable;
+                return Category == ActionCategory.Control && Control != ControlKind.Variable && !IsJump;
             }
+        }
+
+        /// <summary>Break, Continue and Return: actions that only change where the run goes next, with nothing inside them.</summary>
+        public bool IsJump
+        {
+            get { return Category == ActionCategory.Control && (Control == ControlKind.Break || Control == ControlKind.Continue || Control == ControlKind.Return); }
         }
 
         public bool IsKind(ControlKind kind)
@@ -696,7 +825,8 @@ namespace AutomationTest.Core.Model
 
         public static ActionNode NewCommand(CommandSettings settings)
         {
-            return new ActionNode { Category = ActionCategory.Utilities, Command = settings ?? new CommandSettings() };
+            settings = settings ?? new CommandSettings();
+            return new ActionNode { Category = CommandKinds.CategoryOf(settings.Kind), Command = settings };
         }
 
         public static ActionNode NewExcel(ExcelSettings settings)
@@ -736,6 +866,35 @@ namespace AutomationTest.Core.Model
             node.Children.Add(NewCase(new CaseSettings { Expression = "true" }));
             node.Children.Add(NewElse());
             return node;
+        }
+
+        /// <summary>A Try always ends with its Catch.</summary>
+        public static ActionNode NewTry()
+        {
+            var node = new ActionNode { Category = ActionCategory.Control, Control = ControlKind.Try };
+            node.Children.Add(NewCatch(null));
+            return node;
+        }
+
+        public static ActionNode NewCatch(CatchSettings settings)
+        {
+            return new ActionNode { Category = ActionCategory.Control, Control = ControlKind.Catch, Catch = settings ?? new CatchSettings() };
+        }
+
+        public static ActionNode NewEmail(EmailSettings settings)
+        {
+            return new ActionNode { Category = ActionCategory.Email, Email = settings ?? new EmailSettings() };
+        }
+
+        public static ActionNode NewSection()
+        {
+            return new ActionNode { Category = ActionCategory.Control, Control = ControlKind.Section };
+        }
+
+        /// <summary>Break, Continue or Return.</summary>
+        public static ActionNode NewJump(ControlKind kind)
+        {
+            return new ActionNode { Category = ActionCategory.Control, Control = kind };
         }
 
         public static ActionNode NewImage(ImageSettings settings)
@@ -796,6 +955,8 @@ namespace AutomationTest.Core.Model
             copy.Image = Image?.Clone();
             copy.Variable = Variable?.Clone();
             copy.Case = Case?.Clone();
+            copy.Catch = Catch?.Clone();
+            copy.Email = Email?.Clone();
             copy.Children = Children.Select(c => c.Clone()).ToList();
             return copy;
         }
@@ -815,6 +976,21 @@ namespace AutomationTest.Core.Model
             Children = new List<ActionNode>(cases) { otherwise };
         }
 
+        /// <summary>Keeps a Try valid: its own actions, then exactly one Catch as the last line.</summary>
+        private void RepairTry()
+        {
+            var body = new List<ActionNode>();
+            ActionNode handler = null;
+            foreach (var child in Children)
+            {
+                if (child.IsKind(ControlKind.Catch)) { if (handler == null) handler = child; }
+                else body.Add(child);
+            }
+            if (handler == null) handler = NewCatch(null);
+            body.Add(handler);
+            Children = body;
+        }
+
         /// <summary>Repairs values that a hand-edited file may have left invalid, and keeps only the sub-object that applies.</summary>
         internal void Normalize()
         {
@@ -823,20 +999,27 @@ namespace AutomationTest.Core.Model
 
             var mouse = Category == ActionCategory.Mouse ? (Mouse ?? new MouseSettings()) : null;
             var keyboard = Category == ActionCategory.Keyboard ? (Keyboard ?? new KeyboardSettings()) : null;
-            var command = Category == ActionCategory.Utilities ? (Command ?? new CommandSettings()) : null;
+            var command = Category == ActionCategory.Utilities || Category == ActionCategory.Program ? (Command ?? new CommandSettings()) : null;
+            // Open and Close were Utilities before the category Program existed: such files are read as Program actions.
+            if (command != null) Category = CommandKinds.CategoryOf(command.Kind);
             var web = Category == ActionCategory.Web ? (Web ?? new WebSettings()) : null;
             var excel = Category == ActionCategory.Excel ? (Excel ?? new ExcelSettings()) : null;
             var loop = Category == ActionCategory.Control && Control == ControlKind.Loop ? (Loop ?? new LoopSettings()) : null;
             var wait = Category == ActionCategory.Control && Control == ControlKind.Wait ? (Wait ?? new WaitSettings()) : null;
-            var image = Category == ActionCategory.Control && Control == ControlKind.Image ? (Image ?? new ImageSettings()) : null;
+            bool screenVariable = Category == ActionCategory.Control && Control == ControlKind.Variable && Variable != null && Variable.UsesScreenArea;
+            var image = Category == ActionCategory.Control && (Control == ControlKind.Image || screenVariable) ? (Image ?? new ImageSettings()) : null;
             var variable = Category == ActionCategory.Control && Control == ControlKind.Variable ? (Variable ?? new VariableSettings()) : null;
             var caseSettings = Category == ActionCategory.Control && Control == ControlKind.Case ? (Case ?? new CaseSettings()) : null;
-            Mouse = mouse; Keyboard = keyboard; Command = command; Web = web; Excel = excel; Loop = loop; Wait = wait; Image = image; Variable = variable; Case = caseSettings;
+            var catchSettings = Category == ActionCategory.Control && Control == ControlKind.Catch ? (Catch ?? new CatchSettings()) : null;
+            Email = Category == ActionCategory.Email ? (Email ?? new EmailSettings()) : null;
+            Email?.Normalize();
+            Mouse = mouse; Keyboard = keyboard; Command = command; Web = web; Excel = excel; Loop = loop; Wait = wait; Image = image; Variable = variable; Case = caseSettings; Catch = catchSettings;
             mouse?.Normalize(); keyboard?.Normalize(); command?.Normalize(); web?.Normalize(); excel?.Normalize(); loop?.Normalize(); wait?.Normalize(); image?.Normalize();
-            variable?.Normalize(); caseSettings?.Normalize();
+            variable?.Normalize(); caseSettings?.Normalize(); catchSettings?.Normalize();
 
             if (!IsContainer) Children.Clear();
             if (IsKind(ControlKind.Condition)) RepairCondition();
+            if (IsKind(ControlKind.Try)) RepairTry();
             foreach (var child in Children) child.Normalize();
         }
     }

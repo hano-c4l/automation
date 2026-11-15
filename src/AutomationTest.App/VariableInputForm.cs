@@ -33,12 +33,24 @@ namespace AutomationTest.App
         }
 
         private readonly List<Row> _rows = new List<Row>();
+        private readonly IDictionary<string, Tuple<string, object>> _remembered;
 
         /// <summary>The values to start the run with, by variable name (valid after the dialog returns OK).</summary>
         public Dictionary<string, object> Values { get; private set; }
 
-        public VariableInputForm(IList<VariableNeed> needs)
+        /// <summary>
+        /// What was entered, by variable name, as its type name and value (valid after the dialog returns OK), to offer again the next
+        /// time. A Password is never in it.
+        /// </summary>
+        public Dictionary<string, Tuple<string, object>> Entered { get; private set; }
+
+        /// <summary>The passwords that were typed here, so the program can hide them in messages and the log.</summary>
+        public List<string> Secrets { get; private set; }
+
+        /// <param name="remembered">What the last dialog was given: a variable with the same name and the same type starts with that value.</param>
+        public VariableInputForm(IList<VariableNeed> needs, IDictionary<string, Tuple<string, object>> remembered = null)
         {
+            _remembered = remembered;
             Text = "Variables for the selected actions";
             Icon = AppIcon.Get() ?? Icon;
             FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -82,10 +94,11 @@ namespace AutomationTest.App
         private void AddRow(TableLayoutPanel table, VariableNeed need)
         {
             var row = new Row { Name = need.Name };
-            var typeNames = Enum.GetValues(typeof(VariableType)).Cast<object>().Select(t => t.ToString()).Concat(new[] { ImageType }).ToArray();
+            // A Clipboard variable is asked for as text here (the clipboard is read only when the script runs it).
+            var typeNames = Enum.GetValues(typeof(VariableType)).Cast<object>().Select(t => t.ToString()).Where(t => t != VariableType.Clipboard.ToString() && t != VariableType.OCR.ToString() && t != ImageType).Concat(new[] { ImageType }).ToArray();
             row.Type = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 100, Margin = new Padding(6, 3, 6, 3) };
             row.Type.Items.AddRange(typeNames);
-            string selected = need.IsImage ? ImageType : (need.Type ?? VariableType.Number).ToString();
+            string selected = need.IsImage ? ImageType : need.Type == VariableType.Clipboard || need.Type == VariableType.OCR ? VariableType.String.ToString() : (need.Type ?? VariableType.Number).ToString();
             row.Type.SelectedItem = selected;
 
             row.Text = new TextBox { Width = 180 };
@@ -109,6 +122,10 @@ namespace AutomationTest.App
             }
 
             Prefill(row, need.Default);
+            // What was entered the last time, when it is the same variable with the same type; never a password.
+            Tuple<string, object> before;
+            if (_remembered != null && selected != VariableType.Password.ToString() && _remembered.TryGetValue(need.Name, out before) && before.Item1 == selected)
+                Prefill(row, before.Item2);
             row.Type.SelectedIndexChanged += (s, e) => ShowEditor(row);
             ShowEditor(row);
 
@@ -124,6 +141,11 @@ namespace AutomationTest.App
             {
                 case double d: row.Text.Text = Convert.ToString(d, CultureInfo.InvariantCulture); break;
                 case string s: row.Text.Text = s; break;
+                case ImageValue im:
+                    row.Found.Checked = im.Found;
+                    row.Numbers[0].Value = Clamp(row.Numbers[0], im.Position.X); row.Numbers[1].Value = Clamp(row.Numbers[1], im.Position.Y);
+                    row.Numbers[2].Value = Clamp(row.Numbers[2], im.Size.Width); row.Numbers[3].Value = Clamp(row.Numbers[3], im.Size.Height);
+                    break;
                 case bool b: row.Bool.Checked = b; break;
                 case DateTime dt: row.Date.Value = dt < row.Date.MinDate ? row.Date.MinDate : dt > row.Date.MaxDate ? row.Date.MaxDate : dt; break;
                 case PointValue p: row.Numbers[0].Value = Clamp(row.Numbers[0], p.X); row.Numbers[1].Value = Clamp(row.Numbers[1], p.Y); break;
@@ -146,7 +168,9 @@ namespace AutomationTest.App
             bool boolean = type == VariableType.Boolean.ToString();
             bool date = type == VariableType.Date.ToString(), dateTime = type == VariableType.DateTime.ToString();
             bool position = type == VariableType.Position.ToString(), range = type == VariableType.Range.ToString(), image = type == ImageType;
-            row.Text.Visible = number || text;
+            bool password = type == VariableType.Password.ToString();
+            row.Text.UseSystemPasswordChar = password;
+            row.Text.Visible = number || text || password;
             row.Bool.Visible = boolean;
             row.Date.Visible = date || dateTime;
             row.Date.CustomFormat = date ? "yyyy-MM-dd" : "yyyy-MM-dd HH:mm:ss";
@@ -163,6 +187,8 @@ namespace AutomationTest.App
         private void Accept()
         {
             var values = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+            var entered = new Dictionary<string, Tuple<string, object>>(StringComparer.OrdinalIgnoreCase);
+            var secrets = new List<string>();
             foreach (var row in _rows)
             {
                 string type = (string)row.Type.SelectedItem;
@@ -177,6 +203,11 @@ namespace AutomationTest.App
                     value = number;
                 }
                 else if (type == VariableType.String.ToString()) value = row.Text.Text;
+                else if (type == VariableType.Password.ToString())
+                {
+                    value = row.Text.Text;
+                    if (row.Text.Text.Length > 0) secrets.Add(row.Text.Text);
+                }
                 else if (type == VariableType.Boolean.ToString()) value = row.Bool.Checked;
                 else if (type == VariableType.Date.ToString()) value = row.Date.Value.Date;
                 else if (type == VariableType.DateTime.ToString()) value = new DateTime(row.Date.Value.Year, row.Date.Value.Month, row.Date.Value.Day, row.Date.Value.Hour, row.Date.Value.Minute, row.Date.Value.Second);
@@ -185,8 +216,11 @@ namespace AutomationTest.App
                 else
                     value = new ImageValue(row.Found.Checked, new PointValue((double)row.Numbers[0].Value, (double)row.Numbers[1].Value), new SizeValue((double)row.Numbers[2].Value, (double)row.Numbers[3].Value));
                 values[row.Name] = value;
+                if (type != VariableType.Password.ToString()) entered[row.Name] = Tuple.Create(type, value);
             }
             Values = values;
+            Entered = entered;
+            Secrets = secrets;
             DialogResult = DialogResult.OK;
             Close();
         }
