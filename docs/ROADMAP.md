@@ -4,7 +4,7 @@ Tài liệu này ghi các tính năng đã được yêu cầu nhưng chưa làm
 Tình trạng hiện tại xem `docs/STATUS.md`, yêu cầu gốc và quyết định kỹ thuật xem `docs/PROJECT.md`.
 Mỗi giai đoạn là một nhánh `feature_xxx` tách từ `preview`, xong thì PR vào `preview` (quy ước git trong `CLAUDE.md`).
 
-Cập nhật lần cuối: 2026-11-15. Trạng thái: **P0 (bộ test trong repo) đã xong phần chính; P1 (R1 và R14: Try/Catch/Break/Continue/Return và Section) P2 (R2 Log, R3 Message, R4 Random Time) và P3 (R6 Clipboard, R15 Password, R7 Start Selected nhớ giá trị) P4 (R13 copy/paste, kéo thả, Undo/Redo) và P5 (R5 category Program và thao tác cửa sổ) P6 (R10 Image thành kiểu Variable, R11 OCR) P7 (R12 Auto Script) P8 (R8 API) và P9 (R9 Email) đã xong**; mọi giai đoạn đã xong; các giai đoạn còn lại chưa bắt đầu. P0 chưa có: test cho Web (cần trình duyệt và extension), RecordConverter, overlay/hook/phím nóng và Image trên cửa sổ thật.
+Cập nhật lần cuối: 2026-11-15. Trạng thái: **P0 (bộ test trong repo) đã xong phần chính; P1 (R1 và R14: Try/Catch/Break/Continue/Return và Section) P2 (R2 Log, R3 Message, R4 Random Time) và P3 (R6 Clipboard, R15 Password, R7 Start Selected nhớ giá trị) P4 (R13 copy/paste, kéo thả, Undo/Redo) và P5 (R5 category Program và thao tác cửa sổ) P6 (R10 Image thành kiểu Variable, R11 OCR) P7 (R12 Auto Script) và P8 (R8 API) đã xong**; chỉ còn P9 (Email); các giai đoạn còn lại chưa bắt đầu. P0 chưa có: test cho Web (cần trình duyệt và extension), RecordConverter, overlay/hook/phím nóng và Image trên cửa sổ thật.
 
 ## 1. Danh sách yêu cầu
 
@@ -85,7 +85,7 @@ Mã R1, R2... dùng để tham chiếu trong các mục sau.
 - Có tùy chọn lưu phản hồi ra file (tải xuống).
 - Dùng `HttpClient` (có sẵn trong .NET Framework 4.8); log và thông báo lỗi không in token/body.
 
-### R9. Category Email – đã làm (P9: SMTP/IMAP bằng MailKit, profile trong Setting.ini, mật khẩu mã hóa DPAPI; không dùng Outlook)
+### R9. Category Email
 - Category mới **Email** với: Send, Read, và có thể Reply, Move, Mark read, Save attachments, Delete.
 - Read trả về dữ liệu vào ID (danh sách thư dạng Table và/hoặc một thư với thuộc tính From, Subject, Body, Date, Attachments).
 - Cách kết nối chưa chốt, xem mục quyết định (Outlook COM hay SMTP/IMAP).
@@ -118,7 +118,7 @@ Mã R1, R2... dùng để tham chiếu trong các mục sau.
 | P6 (**xong**) | R10 Image → Variable, R11 OCR | Thay đổi phá vỡ lớn nhất; OCR cần thử công cụ trước | L |
 | P7 (**xong**) | R12 Auto Script | Cần Return (P1), biến/Password (P3) | M |
 | P8 (**xong**) | R8 API | Cần giá trị JSON trong biểu thức | L |
-| P9 (**xong**) | R9 Email | Phụ thuộc quyết định kết nối | L |
+| P9 | R9 Email | Phụ thuộc quyết định kết nối | L |
 
 Có thể đổi thứ tự P4–P9 theo nhu cầu; P1 → P2 → P3 nên giữ vì các giai đoạn sau dựa vào chúng.
 

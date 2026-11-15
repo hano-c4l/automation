@@ -788,7 +788,6 @@ namespace AutomationTest.Core.Model
         [DataMember(Order = 12, EmitDefaultValue = false)] public WebSettings Web { get; set; }
         [DataMember(Order = 13, EmitDefaultValue = false)] public ExcelSettings Excel { get; set; }
         [DataMember(Order = 14, EmitDefaultValue = false)] public CatchSettings Catch { get; set; }
-        [DataMember(Order = 15, EmitDefaultValue = false)] public EmailSettings Email { get; set; }
 
         public List<ActionNode> Children { get; set; } = new List<ActionNode>();
 
@@ -881,11 +880,6 @@ namespace AutomationTest.Core.Model
             return new ActionNode { Category = ActionCategory.Control, Control = ControlKind.Catch, Catch = settings ?? new CatchSettings() };
         }
 
-        public static ActionNode NewEmail(EmailSettings settings)
-        {
-            return new ActionNode { Category = ActionCategory.Email, Email = settings ?? new EmailSettings() };
-        }
-
         public static ActionNode NewSection()
         {
             return new ActionNode { Category = ActionCategory.Control, Control = ControlKind.Section };
@@ -956,7 +950,6 @@ namespace AutomationTest.Core.Model
             copy.Variable = Variable?.Clone();
             copy.Case = Case?.Clone();
             copy.Catch = Catch?.Clone();
-            copy.Email = Email?.Clone();
             copy.Children = Children.Select(c => c.Clone()).ToList();
             return copy;
         }
@@ -1011,8 +1004,6 @@ namespace AutomationTest.Core.Model
             var variable = Category == ActionCategory.Control && Control == ControlKind.Variable ? (Variable ?? new VariableSettings()) : null;
             var caseSettings = Category == ActionCategory.Control && Control == ControlKind.Case ? (Case ?? new CaseSettings()) : null;
             var catchSettings = Category == ActionCategory.Control && Control == ControlKind.Catch ? (Catch ?? new CatchSettings()) : null;
-            Email = Category == ActionCategory.Email ? (Email ?? new EmailSettings()) : null;
-            Email?.Normalize();
             Mouse = mouse; Keyboard = keyboard; Command = command; Web = web; Excel = excel; Loop = loop; Wait = wait; Image = image; Variable = variable; Case = caseSettings; Catch = catchSettings;
             mouse?.Normalize(); keyboard?.Normalize(); command?.Normalize(); web?.Normalize(); excel?.Normalize(); loop?.Normalize(); wait?.Normalize(); image?.Normalize();
             variable?.Normalize(); caseSettings?.Normalize(); catchSettings?.Normalize();

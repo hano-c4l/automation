@@ -113,7 +113,6 @@ namespace AutomationTest.App
                 case ActionCategory.Program: kind = ActionGroups.Display(node.Command.Kind); break;
                 case ActionCategory.Web: kind = ActionGroups.Display(node.Web.Kind); break;
                 case ActionCategory.Excel: kind = ActionGroups.Display(node.Excel.Kind); break;
-                case ActionCategory.Email: kind = "Email " + node.Email.Kind; break;
                 default: kind = node.Control.ToString(); break;
             }
             return string.IsNullOrWhiteSpace(node.Name) ? kind : kind + " \"" + node.Name.Trim() + "\"";
