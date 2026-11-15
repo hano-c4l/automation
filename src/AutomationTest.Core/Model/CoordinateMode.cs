@@ -21,7 +21,9 @@ namespace AutomationTest.Core.Model
         /// <summary>Drives Microsoft Excel (workbooks, sheets, cells).</summary>
         Excel,
         /// <summary>Opens, closes and arranges programs and their windows (the settings are those of <see cref="CommandSettings"/>).</summary>
-        Program
+        Program,
+        /// <summary>Sends and reads mail through an SMTP / IMAP account (a profile).</summary>
+        Email
     }
 
     public enum WebKind

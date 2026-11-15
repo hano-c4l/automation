@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
+using AutomationTest.Core.Email;
 using AutomationTest.Core.Excel;
 using AutomationTest.Core.Expressions;
 using AutomationTest.Core.Imaging;
@@ -17,6 +18,9 @@ namespace AutomationTest.Core.Runner
     public sealed class ScriptRunner
     {
         private const int SettleAfterActivateMs = 120;
+
+        /// <summary>The mail profiles an Email action can use (the program sets it; null = none).</summary>
+        public IEmailProfiles EmailProfiles { get; set; }
 
         private readonly MouseController _mouse;
         private readonly HashSet<MouseButton> _held = new HashSet<MouseButton>();
@@ -170,6 +174,9 @@ namespace AutomationTest.Core.Runner
                     break;
                 case ActionCategory.Excel:
                     ExecuteExcel(node, token);
+                    break;
+                case ActionCategory.Email:
+                    ExecuteEmail(node.Email, token);
                     break;
                 case ActionCategory.Control:
                     switch (node.Control)
@@ -524,6 +531,77 @@ namespace AutomationTest.Core.Runner
                 ScriptFolder = folder;
             }
             foreach (var pair in results) _vars.Set(pair.Key, pair.Value);
+        }
+
+        /// <summary>Delete needs at least one filter, so a mistake cannot empty a mailbox.</summary>
+        public static bool EmailHasFilter(EmailSettings e)
+        {
+            return !string.IsNullOrWhiteSpace(e.Subject) || !string.IsNullOrWhiteSpace(e.From) || !string.IsNullOrWhiteSpace(e.Since)
+                || !string.IsNullOrWhiteSpace(e.Before) || e.Status != EmailStatus.Any;
+        }
+
+        private void ExecuteEmail(EmailSettings e, CancellationToken token)
+        {
+            string id = (e.Id ?? "").Trim();
+            if (id.Length > 0 && !Expression.IsValidId(id)) throw new InvalidOperationException("Email: \"" + e.Id + "\" is not a valid ID.");
+            string name = (e.Profile ?? "").Trim();
+            if (name.Length == 0) throw new InvalidOperationException("Email: choose the profile to use (the mail icon next to Category edits the profiles).");
+            var profile = EmailProfiles?.Find(name);
+            if (profile == null) throw new InvalidOperationException("Email: there is no profile named \"" + name + "\" on this computer (profiles are not saved in the script; add it with the mail icon next to Category).");
+            int timeout = (int)Math.Min(Math.Max(e.TimeMs, 1000), int.MaxValue);
+
+            if (e.Kind == EmailKind.Send)
+            {
+                string to = e.ToIsExpression ? EvalString(e.To) : e.To;
+                string cc = e.ToIsExpression && e.Cc.Trim().Length > 0 ? EvalString(e.Cc) : e.Cc;
+                string bcc = e.ToIsExpression && e.Bcc.Trim().Length > 0 ? EvalString(e.Bcc) : e.Bcc;
+                string subject = e.SubjectIsExpression && e.Subject.Trim().Length > 0 ? EvalString(e.Subject) : e.Subject;
+                string body = e.BodyIsExpression && e.Body.Length > 0 ? EvalString(e.Body) : e.Body;
+                string attach = e.AttachmentsIsExpression && e.Attachments.Trim().Length > 0 ? EvalString(e.Attachments) : e.Attachments;
+                var files = new List<string>();
+                foreach (string line in (attach ?? "").Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+                    if (line.Trim().Length > 0) files.Add(FileActions.FullPath(line.Trim(), "file to attach"));
+                var message = EmailClient.BuildMessage(profile, to, cc, bcc, subject, body, e.BodyIsHtml, files);
+                EmailClient.Send(profile, message, timeout, token);
+                Message?.Invoke("Email sent to " + (message.To.Count + message.Cc.Count + message.Bcc.Count) + " recipient(s) with " + name + ".");
+            }
+            else
+            {
+                string subject = e.SubjectIsExpression && e.Subject.Trim().Length > 0 ? EvalString(e.Subject) : e.Subject;
+                string since = e.DatesAreExpressions ? EvalDay(e.Since) : e.Since;
+                string before = e.DatesAreExpressions ? EvalDay(e.Before) : e.Before;
+                var query = EmailClient.BuildQuery(subject, e.From, EmailClient.ParseDay(since, "Since"), EmailClient.ParseDay(before, "Before"), e.Status);
+                if (e.Kind == EmailKind.Delete && !EmailHasFilter(e))
+                    throw new InvalidOperationException("Email Delete: set at least one filter (subject, sender, date or status) so that the whole folder is not deleted.");
+                if (e.Kind == EmailKind.Read)
+                {
+                    string saveTo = string.IsNullOrWhiteSpace(e.SaveTo) ? null : FileActions.FullPath(e.SaveTo.Trim(), "folder for attachments");
+                    var table = EmailClient.Read(profile, e.Folder, query, e.Max, e.MarkRead, saveTo, timeout, token);
+                    if (id.Length > 0) _vars.Set(id, table);
+                    Message?.Invoke("Email read: " + table.Rows + " message(s) from " + name + ".");
+                }
+                else if (e.Kind == EmailKind.Mark)
+                {
+                    int n = EmailClient.Mark(profile, e.Folder, query, e.Max, e.MarkAs == EmailMarkAs.Read, timeout, token);
+                    if (id.Length > 0) _vars.Set(id, (double)n);
+                    Message?.Invoke("Email marked " + n + " message(s) as " + e.MarkAs.ToString().ToLowerInvariant() + ".");
+                }
+                else
+                {
+                    int n = EmailClient.Delete(profile, e.Folder, query, e.Max, e.Permanent, timeout, token);
+                    if (id.Length > 0) _vars.Set(id, (double)n);
+                    Message?.Invoke("Email deleted " + n + " message(s)" + (e.Permanent ? " for good." : "."));
+                }
+            }
+            Wait(Jitter(e.DelayMs), token);
+        }
+
+        /// <summary>A date expression: a Date value becomes yyyy-MM-dd, a text is used as it is.</summary>
+        private string EvalDay(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return "";
+            string shown = EvalString(text);
+            return shown;
         }
 
         /// <summary>Calls the web address; the answer goes to the variable of the ID (when there is one).</summary>

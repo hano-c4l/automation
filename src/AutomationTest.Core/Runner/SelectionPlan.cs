@@ -104,6 +104,20 @@ namespace AutomationTest.Core.Runner
                 bool valueKind = ScriptRunner.ExcelValueKind(x.Kind);
                 return ReadsOf(x.CellIsExpression ? x.Cell : null, x.Kind == ExcelKind.SetRange || (valueKind && x.ValueIsExpression) ? x.Value : null);
             }
+            if (node.Category == ActionCategory.Email)
+            {
+                var m = node.Email;
+                var mailTexts = new List<string>();
+                if (m.Kind == EmailKind.Send)
+                {
+                    if (m.ToIsExpression) { mailTexts.Add(m.To); mailTexts.Add(m.Cc); mailTexts.Add(m.Bcc); }
+                    if (m.BodyIsExpression) mailTexts.Add(m.Body);
+                    if (m.AttachmentsIsExpression) mailTexts.Add(m.Attachments);
+                }
+                if (m.SubjectIsExpression) mailTexts.Add(m.Subject);
+                if (m.DatesAreExpressions) { mailTexts.Add(m.Since); mailTexts.Add(m.Before); }
+                return ReadsOf(mailTexts.ToArray());
+            }
             if (node.Category == ActionCategory.Utilities || node.Category == ActionCategory.Program)
             {
                 var c = node.Command;
@@ -166,6 +180,8 @@ namespace AutomationTest.Core.Runner
                 bool keeps = x.Kind == ExcelKind.GetCell || x.Kind == ExcelKind.GetRange || x.Kind == ExcelKind.GetInfo || x.Kind == ExcelKind.Find || x.Kind == ExcelKind.Evaluate || x.Kind == ExcelKind.RunMacro;
                 return keeps && !string.IsNullOrWhiteSpace(x.Id) ? x.Id.Trim() : null;
             }
+            if (node.Category == ActionCategory.Email)
+                return (node.Email.Kind == EmailKind.Send || string.IsNullOrWhiteSpace(node.Email.Id)) ? null : node.Email.Id.Trim();
             if (node.IsKind(ControlKind.Catch)) return string.IsNullOrWhiteSpace(node.Catch?.Id) ? null : node.Catch.Id.Trim(); // the error message
             if (node.Category == ActionCategory.Utilities || node.Category == ActionCategory.Program)
                 return ScriptRunner.CommandKeeps(node.Command.Kind) && !string.IsNullOrWhiteSpace(node.Command.Id) ? node.Command.Id.Trim() : null;
