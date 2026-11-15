@@ -255,7 +255,8 @@ namespace AutomationTest.App
         private readonly Button _imgCapture = new Button { Text = "Capture", AutoSize = true };
         private readonly Button _imgLoad = new Button { Text = "Pick", AutoSize = true };
         private readonly Button _imgFind = new Button { Text = "Check", AutoSize = true };
-        private readonly TextBox _imgId = new TextBox { Width = 200 };
+        private readonly TextBox _imgId = new TextBox { Width = 200 }; // not shown: the ID of a Variable of the type Image is the ID of the Variable
+        private readonly HintTextBox _ocrLanguage = new HintTextBox { Width = 200, Placeholder = "Language tag (empty = your Windows languages)" };
         private RawImage _imageRaw;
 
         // Editor: variable
@@ -314,6 +315,7 @@ namespace AutomationTest.App
             _varDateTime.Value = DateTime.Now;
             _controlKind.Items.Remove(ControlKind.Else); // the else line is created with its Condition, never added by hand
             _controlKind.Items.Remove(ControlKind.Case); // Case is offered only while a line of a Condition is selected
+            _controlKind.Items.Remove(ControlKind.Image); // Image is a type of the Variable action now
             _controlKind.Items.Remove(ControlKind.Catch); // the catch line is created with its Try; it is offered only while it is selected
             _posSource.SelectedIndex = 0;
             _category.SelectedItem = ActionCategory.Mouse; // the editor starts on Mouse
@@ -573,7 +575,8 @@ namespace AutomationTest.App
             AddRow(controlTable, "Timeout", _waitTime, Help.WaitTime);
             AddRow(controlTable, "Wait", _waitSettle, Help.WaitSettle);
             AddRow(controlTable, "Retry (times)", _waitRetry, Help.Retry);
-            AddRow(controlTable, "ID", _imgId, Help.Id);
+            AddRow(controlTable, "ID", _varId, Help.Id);
+            AddRow(controlTable, "Value type", _varType, Help.ValueType);
             AddRow(controlTable, "Process", _imgProcessName, null, null, _imgPickProcess);
             AddRow(controlTable, "", _imgProcessTitle, Help.TitleRegex);
             AddRow(controlTable, "Anchor", _imgAnchor, Help.RangeAnchor);
@@ -581,8 +584,7 @@ namespace AutomationTest.App
             AddRow(controlTable, "", new Control[] { _imgW, _imgH }, null, null, _imgPickRange);
             AddRow(controlTable, "Picture", Stack(_imgPreview, _imgInfo), null, null, Stack(_imgCapture, _imgLoad), _imgPreview);
             AddRow(controlTable, "Accuracy (%)", _imgAccuracy, Help.Accuracy, null, _imgFind);
-            AddRow(controlTable, "ID", _varId, Help.Id);
-            AddRow(controlTable, "Value type", _varType, Help.ValueType);
+            AddRow(controlTable, "Language", _ocrLanguage, Help.OcrLanguage);
             AddRow(controlTable, "", _varUseExpr);
             AddRow(controlTable, "Expression", _varExpr, Help.ExpressionVariable);
             AddRow(controlTable, "Value", _varText);
@@ -911,8 +913,10 @@ namespace AutomationTest.App
             var controlKind = (ControlKind)_controlKind.SelectedItem;
             bool loop = controlKind == ControlKind.Loop;
             bool wait = controlKind == ControlKind.Wait;
-            bool image = controlKind == ControlKind.Image;
             bool variable = controlKind == ControlKind.Variable;
+            var typeNow = _varType.SelectedItem as VariableType? ?? VariableType.Number;
+            bool image = variable && typeNow == VariableType.Image;
+            bool ocr = variable && typeNow == VariableType.OCR;
             bool caseKind = controlKind == ControlKind.Case;
             bool condition = controlKind == ControlKind.Condition;
             var loopType = (LoopType)_loopType.SelectedItem;
@@ -930,15 +934,18 @@ namespace AutomationTest.App
             SetRowVisible(_waitSettle, wait);
             SetRowVisible(_waitRetry, wait);
             SetRowVisible(_waitPick, wait);
-            foreach (var c in new Control[] { _imgId, _imgProcessName, _imgProcessTitle, _imgPickProcess, _imgAnchor, _imgX, _imgY, _imgW, _imgH,
-                                              _imgPickRange, _imgPreview, _imgInfo, _imgCapture, _imgLoad, _imgAccuracy, _imgFind })
+            // The area (process, anchor, range) is shared by Image and OCR; the picture and the accuracy are only for Image.
+            foreach (var c in new Control[] { _imgProcessName, _imgProcessTitle, _imgPickProcess, _imgAnchor, _imgX, _imgY, _imgW, _imgH, _imgPickRange })
+                SetRowVisible(c, image || ocr);
+            foreach (var c in new Control[] { _imgPreview, _imgInfo, _imgCapture, _imgLoad, _imgAccuracy, _imgFind })
                 SetRowVisible(c, image);
+            SetRowVisible(_ocrLanguage, ocr);
             _imgAnchor.Enabled = _imgProcessName.Text.Trim().Length > 0 || _imgProcessTitle.Text.Trim().Length > 0;
 
             // Variable
             var varType = (VariableType)_varType.SelectedItem;
             // Clipboard and Password get their value when the script runs: no literal and no expression
-            bool noValue = varType == VariableType.Clipboard || varType == VariableType.Password;
+            bool noValue = varType == VariableType.Clipboard || varType == VariableType.Password || varType == VariableType.Image || varType == VariableType.OCR;
             bool expr = _varUseExpr.Checked && !noValue;
             bool literal = variable && !expr && !noValue;
             bool geometry = literal && (varType == VariableType.Position || varType == VariableType.Range);
@@ -1131,7 +1138,20 @@ namespace AutomationTest.App
                         case ControlKind.Image:
                             return ActionNode.NewImage(BuildImageSettings());
                         case ControlKind.Variable:
-                            return ActionNode.NewVariable(BuildVariableSettings());
+                            var settings = BuildVariableSettings();
+                            var created2 = ActionNode.NewVariable(settings);
+                            if (settings.UsesScreenArea)
+                            {
+                                var area = BuildImageSettings();
+                                area.Id = settings.Id;
+                                if (settings.Type == VariableType.OCR)
+                                {
+                                    area.ImageData = null; area.ImageWidth = 0; area.ImageHeight = 0; // OCR reads the screen: no picture
+                                    area.OcrLanguage = _ocrLanguage.Text.Trim();
+                                }
+                                created2.Image = area;
+                            }
+                            return created2;
                         case ControlKind.Condition:
                             var created = ActionNode.NewCondition();
                             created.Children[0].Case.Expression = _caseExpr.Text.Trim();
@@ -1179,14 +1199,14 @@ namespace AutomationTest.App
             {
                 Id = _varId.Text.Trim(),
                 Type = type,
-                UseExpression = _varUseExpr.Checked && type != VariableType.Clipboard && type != VariableType.Password,
-                Expression = type == VariableType.Clipboard || type == VariableType.Password ? "" : _varExpr.Text.Trim(),
+                UseExpression = _varUseExpr.Checked && !NoValueType(type),
+                Expression = NoValueType(type) ? "" : _varExpr.Text.Trim(),
                 X = (int)_varX.Value,
                 Y = (int)_varY.Value,
                 Width = (int)_varW.Value,
                 Height = (int)_varH.Value
             };
-            if (type == VariableType.Clipboard || type == VariableType.Password) { v.X = v.Y = v.Width = v.Height = 0; return v; } // nothing is stored for these
+            if (NoValueType(type)) { v.X = v.Y = v.Width = v.Height = 0; return v; } // nothing is stored for these
             switch (type)
             {
                 case VariableType.String:
@@ -1210,6 +1230,12 @@ namespace AutomationTest.App
                     break;
             }
             return v;
+        }
+
+        /// <summary>The Variable types that have no value to type in: it comes from the clipboard, the user, or the screen when the script runs.</summary>
+        private static bool NoValueType(VariableType type)
+        {
+            return type == VariableType.Clipboard || type == VariableType.Password || type == VariableType.Image || type == VariableType.OCR;
         }
 
         private ImageSettings BuildImageSettings()
@@ -1396,6 +1422,11 @@ namespace AutomationTest.App
                             break;
                         case ControlKind.Variable:
                             LoadVariableSettings(node.Variable);
+                            if (node.Variable.UsesScreenArea && node.Image != null)
+                            {
+                                LoadImageSettings(node.Image);
+                                _ocrLanguage.Text = node.Image.OcrLanguage ?? "";
+                            }
                             break;
                         case ControlKind.Condition:
                             _caseExpr.Text = node.Children[0].Case.Expression; // the first case; Update writes it back
@@ -2190,6 +2221,14 @@ namespace AutomationTest.App
                                 Expression.CheckSyntax(v.Expression);
                             }
                             else v.GetLiteral();
+                            if (v.Type == VariableType.Image)
+                            {
+                                if (node.Image == null || !node.Image.HasImage) return "Capture or load a picture first.";
+                                if ((node.Image.RangeWidth > 0) != (node.Image.RangeHeight > 0))
+                                    return "Set both Width and Height of the range, or leave both at 0 to search the whole area.";
+                            }
+                            else if (v.Type == VariableType.OCR && node.Image != null && (node.Image.RangeWidth > 0) != (node.Image.RangeHeight > 0))
+                                return "Set both Width and Height of the area to read, or leave both at 0 to read the whole screen.";
                         }
                         else if (node.IsKind(ControlKind.Condition))
                         {
@@ -2833,6 +2872,17 @@ namespace AutomationTest.App
                             details = "{" + v.Id + "} (" + v.Type + ") = " + (v.UseExpression ? Shorten(v.Expression) : DescribeLiteral(v));
                             if (v.Type == VariableType.Clipboard) details = "{" + v.Id + "} (Clipboard) = the text in the clipboard when it runs";
                             else if (v.Type == VariableType.Password) details = "{" + v.Id + "} (Password) = asked when the script runs";
+                            else if (v.UsesScreenArea && n.Image != null)
+                            {
+                                var area = n.Image;
+                                process = DescribeTarget(area.Process);
+                                string where = area.RangeWidth > 0 && area.RangeHeight > 0
+                                    ? "range " + area.RangeWidth + "x" + area.RangeHeight + " at (" + area.RangeX + ", " + area.RangeY + ")" + (area.Process.IsEmpty ? "" : " " + area.Anchor)
+                                    : "whole area";
+                                details = v.Type == VariableType.Image
+                                    ? "{" + v.Id + "} (Image) " + area.ImageWidth + "x" + area.ImageHeight + " picture, " + area.Accuracy + "%, " + where
+                                    : "{" + v.Id + "} (OCR) text in " + where + (string.IsNullOrWhiteSpace(area.OcrLanguage) ? "" : ", language " + area.OcrLanguage);
+                            }
                             break;
                         case ControlKind.Condition:
                             action = "Condition";

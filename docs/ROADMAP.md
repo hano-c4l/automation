@@ -4,7 +4,7 @@ Tài liệu này ghi các tính năng đã được yêu cầu nhưng chưa làm
 Tình trạng hiện tại xem `docs/STATUS.md`, yêu cầu gốc và quyết định kỹ thuật xem `docs/PROJECT.md`.
 Mỗi giai đoạn là một nhánh `feature_xxx` tách từ `preview`, xong thì PR vào `preview` (quy ước git trong `CLAUDE.md`).
 
-Cập nhật lần cuối: 2026-11-15. Trạng thái: **P0 (bộ test trong repo) đã xong phần chính; P1 (R1 và R14: Try/Catch/Break/Continue/Return và Section) P2 (R2 Log, R3 Message, R4 Random Time) và P3 (R6 Clipboard, R15 Password, R7 Start Selected nhớ giá trị) P4 (R13 copy/paste, kéo thả, Undo/Redo) và P5 (R5 category Program và thao tác cửa sổ) đã xong**; các giai đoạn còn lại chưa bắt đầu. P0 chưa có: test cho Web (cần trình duyệt và extension), RecordConverter, overlay/hook/phím nóng và Image trên cửa sổ thật.
+Cập nhật lần cuối: 2026-11-15. Trạng thái: **P0 (bộ test trong repo) đã xong phần chính; P1 (R1 và R14: Try/Catch/Break/Continue/Return và Section) P2 (R2 Log, R3 Message, R4 Random Time) và P3 (R6 Clipboard, R15 Password, R7 Start Selected nhớ giá trị) P4 (R13 copy/paste, kéo thả, Undo/Redo) và P5 (R5 category Program và thao tác cửa sổ) và P6 (R10 Image thành kiểu Variable, R11 OCR) đã xong**; các giai đoạn còn lại chưa bắt đầu. P0 chưa có: test cho Web (cần trình duyệt và extension), RecordConverter, overlay/hook/phím nóng và Image trên cửa sổ thật.
 
 ## 1. Danh sách yêu cầu
 
@@ -66,7 +66,7 @@ Mã R1, R2... dùng để tham chiếu trong các mục sau.
 - Chỉ lưu trong bộ nhớ của phiên làm việc (không ghi ra file). Không bao giờ nhớ biến Password.
 - Giá trị nhớ **thắng** giá trị mặc định mà hộp lấy từ action Variable cùng tên trong kịch bản. Bấm Hủy hộp nhập thì lần đó không thay bộ nhớ.
 
-### R10. Image trở thành kiểu của Variable
+### R10. Image trở thành kiểu của Variable – đã làm (P6)
 - Chuyển action **Control/Image** thành kiểu **Image** của action Variable: Variable Image tìm ảnh (Range, Process, Anchor, ảnh mẫu, Accuracy) và lưu kết quả vào ID (`Found`, `Position`, `Size`) như hiện nay. Phần "nếu thấy thì chạy các con" chuyển sang **Condition** dùng `{id.Found}`.
 - **Chuyển đổi tự động khi mở file cũ:** mỗi action Image cũ có con thành `Variable (Image)` + `Condition` có một Case `{id.Found}` chứa các con cũ; Image không có con thành Variable (Image). Giữ khả năng đọc action Image cũ mãi. Cần test bằng các file kịch bản thật đã lưu.
 - Image cũ có ID để trống được: khi chuyển phải tự sinh một ID duy nhất (không trùng biến nào trong kịch bản) cho Variable và Condition. Name và State của action cũ được chép cho cả hai node mới.
@@ -74,7 +74,7 @@ Mã R1, R2... dùng để tham chiếu trong các mục sau.
 - Sau khi chuyển, Control không còn Image trong combo; cột Time, Start Selected, `SelectionPlan` (biến do Image định nghĩa) phải cập nhật.
 - Đây là thay đổi **phá vỡ** lớn nhất trong danh sách: làm sau khi có bộ test.
 
-### R11. Variable kiểu OCR
+### R11. Variable kiểu OCR – đã làm (P6, dùng OCR có sẵn của Windows)
 - Kiểu OCR: chọn một vùng (cùng Range, Process, Anchor như Image), nhận diện chữ trong vùng, biến nhận chuỗi (có thể có thêm thuộc tính sau này).
 - Phụ thuộc vào công cụ OCR, xem mục quyết định. Đề xuất dùng OCR có sẵn của Windows (không cài thêm, nhưng cần gói ngôn ngữ OCR của Windows cho tiếng Việt) và làm thử nhỏ trước khi chốt.
 
@@ -115,7 +115,7 @@ Mã R1, R2... dùng để tham chiếu trong các mục sau.
 | P3 (**xong**) | R6 Clipboard, R15 Password, R7 nhớ giá trị Start Selected | Nhỏ, độc lập, Password cần có trước API/Email/Auto Script | M |
 | P4 (**xong**) | R13 copy/paste, kéo thả, (Undo/Redo) | Sau P1 để quy tắc cây (Try, Section) đã chốt | L |
 | P5 (**xong**) | R5 Category Program + thao tác cửa sổ | Tách category kéo theo chuyển đổi file | M |
-| P6 | R10 Image → Variable, R11 OCR | Thay đổi phá vỡ lớn nhất; OCR cần thử công cụ trước | L |
+| P6 (**xong**) | R10 Image → Variable, R11 OCR | Thay đổi phá vỡ lớn nhất; OCR cần thử công cụ trước | L |
 | P7 | R12 Auto Script | Cần Return (P1), biến/Password (P3) | M |
 | P8 | R8 API | Cần giá trị JSON trong biểu thức | L |
 | P9 | R9 Email | Phụ thuộc quyết định kết nối | L |
