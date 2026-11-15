@@ -4,7 +4,7 @@ Tài liệu này ghi các tính năng đã được yêu cầu nhưng chưa làm
 Tình trạng hiện tại xem `docs/STATUS.md`, yêu cầu gốc và quyết định kỹ thuật xem `docs/PROJECT.md`.
 Mỗi giai đoạn là một nhánh `feature_xxx` tách từ `preview`, xong thì PR vào `preview` (quy ước git trong `CLAUDE.md`).
 
-Cập nhật lần cuối: 2026-11-15. Trạng thái: **P0 (bộ test trong repo) đã xong phần chính; P1 (R1 và R14: Try/Catch/Break/Continue/Return và Section) P2 (R2 Log, R3 Message, R4 Random Time) và P3 (R6 Clipboard, R15 Password, R7 Start Selected nhớ giá trị) P4 (R13 copy/paste, kéo thả, Undo/Redo) và P5 (R5 category Program và thao tác cửa sổ) P6 (R10 Image thành kiểu Variable, R11 OCR) và P7 (R12 Auto Script) đã xong**; các giai đoạn còn lại chưa bắt đầu. P0 chưa có: test cho Web (cần trình duyệt và extension), RecordConverter, overlay/hook/phím nóng và Image trên cửa sổ thật.
+Cập nhật lần cuối: 2026-11-15. Trạng thái: **P0 (bộ test trong repo) đã xong phần chính; P1 (R1 và R14: Try/Catch/Break/Continue/Return và Section) P2 (R2 Log, R3 Message, R4 Random Time) và P3 (R6 Clipboard, R15 Password, R7 Start Selected nhớ giá trị) P4 (R13 copy/paste, kéo thả, Undo/Redo) và P5 (R5 category Program và thao tác cửa sổ) P6 (R10 Image thành kiểu Variable, R11 OCR) P7 (R12 Auto Script) và P8 (R8 API) đã xong**; chỉ còn P9 (Email); các giai đoạn còn lại chưa bắt đầu. P0 chưa có: test cho Web (cần trình duyệt và extension), RecordConverter, overlay/hook/phím nóng và Image trên cửa sổ thật.
 
 ## 1. Danh sách yêu cầu
 
@@ -78,7 +78,7 @@ Mã R1, R2... dùng để tham chiếu trong các mục sau.
 - Kiểu OCR: chọn một vùng (cùng Range, Process, Anchor như Image), nhận diện chữ trong vùng, biến nhận chuỗi (có thể có thêm thuộc tính sau này).
 - Phụ thuộc vào công cụ OCR, xem mục quyết định. Đề xuất dùng OCR có sẵn của Windows (không cài thêm, nhưng cần gói ngôn ngữ OCR của Windows cho tiếng Việt) và làm thử nhỏ trước khi chốt.
 
-### R8. Utilities: API
+### R8. Utilities: API – đã làm (P8; "FETCH" là ghi nhầm, bỏ)
 - Nhóm **API** trong Utilities với các kiểu: GET, POST, PUT, PATCH, DELETE, HEAD (và kiểu "FETCH" theo cách hiểu của người dùng: xem mục quyết định).
 - Trường: URL, query, headers, body (chữ, JSON, form), xác thực (không, Bearer, Basic; token/mật khẩu qua biểu thức, ví dụ biến Password), timeout, theo dõi chuyển hướng, kiểm tra chứng chỉ HTTPS (luôn bật).
 - **ID** nhận kết quả: `Status` (số), `Ok` (Boolean), `Body` (chuỗi), `Headers`, và truy cập JSON trong biểu thức kiểu `{r.Json.data[0].name}`. Cần mở rộng bộ biểu thức với giá trị JSON (thuộc tính và chỉ số).
@@ -117,7 +117,7 @@ Mã R1, R2... dùng để tham chiếu trong các mục sau.
 | P5 (**xong**) | R5 Category Program + thao tác cửa sổ | Tách category kéo theo chuyển đổi file | M |
 | P6 (**xong**) | R10 Image → Variable, R11 OCR | Thay đổi phá vỡ lớn nhất; OCR cần thử công cụ trước | L |
 | P7 (**xong**) | R12 Auto Script | Cần Return (P1), biến/Password (P3) | M |
-| P8 | R8 API | Cần giá trị JSON trong biểu thức | L |
+| P8 (**xong**) | R8 API | Cần giá trị JSON trong biểu thức | L |
 | P9 | R9 Email | Phụ thuộc quyết định kết nối | L |
 
 Có thể đổi thứ tự P4–P9 theo nhu cầu; P1 → P2 → P3 nên giữ vì các giai đoạn sau dựa vào chúng.

@@ -107,6 +107,13 @@ namespace AutomationTest.Core.Runner
             if (node.Category == ActionCategory.Utilities || node.Category == ActionCategory.Program)
             {
                 var c = node.Command;
+                if (CommandKinds.IsApi(c.Kind))
+                {
+                    var texts = new List<string> { c.ValueIsExpression ? c.Value : null, c.TargetIsExpression ? c.Target : null };
+                    string ignored;
+                    foreach (var header in ApiClient.ParseHeaders(c.Params, out ignored)) if (header.Item3) texts.Add(header.Item2);
+                    return ReadsOf(texts.ToArray());
+                }
                 if (c.Kind == CommandKind.AutoScript)
                 {
                     var texts = new List<string> { c.ValueIsExpression ? c.Value : null };

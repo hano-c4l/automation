@@ -331,7 +331,7 @@ namespace AutomationTest.Core.Runner
         /// <summary>The Utilities kinds that read or list something into a variable (Id).</summary>
         public static bool CommandKeeps(CommandKind kind)
         {
-            return kind == CommandKind.FsExists || kind == CommandKind.FsRead || kind == CommandKind.FsList;
+            return kind == CommandKind.FsExists || kind == CommandKind.FsRead || kind == CommandKind.FsList || CommandKinds.IsApi(kind);
         }
 
         /// <summary>The Utilities kinds that work on files and folders.</summary>
@@ -381,6 +381,16 @@ namespace AutomationTest.Core.Runner
 
                 case CommandKind.AutoScript:
                     ExecuteAutoScript(c, token);
+                    break;
+
+                case CommandKind.ApiGet:
+                case CommandKind.ApiPost:
+                case CommandKind.ApiPut:
+                case CommandKind.ApiPatch:
+                case CommandKind.ApiDelete:
+                case CommandKind.ApiHead:
+                case CommandKind.ApiDownload:
+                    ExecuteApi(c, token);
                     break;
 
                 case CommandKind.Close:
@@ -514,6 +524,47 @@ namespace AutomationTest.Core.Runner
                 ScriptFolder = folder;
             }
             foreach (var pair in results) _vars.Set(pair.Key, pair.Value);
+        }
+
+        /// <summary>Calls the web address; the answer goes to the variable of the ID (when there is one).</summary>
+        private void ExecuteApi(CommandSettings c, CancellationToken token)
+        {
+            string id = (c.Id ?? "").Trim();
+            if (id.Length > 0 && !Expression.IsValidId(id)) throw new InvalidOperationException("API: \"" + c.Id + "\" is not a valid ID.");
+            string url = c.ValueIsExpression ? EvalString(c.Value) : c.Value;
+            if (string.IsNullOrWhiteSpace(url)) throw new InvalidOperationException("API: enter the web address.");
+
+            string problem;
+            var request = new ApiRequest { Url = url.Trim(), TimeoutMs = c.TimeMs, Overwrite = c.Overwrite };
+            switch (c.Kind)
+            {
+                case CommandKind.ApiPost: request.Method = "POST"; break;
+                case CommandKind.ApiPut: request.Method = "PUT"; break;
+                case CommandKind.ApiPatch: request.Method = "PATCH"; break;
+                case CommandKind.ApiDelete: request.Method = "DELETE"; break;
+                case CommandKind.ApiHead: request.Method = "HEAD"; break;
+                default: request.Method = "GET"; break;
+            }
+            foreach (var header in ApiClient.ParseHeaders(c.Params, out problem))
+            {
+                string value = header.Item3 ? EvalString(header.Item2) : header.Item2;
+                request.Headers.Add(new KeyValuePair<string, string>(header.Item1, value));
+            }
+            if (problem != null) throw new InvalidOperationException("API headers: " + problem);
+            if (CommandKinds.ApiSendsBody(c.Kind) && !string.IsNullOrEmpty(c.Target)) request.Body = c.TargetIsExpression ? EvalString(c.Target) : c.Target;
+            if (c.Kind == CommandKind.ApiDownload)
+            {
+                string target = c.TargetIsExpression ? EvalString(c.Target) : c.Target;
+                request.SaveTo = FileActions.FullPath(target, "file to save the answer in");
+            }
+
+            ApiValue answer = ApiClient.Send(request, token);
+            if (id.Length > 0) _vars.Set(id, answer);
+            Message?.Invoke("API " + request.Method + " " + ApiClient.SafeUrl(request.Url) + ": " + answer);
+            if (c.FailOnError && !answer.Ok)
+                throw new InvalidOperationException("API: " + request.Method + " " + ApiClient.SafeUrl(request.Url) + " answered " + answer + ".");
+            if (c.Kind == CommandKind.ApiDownload && !answer.Ok)
+                throw new InvalidOperationException("API: nothing was saved, " + ApiClient.SafeUrl(request.Url) + " answered " + answer + ".");
         }
 
         private void ExecuteFileSystem(CommandSettings c)

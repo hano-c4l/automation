@@ -165,7 +165,17 @@ namespace AutomationTest.Core.Model
         /// <summary>Gives the window the Width and Height.</summary>
         WindowResize,
         /// <summary>Runs another script file as part of this one (inputs in, results out); its variables are its own.</summary>
-        AutoScript
+        AutoScript,
+        // API actions: they call a web address; the answer goes to the variable of the ID.
+        ApiGet,
+        ApiPost,
+        ApiPut,
+        ApiPatch,
+        ApiDelete,
+        /// <summary>Asks only for the headers of the answer.</summary>
+        ApiHead,
+        /// <summary>Saves the answer in a file.</summary>
+        ApiDownload
     }
 
     /// <summary>Which category an action of <see cref="CommandKind"/> belongs to.</summary>
@@ -175,6 +185,17 @@ namespace AutomationTest.Core.Model
         public static bool IsProgram(CommandKind kind)
         {
             return kind == CommandKind.Open || kind == CommandKind.Close || IsWindow(kind);
+        }
+
+        public static bool IsApi(CommandKind kind)
+        {
+            return kind >= CommandKind.ApiGet && kind <= CommandKind.ApiDownload;
+        }
+
+        /// <summary>The API kinds that can send a body.</summary>
+        public static bool ApiSendsBody(CommandKind kind)
+        {
+            return kind == CommandKind.ApiPost || kind == CommandKind.ApiPut || kind == CommandKind.ApiPatch || kind == CommandKind.ApiDelete;
         }
 
         public static bool IsWindow(CommandKind kind)

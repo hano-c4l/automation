@@ -147,6 +147,8 @@ namespace AutomationTest.Core.Expressions
                 case ImageValue i: return i.Found ? Number(i.Position.X) + "," + Number(i.Position.Y) : "not found";
                 case CellValue c: return c.Found ? c.Address : "not found";
                 case TableValue tv: return "table " + tv.Rows + "x" + tv.Columns;
+                case JsonValue json: return json.ToString();
+                case ApiValue api: return api.ToString();
                 default: return Convert.ToString(value, CultureInfo.InvariantCulture);
             }
         }
@@ -165,6 +167,8 @@ namespace AutomationTest.Core.Expressions
                 case ImageValue _: return "Image";
                 case CellValue _: return "Cell";
                 case TableValue _: return "Table";
+                case JsonValue _: return "Json";
+                case ApiValue _: return "Response";
                 default: return value == null ? "nothing" : value.GetType().Name;
             }
         }

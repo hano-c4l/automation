@@ -154,6 +154,21 @@ namespace AutomationTest.Core.Expressions
             }
         }
 
+        /// <summary>{r.Json.items[0]} or {r.Json.data["first name"]}: one item of a JSON array or object.</summary>
+        private sealed class IndexOne : Node
+        {
+            private readonly Node _target, _index;
+            public IndexOne(Node target, Node index) { _target = target; _index = index; }
+            public override void Collect(ISet<string> names) { _target.Collect(names); _index.Collect(names); }
+            public override object Eval(VariableStore vars)
+            {
+                object target = _target.Eval(vars);
+                if (target is JsonValue json) return json.GetIndex(_index.Eval(vars));
+                if (target is TableValue) throw new ExpressionException("A table needs a row and a column: [row, column].");
+                throw new ExpressionException("[ ] reads a table or JSON, but the value is " + Format.TypeName(target) + ".");
+            }
+        }
+
         private sealed class Unary : Node
         {
             private readonly char _op;
@@ -385,6 +400,7 @@ namespace AutomationTest.Core.Expressions
                         int open = Cur.Pos;
                         _i++;
                         var row = ParseOr();
+                        if (Accept("]")) { node = new IndexOne(node, row); continue; } // JSON: [0] or ["name"]
                         if (!Accept(",")) Fail("A table needs a row and a column: [row, column]", Cur.Pos);
                         var column = ParseOr();
                         if (!Accept("]")) Fail("Missing ]", Cur.Pos);
@@ -479,6 +495,8 @@ namespace AutomationTest.Core.Expressions
                 string n = name.ToLowerInvariant();
                 switch (target)
                 {
+                    case JsonValue json: return json.GetMember(name);
+                    case ApiValue api: return api.GetMember(name);
                     case PointValue p:
                         if (n == "x") return p.X;
                         if (n == "y") return p.Y;

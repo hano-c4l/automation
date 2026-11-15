@@ -171,7 +171,13 @@ namespace AutomationTest.Core.Model
         /// <summary>Write: add to the end of the file instead of replacing it.</summary>
         [DataMember(Order = 11, EmitDefaultValue = false)] public bool Append { get; set; }
 
-        /// <summary>Auto Script: the values handed to the script, one per line as "name = expression" (the expression is worked out here, in this script).</summary>
+        /// <summary>API: give an error when the status of the answer is not 2xx (otherwise the answer is kept and {id.Ok} tells).</summary>
+        [DataMember(Order = 21, EmitDefaultValue = false)] public bool FailOnError { get; set; }
+
+        /// <summary>
+        /// Auto Script: the values handed to the script, one per line as "name = expression" (the expression is worked out here, in
+        /// this script). API: the headers, one per line as "Name: value" (a value that starts with = is an expression).
+        /// </summary>
         [DataMember(Order = 19)] public string Params { get; set; } = "";
 
         /// <summary>Auto Script: the names of the variables of the script whose values come back here, separated by commas or lines.</summary>
