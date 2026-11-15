@@ -22,7 +22,13 @@ namespace AutomationTest.Core.Runner
         private readonly HashSet<MouseButton> _held = new HashSet<MouseButton>();
         private readonly Dictionary<string, IntPtr> _windowCache = new Dictionary<string, IntPtr>();
 
-        private readonly VariableStore _vars = new VariableStore();
+        private VariableStore _vars = new VariableStore(); // replaced for the time an Auto Script runs
+
+        /// <summary>The folder of the script that is running: a relative path of an Auto Script starts here (the program sets it).</summary>
+        public string ScriptFolder { get; set; }
+
+        private const int MaxScriptDepth = 16;
+        private readonly List<string> _scriptStack = new List<string>(); // the files of the Auto Scripts that are running now
 
         /// <summary>Where the run goes next after an action: on (None), out of the nearest Loop (Break), to its next pass (Continue) or to the end (Return).</summary>
         private enum Flow { None, Break, Continue, Return }
@@ -107,6 +113,7 @@ namespace AutomationTest.Core.Runner
             _flow = Flow.None;
             _loopDepth = partial ? 1 : 0;
             _passwords.Clear();
+            _scriptStack.Clear();
             (WebSession ?? AutomationTest.Core.Web.WebSession.SharedIfCreated)?.ResetTab(); // every run starts on the tab that is in front
             (ExcelSession ?? AutomationTest.Core.Excel.ExcelSession.SharedIfCreated)?.Reset(); // and on the workbook and sheet that are active
             if (variables != null)
@@ -372,6 +379,10 @@ namespace AutomationTest.Core.Runner
                     if (arranged == 0) throw new InvalidOperationException("No window found for " + c.Match + " \"" + (c.ValueIsExpression ? EvalString(c.Value) : c.Value).Trim() + "\" (is the program running, and is its window visible?).");
                     break;
 
+                case CommandKind.AutoScript:
+                    ExecuteAutoScript(c, token);
+                    break;
+
                 case CommandKind.Close:
                     int closed = ProgramActions.Close(c.Match, c.ValueIsExpression ? EvalString(c.Value) : c.Value, c.All, c.Force, c.TimeMs, token);
                     if (closed == 0) Message?.Invoke("Program Close: no program matches \"" + c.Value.Trim() + "\" (" + c.Match + ").");
@@ -383,6 +394,126 @@ namespace AutomationTest.Core.Runner
                     break;
             }
             Wait(Jitter(c.DelayMs), token);
+        }
+
+        /// <summary>The "name = expression" lines of the inputs of an Auto Script (the problem is told in <paramref name="problem"/>).</summary>
+        public static List<KeyValuePair<string, string>> ParseScriptInputs(string text, out string problem)
+        {
+            problem = null;
+            var list = new List<KeyValuePair<string, string>>();
+            foreach (string raw in (text ?? "").Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                string line = raw.Trim();
+                if (line.Length == 0) continue;
+                int equals = line.IndexOf('=');
+                string name = equals > 0 ? line.Substring(0, equals).Trim() : "";
+                string expression = equals > 0 ? line.Substring(equals + 1).Trim() : "";
+                if (!Expression.IsValidId(name)) { problem = "\"" + line + "\" is not \"name = expression\" with a valid name (letters, digits and _)."; continue; }
+                if (expression.Length == 0) { problem = "The input " + name + " has no expression after the = sign."; continue; }
+                list.Add(new KeyValuePair<string, string>(name, expression));
+            }
+            return list;
+        }
+
+        /// <summary>The names of the returned variables (separated by commas, semicolons or lines).</summary>
+        public static List<string> ParseScriptReturns(string text, out string problem)
+        {
+            problem = null;
+            var list = new List<string>();
+            foreach (string raw in (text ?? "").Split(new[] { ',', ';', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                string name = raw.Trim();
+                if (name.Length == 0) continue;
+                if (!Expression.IsValidId(name)) { problem = "\"" + name + "\" is not a valid variable name."; continue; }
+                list.Add(name);
+            }
+            return list;
+        }
+
+        /// <summary>
+        /// Runs the other script as part of this run. It has variables of its own: it starts with the inputs (worked out here) and
+        /// only the variables named in Returns come back. A Return in it ends it, not the script that called it; an error in it is
+        /// an error of this action. It shares the Excel workbook, browser tab and passwords of the run.
+        /// </summary>
+        private void ExecuteAutoScript(CommandSettings c, CancellationToken token)
+        {
+            string typed = c.ValueIsExpression ? EvalString(c.Value) : c.Value;
+            if (string.IsNullOrWhiteSpace(typed)) throw new InvalidOperationException("Auto Script: enter the script file.");
+            string expanded = Environment.ExpandEnvironmentVariables(typed.Trim());
+            string path;
+            try
+            {
+                path = System.IO.Path.IsPathRooted(expanded) || string.IsNullOrEmpty(ScriptFolder)
+                    ? System.IO.Path.GetFullPath(expanded)
+                    : System.IO.Path.GetFullPath(System.IO.Path.Combine(ScriptFolder, expanded));
+            }
+            catch (Exception ex) when (ex is ArgumentException || ex is NotSupportedException || ex is System.IO.PathTooLongException)
+            { throw new InvalidOperationException("Auto Script: \"" + typed.Trim() + "\" is not a valid path."); }
+
+            string problem;
+            var inputs = ParseScriptInputs(c.Params, out problem);
+            if (problem != null) throw new InvalidOperationException("Auto Script inputs: " + problem);
+            var returns = ParseScriptReturns(c.Returns, out problem);
+            if (problem != null) throw new InvalidOperationException("Auto Script returns: " + problem);
+
+            if (_scriptStack.Any(f => string.Equals(f, path, StringComparison.OrdinalIgnoreCase)))
+                throw new InvalidOperationException("Auto Script: " + System.IO.Path.GetFileName(path) + " calls itself (" + string.Join(" > ", _scriptStack.Select(System.IO.Path.GetFileName)) + " > " + System.IO.Path.GetFileName(path) + ").");
+            if (_scriptStack.Count >= MaxScriptDepth)
+                throw new InvalidOperationException("Auto Script: scripts call each other more than " + MaxScriptDepth + " levels deep.");
+
+            AutomationScript script;
+            try { script = ScriptSerializer.Load(path); }
+            catch (Exception ex) when (ex is System.IO.IOException || ex is UnauthorizedAccessException || ex is System.IO.InvalidDataException
+                                       || ex is System.Runtime.Serialization.SerializationException || ex is System.Xml.XmlException)
+            { throw new InvalidOperationException("Auto Script: cannot open " + path + ": " + ex.Message); }
+
+            // The inputs are worked out here, with the variables of this script.
+            var start = new List<KeyValuePair<string, object>>();
+            foreach (var input in inputs)
+            {
+                try { start.Add(new KeyValuePair<string, object>(input.Key, Expression.Evaluate(input.Value, _vars))); }
+                catch (ExpressionException ex) { throw new InvalidOperationException("Auto Script input " + input.Key + ": " + ex.Message); }
+            }
+
+            var outer = _vars;
+            Flow outerFlow = _flow;
+            int outerDepth = _loopDepth;
+            string folder = ScriptFolder;
+            _vars = new VariableStore();
+            foreach (var pair in start) _vars.Set(pair.Key, pair.Value);
+            _flow = Flow.None;
+            _loopDepth = 0; // a Break or Continue in the script cannot reach a Loop of the script that called it
+            _scriptStack.Add(path);
+            ScriptFolder = System.IO.Path.GetDirectoryName(path);
+            var results = new List<KeyValuePair<string, object>>();
+            try
+            {
+                try
+                {
+                    BrowserInheritance.Propagate(script.Actions);
+                    ExecuteList(script.Actions, token);
+                }
+                catch (InvalidOperationException ex)
+                {
+                    throw new InvalidOperationException("In " + System.IO.Path.GetFileName(path) + ": " + ex.Message);
+                }
+                foreach (string name in returns)
+                {
+                    object value;
+                    if (!_vars.TryGet(name, out value))
+                        throw new InvalidOperationException("Auto Script: " + System.IO.Path.GetFileName(path) + " did not set the variable {" + name + "} that it should return.");
+                    results.Add(new KeyValuePair<string, object>(name, value));
+                }
+            }
+            finally
+            {
+                _scriptStack.RemoveAt(_scriptStack.Count - 1);
+                _vars = outer;
+                _flow = outerFlow;
+                _loopDepth = outerDepth;
+                ScriptFolder = folder;
+            }
+            foreach (var pair in results) _vars.Set(pair.Key, pair.Value);
         }
 
         private void ExecuteFileSystem(CommandSettings c)

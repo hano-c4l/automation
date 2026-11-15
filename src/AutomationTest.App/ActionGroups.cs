@@ -94,6 +94,7 @@ namespace AutomationTest.App
             Tuple.Create(CommandKind.FsRead, "File/Folder", "Read"),
             Tuple.Create(CommandKind.FsWrite, "File/Folder", "Write"),
             Tuple.Create(CommandKind.FsList, "File/Folder", "List"),
+            Tuple.Create(CommandKind.AutoScript, "Script", "Run"),
             Tuple.Create(CommandKind.Active, "System", "Active"),
             Tuple.Create(CommandKind.Shutdown, "System", "Shutdown"),
         });

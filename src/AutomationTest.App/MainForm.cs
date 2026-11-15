@@ -123,6 +123,8 @@ namespace AutomationTest.App
         private readonly ComboBox _cmdGroup = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 120 };
         private readonly ToggleSwitch _cmdValueExpr = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
         private readonly ComboBox _cmdMatch = MakeCombo(typeof(ProgramMatch));
+        private readonly TextBox _cmdParams = new TextBox { Width = 200, Multiline = true, Height = 64, AcceptsReturn = true, ScrollBars = ScrollBars.Vertical };
+        private readonly HintTextBox _cmdReturns = new HintTextBox { Width = 200, Placeholder = "Names of the results to bring back" };
         private readonly NumberBox _cmdX = new NumberBox { Width = 200, Minimum = -100000, Maximum = 100000, Placeholder = "X (left edge on the screen)" };
         private readonly NumberBox _cmdY = new NumberBox { Width = 200, Minimum = -100000, Maximum = 100000, Placeholder = "Y (top edge on the screen)" };
         private readonly NumberBox _cmdW = new NumberBox { Width = 200, Minimum = 0, Maximum = 100000, Placeholder = "Width (pixels)" };
@@ -463,6 +465,8 @@ namespace AutomationTest.App
             _cmdBrowse = MakeButton("Browse", (s, e) => BrowseCommandPath());
             AddRow(cmdTable, "Path", _cmdValue, null, null, _cmdBrowse);
             AddRow(cmdTable, "Expr. (path)", _cmdValueExpr, Help.ExpressionText);
+            AddRow(cmdTable, "Inputs", _cmdParams, Help.AutoScript);
+            AddRow(cmdTable, "Returns", _cmdReturns, Help.AutoScript);
             AddRow(cmdTable, "X", _cmdX, Help.WindowPlace);
             AddRow(cmdTable, "Y", _cmdY, Help.WindowPlace);
             AddRow(cmdTable, "Width", _cmdW, Help.WindowPlace);
@@ -727,13 +731,16 @@ namespace AutomationTest.App
             bool window = CommandKinds.IsWindow(cmdKind);
             bool matched = close || window; // the programs or windows are found by Title, Name, Path or Id
             bool hasTarget = cmdKind == CommandKind.FsCopy || cmdKind == CommandKind.FsMove || cmdKind == CommandKind.FsRename || cmdKind == CommandKind.FsWrite;
-            SetRowVisible(_cmdValue, cmdKind == CommandKind.Open || matched || fs);
-            SetLabel(_cmdValue, cmdKind == CommandKind.Open ? "Path" : matched ? (cmdMatch == ProgramMatch.Title ? "Title" : cmdMatch == ProgramMatch.Name ? "Name" : cmdMatch == ProgramMatch.Path ? "Path" : "Process id") : cmdKind == CommandKind.FsList ? "Folder" : "Path");
-            _cmdValue.Placeholder = cmdKind == CommandKind.Open ? "Program or document to open"
+            bool script = cmdKind == CommandKind.AutoScript;
+            SetRowVisible(_cmdParams, script);
+            SetRowVisible(_cmdReturns, script);
+            SetRowVisible(_cmdValue, cmdKind == CommandKind.Open || matched || fs || script);
+            SetLabel(_cmdValue, script ? "File" : cmdKind == CommandKind.Open ? "Path" : matched ? (cmdMatch == ProgramMatch.Title ? "Title" : cmdMatch == ProgramMatch.Name ? "Name" : cmdMatch == ProgramMatch.Path ? "Path" : "Process id") : cmdKind == CommandKind.FsList ? "Folder" : "Path");
+            _cmdValue.Placeholder = script ? "Script file (.json)" : cmdKind == CommandKind.Open ? "Program or document to open"
                 : matched ? (cmdMatch == ProgramMatch.Title ? "Window title (regular expression)" : cmdMatch == ProgramMatch.Name ? "Process name, e.g. notepad" : cmdMatch == ProgramMatch.Path ? "Full path of the program file" : "Process id (a number)")
                 : cmdKind == CommandKind.FsCreate ? "Folder to make" : cmdKind == CommandKind.FsList ? "Folder to list" : "File or folder";
-            _cmdBrowse.Visible = cmdKind == CommandKind.Open || (matched && cmdMatch == ProgramMatch.Path) || fs; // a title, a name or an id is typed
-            SetRowVisible(_cmdValueExpr, cmdKind == CommandKind.Open || matched || fs);
+            _cmdBrowse.Visible = script || cmdKind == CommandKind.Open || (matched && cmdMatch == ProgramMatch.Path) || fs; // a title, a name or an id is typed
+            SetRowVisible(_cmdValueExpr, cmdKind == CommandKind.Open || matched || fs || script);
             SetRowVisible(_cmdMatch, matched);
             SetRowVisible(_cmdAll, matched);
             SetRowVisible(_cmdX, cmdKind == CommandKind.WindowMove);
@@ -1027,13 +1034,15 @@ namespace AutomationTest.App
                 case ActionCategory.Utilities:
                 case ActionCategory.Program:
                     var ck = (CommandKind)_cmdKind.SelectedItem;
-                    bool cfs = ScriptRunner.CommandIsFileSystem(ck), cclose = ck == CommandKind.Close, cwindow = CommandKinds.IsWindow(ck);
+                    bool cfs = ScriptRunner.CommandIsFileSystem(ck), cclose = ck == CommandKind.Close, cwindow = CommandKinds.IsWindow(ck), cscript = ck == CommandKind.AutoScript;
                     bool ctarget = ck == CommandKind.FsCopy || ck == CommandKind.FsMove || ck == CommandKind.FsRename || ck == CommandKind.FsWrite;
                     return ActionNode.NewCommand(new CommandSettings
                     {
                         Kind = ck,
-                        Value = ck == CommandKind.Open || cclose || cwindow || cfs ? _cmdValue.Text.Trim() : "",
-                        ValueIsExpression = (ck == CommandKind.Open || cclose || cwindow || cfs) && _cmdValueExpr.Checked,
+                        Value = ck == CommandKind.Open || cclose || cwindow || cfs || cscript ? _cmdValue.Text.Trim() : "",
+                        ValueIsExpression = (ck == CommandKind.Open || cclose || cwindow || cfs || cscript) && _cmdValueExpr.Checked,
+                        Params = cscript ? _cmdParams.Text.Trim() : "",
+                        Returns = cscript ? _cmdReturns.Text.Trim() : "",
                         Match = cclose || cwindow ? (ProgramMatch)_cmdMatch.SelectedItem : ProgramMatch.Title,
                         All = (cclose || cwindow) && _cmdAll.Checked,
                         X = ck == CommandKind.WindowMove ? (int)_cmdX.Value : 0,
@@ -1397,6 +1406,8 @@ namespace AutomationTest.App
                     _cmdH.Value = Clamp(_cmdH, cs.Height);
                     _cmdValue.Text = cs.Value;
                     _cmdValueExpr.Checked = cs.ValueIsExpression;
+                    _cmdParams.Text = (cs.Params ?? "").Replace("\r\n", "\n").Replace("\n", "\r\n");
+                    _cmdReturns.Text = cs.Returns ?? "";
                     _cmdMatch.SelectedItem = cs.Match;
                     _cmdAll.Checked = cs.All;
                     _cmdTarget.Text = cs.Target ?? "";
@@ -1928,6 +1939,16 @@ namespace AutomationTest.App
             if (c.Kind == CommandKind.Open && c.Value.Length == 0) return "Enter the program or document to open.";
             if (c.Kind == CommandKind.Open && c.ValueIsExpression) Expression.CheckSyntax(c.Value);
             if (c.Kind == CommandKind.WindowResize && (c.Width < 1 || c.Height < 1)) return "Enter a Width and a Height of at least 1.";
+            if (c.Kind == CommandKind.AutoScript)
+            {
+                if (c.Value.Length == 0) return "Enter the script file to run.";
+                if (c.ValueIsExpression) Expression.CheckSyntax(c.Value);
+                string scriptProblem;
+                foreach (var input in ScriptRunner.ParseScriptInputs(c.Params, out scriptProblem)) Expression.CheckSyntax(input.Value);
+                if (scriptProblem != null) return "Inputs: " + scriptProblem;
+                ScriptRunner.ParseScriptReturns(c.Returns, out scriptProblem);
+                if (scriptProblem != null) return "Returns: " + scriptProblem;
+            }
             if (c.Kind == CommandKind.Close || CommandKinds.IsWindow(c.Kind))
             {
                 if (c.Value.Length == 0) return "Enter the program or window (a window title, a process name, a path or a process id).";
@@ -2835,6 +2856,11 @@ namespace AutomationTest.App
                             break;
                         case CommandKind.Active: details = "sends a harmless input event so the computer does not lock or sleep"; break;
                         case CommandKind.Open: details = cd.Value; break;
+                        case CommandKind.AutoScript:
+                            details = (cd.ValueIsExpression ? "= " : "") + cd.Value
+                                + (cd.Params.Trim().Length > 0 ? " (" + cd.Params.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).Length + " input(s))" : "")
+                                + (cd.Returns.Trim().Length > 0 ? " -> " + cd.Returns.Replace("\r", " ").Replace("\n", " ").Trim() : "");
+                            break;
                         case CommandKind.Close: details = (cd.ValueIsExpression ? "= " : "") + cd.Match + " " + cd.Value + (cd.All ? " (all)" : "") + (cd.Force ? " (kill)" : ""); break;
                         case CommandKind.FsCopy: details = cd.Value + " -> " + cd.Target + (cd.Overwrite ? " (overwrite)" : ""); break;
                         case CommandKind.FsMove: details = cd.Value + " -> " + cd.Target + (cd.Overwrite ? " (overwrite)" : ""); break;
@@ -3236,7 +3262,7 @@ namespace AutomationTest.App
                     if (folder.ShowDialog(this) == DialogResult.OK) _cmdValue.Text = folder.SelectedPath;
                 return;
             }
-            using (var dialog = new OpenFileDialog { Filter = "All files (*.*)|*.*" })
+            using (var dialog = new OpenFileDialog { Filter = kind == CommandKind.AutoScript ? "Automation Test script (*.json)|*.json|All files (*.*)|*.*" : "All files (*.*)|*.*" })
             {
                 if (dialog.ShowDialog(this) == DialogResult.OK) _cmdValue.Text = dialog.FileName;
             }
@@ -3830,7 +3856,7 @@ namespace AutomationTest.App
             if (_running) return;
             _cts = new CancellationTokenSource();
             var token = _cts.Token;
-            var runner = new ScriptRunner(_mouse, _keyboard) { RandomTime = _settings.RandomTime };
+            var runner = new ScriptRunner(_mouse, _keyboard) { RandomTime = _settings.RandomTime, ScriptFolder = _currentPath == null ? null : Path.GetDirectoryName(_currentPath) };
             runner.ClipboardReader = ReadClipboardText;
             runner.PasswordPrompt = AskPassword;
             // Passwords are hidden wherever the run shows text: messages, the status, the log and the notice.

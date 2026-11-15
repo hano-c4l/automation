@@ -171,6 +171,12 @@ namespace AutomationTest.Core.Model
         /// <summary>Write: add to the end of the file instead of replacing it.</summary>
         [DataMember(Order = 11, EmitDefaultValue = false)] public bool Append { get; set; }
 
+        /// <summary>Auto Script: the values handed to the script, one per line as "name = expression" (the expression is worked out here, in this script).</summary>
+        [DataMember(Order = 19)] public string Params { get; set; } = "";
+
+        /// <summary>Auto Script: the names of the variables of the script whose values come back here, separated by commas or lines.</summary>
+        [DataMember(Order = 20)] public string Returns { get; set; } = "";
+
         /// <summary>Window actions: Move gives X and Y, Resize gives Width and Height (pixels on the screen).</summary>
         [DataMember(Order = 15, EmitDefaultValue = false)] public int X { get; set; }
         [DataMember(Order = 16, EmitDefaultValue = false)] public int Y { get; set; }
@@ -206,6 +212,8 @@ namespace AutomationTest.Core.Model
             Value = "";
             Target = "";
             Id = "";
+            Params = "";
+            Returns = "";
         }
 
         public CommandSettings Clone()
@@ -218,6 +226,8 @@ namespace AutomationTest.Core.Model
             if (Value == null) Value = "";
             if (Target == null) Target = "";
             if (Id == null) Id = "";
+            if (Params == null) Params = "";
+            if (Returns == null) Returns = "";
             if (DelayMs < 0) DelayMs = 0;
             if (TimeMs < 0) TimeMs = 0;
         }

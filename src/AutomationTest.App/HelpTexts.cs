@@ -284,6 +284,31 @@ The Automation Test program itself is never closed. If no program
 matches, Close does nothing (a note is shown, it is not an error);
 the Window actions fail with an error instead.");
 
+        public static readonly HelpTopic AutoScript = new HelpTopic("Auto Script",
+@"Runs another script file (saved from this program) as a part of
+this one, so a job you made once can be used again.
+
+File      the script file. A path without a drive starts in the
+          folder of the script that calls it. Expr. makes it an
+          expression.
+Inputs    the values to hand over, one per line: name = expression.
+          The expression is worked out here, with this script's
+          variables; inside the other script {name} has that value.
+Returns   the names of variables of the other script whose values
+          come back here, separated by commas or lines. If it does
+          not set one of them, the action fails.
+
+The other script has variables of its own: it sees only its
+inputs, and nothing else of it is visible here except the returns.
+A Return inside it ends that script and goes back here. An error
+inside it is an error of this action (a Try around it catches it).
+It shares the Excel workbook, the browser tab and the passwords
+of the run. A script that calls itself, or scripts nested more
+than 16 deep, fail with an error.
+
+Careful with scripts from other people: a script can delete your
+files, close programs or shut the computer down.");
+
         public static readonly HelpTopic OcrLanguage = new HelpTopic("Language (OCR)",
 @"OCR reads the text in an area of the screen with the text
 recognition that comes with Windows 10 and 11, and stores it in the
