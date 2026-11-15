@@ -118,7 +118,7 @@ Mã R1, R2... dùng để tham chiếu trong các mục sau.
 | P6 (**xong**) | R10 Image → Variable, R11 OCR | Thay đổi phá vỡ lớn nhất; OCR cần thử công cụ trước | L |
 | P7 (**xong**) | R12 Auto Script | Cần Return (P1), biến/Password (P3) | M |
 | P8 (**xong**) | R8 API | Cần giá trị JSON trong biểu thức | L |
-| P9 | R9 Email | Phụ thuộc quyết định kết nối | L |
+| P9 (làm xong, **tạm tách ra nhánh `feature_email_oauth`**, chưa vào preview/main) | R9 Email | Phụ thuộc quyết định kết nối | L |
 
 Có thể đổi thứ tự P4–P9 theo nhu cầu; P1 → P2 → P3 nên giữ vì các giai đoạn sau dựa vào chúng.
 
