@@ -129,7 +129,7 @@ namespace AutomationTest.Core.Email
             SearchQuery query = SearchQuery.All;
             if (!string.IsNullOrWhiteSpace(subject)) query = query.And(SearchQuery.SubjectContains(subject.Trim()));
             if (!string.IsNullOrWhiteSpace(from)) query = query.And(SearchQuery.FromContains(from.Trim()));
-            if (since.HasValue) query = query.And(SearchQuery.DeliveredAfter(since.Value.Date.AddDays(-1))); // IMAP "after" is a later day; Since includes its own day
+            if (since.HasValue) query = query.And(SearchQuery.DeliveredAfter(since.Value.Date)); // IMAP SINCE: that day and later
             if (before.HasValue) query = query.And(SearchQuery.DeliveredBefore(before.Value.Date));
             if (status == EmailStatus.Unread) query = query.And(SearchQuery.NotSeen);
             else if (status == EmailStatus.Read) query = query.And(SearchQuery.Seen);
@@ -344,7 +344,9 @@ namespace AutomationTest.Core.Email
                         {
                             try { trash = client.GetFolder(SpecialFolder.Trash); } catch (Exception) { trash = null; }
                         }
-                        if (trash != null && !ReferenceEquals(trash, folder) && trash.FullName != folder.FullName) folder.MoveTo(chosen, trash, token);
+                        if (!permanent && trash == null)
+                            throw new InvalidOperationException("Email delete (" + profile.Name + "): the account has no Trash folder, so nothing was deleted. Turn on For good to delete permanently.");
+                        if (trash != null && trash.FullName != folder.FullName) folder.MoveTo(chosen, trash, token);
                         else
                         {
                             folder.AddFlags(chosen, MessageFlags.Deleted, true, token);
@@ -355,6 +357,7 @@ namespace AutomationTest.Core.Email
                     return chosen.Count;
                 }
                 catch (OperationCanceledException) { throw; }
+                catch (InvalidOperationException) { throw; }
                 catch (Exception ex) { throw Failure("delete", profile, ex); }
             }
         }

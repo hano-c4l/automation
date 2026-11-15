@@ -332,7 +332,8 @@ only holds the names.");
 
         public static readonly HelpTopic EmailDelete = new HelpTopic("For good",
 @"Off: the messages are moved to the Trash folder of the account
-(or removed when the server has none).
+(when the account has no Trash folder nothing is deleted and you get
+an error: turn this on to delete anyway).
 On: the messages are deleted for good and cannot be brought back.");
 
         public static readonly HelpTopic EmailTimeout = new HelpTopic("Timeout",

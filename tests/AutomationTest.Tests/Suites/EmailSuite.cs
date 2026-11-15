@@ -252,6 +252,12 @@ namespace AutomationTest.Tests.Suites
 
                 again.Save(new EmailProfile { Name = "Office", SmtpHost = "smtp.o.com" }, "Work"); // rename
                 t.Eq("renamed in place", string.Join(",", new EmailProfileStore(path).Names), "Office,Home");
+                // the other writers of Setting.ini (window, settings, license, script folder) load the file fresh and keep the profiles
+                var other = IniFile.Load(path);
+                other.Set("Window", "Width", 900);
+                other.Save(path);
+                t.Eq("a save by another part of the program keeps the profiles", string.Join(",", new EmailProfileStore(path).Names), "Office,Home");
+                t.Eq("and the password", new EmailProfileStore(path).Find("Office").Password, "");
                 again.Delete("home");
                 t.Eq("deleted", string.Join(",", new EmailProfileStore(path).Names), "Office");
                 t.True("the other entries are still there", File.ReadAllText(path).Contains("ScriptFolder=C:\\scripts"));
