@@ -45,8 +45,6 @@ namespace AutomationTest.Core.Model
                     if (!node.IsContainer) return node.Excel.DelayMs;
                     long? within = SumChildren(node);
                     return within.HasValue ? within.Value + node.Excel.DelayMs : (long?)null;
-                case ActionCategory.Email:
-                    return node.Email.DelayMs;
                 case ActionCategory.Web:
                     if (!node.IsContainer) return node.Web.DelayMs;
                     long? inside = SumChildren(node);

@@ -72,13 +72,6 @@ namespace AutomationTest.App
             if (_sections.TryGetValue(section, out var keys)) keys.Remove(key);
         }
 
-        /// <summary>Removes every section whose name starts with the prefix (letter case ignored).</summary>
-        public void RemoveSections(string prefix)
-        {
-            foreach (string name in new List<string>(_sections.Keys))
-                if (name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) _sections.Remove(name);
-        }
-
         /// <exception cref="IOException">The file cannot be written.</exception>
         public void Save(string path)
         {
