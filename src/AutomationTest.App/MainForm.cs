@@ -18,7 +18,7 @@ using AutomationTest.Core.Windows;
 
 namespace AutomationTest.App
 {
-    public sealed partial class MainForm : Form
+    public sealed class MainForm : Form
     {
         private const int HotKeyToggleId = 1;
         private const int HotKeyRecordId = 3;
@@ -421,7 +421,7 @@ namespace AutomationTest.App
             common.Padding = new Padding(GroupInset, 0, 0, 0);
             AddRow(common, "Name", _name);
             AddRow(common, "State", _enabled);
-            AddRow(common, "Category", _category, null, null, _mailButton);
+            AddRow(common, "Category", _category);
             AddRow(common, "Action", _mouseAction);
             AddRow(common, "Action", _kbAction);
             AddRow(common, "Group", _cmdGroup);
@@ -568,8 +568,6 @@ namespace AutomationTest.App
             AddRow(xlTable, "Delay", _xlDelay, Help.KeyDelay);
             _excelBox.Controls.Add(xlTable);
 
-            BuildEmailEditor(common);
-
             // Control
             var controlTable = NewTable();
             AddRow(controlTable, "ID", _forId, Help.LoopForId); // an ID is always the first field of its group
@@ -632,7 +630,6 @@ namespace AutomationTest.App
             _editArea.Controls.Add(_controlBox);
             _editArea.Controls.Add(_webBox);
             _editArea.Controls.Add(_excelBox);
-            _editArea.Controls.Add(_emailBox);
             _editArea.Controls.Add(_commandBox);
             _editArea.Controls.Add(_keyboardBox);
             _editArea.Controls.Add(_mouseBox);
@@ -731,7 +728,6 @@ namespace AutomationTest.App
             _mouseBox.Visible = category == ActionCategory.Mouse;
             _keyboardBox.Visible = category == ActionCategory.Keyboard;
             _commandBox.Visible = category == ActionCategory.Utilities || category == ActionCategory.Program;
-            UpdateEmailVisibility(category);
             var cmdKind = _cmdKind.SelectedItem as CommandKind? ?? CommandKind.Open;
             var cmdMatch = _cmdMatch.SelectedItem as ProgramMatch? ?? ProgramMatch.Title;
             bool fs = ScriptRunner.CommandIsFileSystem(cmdKind);
@@ -1131,9 +1127,6 @@ namespace AutomationTest.App
                         DelayMs = _xlDelay.Milliseconds
                     });
 
-                case ActionCategory.Email:
-                    return BuildEmailNode();
-
                 case ActionCategory.Web:
                     return ActionNode.NewWeb(new WebSettings
                     {
@@ -1386,10 +1379,6 @@ namespace AutomationTest.App
                     _xlId.Text = xs.Id;
                     _xlTime.Milliseconds = xs.TimeMs;
                     _xlDelay.Milliseconds = xs.DelayMs;
-                    break;
-
-                case ActionCategory.Email:
-                    LoadEmailNode(node.Email);
                     break;
 
                 case ActionCategory.Web:
@@ -2196,9 +2185,6 @@ namespace AutomationTest.App
                     case ActionCategory.Program:
                         return ValidateCommand(node.Command);
 
-                    case ActionCategory.Email:
-                        return ValidateEmail(node.Email);
-
                     case ActionCategory.Web:
                         var web = node.Web;
                         if (web.Kind == WebKind.SwitchTab)
@@ -2841,13 +2827,6 @@ namespace AutomationTest.App
                         details += " to [" + xd.DestWorkbook + "]" + xd.DestSheet;
                     if (xd.Kind == ExcelKind.Workbook || xd.Kind == ExcelKind.CloseExcel) time = TimeBox.Format(xd.TimeMs);
                     delay = TimeBox.Format(xd.DelayMs);
-                    break;
-
-                case ActionCategory.Email:
-                    action = n.Email.Kind.ToString();
-                    details = EmailDetails(n.Email);
-                    time = n.Email.Kind == EmailKind.Send ? "" : TimeBox.Format(n.Email.TimeMs);
-                    delay = TimeBox.Format(n.Email.DelayMs);
                     break;
 
                 case ActionCategory.Web:
@@ -3916,7 +3895,6 @@ namespace AutomationTest.App
             var runner = new ScriptRunner(_mouse, _keyboard) { RandomTime = _settings.RandomTime, ScriptFolder = _currentPath == null ? null : Path.GetDirectoryName(_currentPath) };
             runner.ClipboardReader = ReadClipboardText;
             runner.PasswordPrompt = AskPassword;
-            runner.EmailProfiles = _emailStore;
             // Passwords are hidden wherever the run shows text: messages, the status, the log and the notice.
             var secrets = new List<string>(_pendingSecrets ?? new List<string>());
             _pendingSecrets = new List<string>();

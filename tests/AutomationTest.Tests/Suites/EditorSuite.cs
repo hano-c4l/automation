@@ -296,53 +296,6 @@ namespace AutomationTest.Tests.Suites
             t.True("a Try cannot be changed into a Section", tryC.IsKind(ControlKind.Try) && e.Status.Contains("cannot be changed"));
         }
 
-        /// <summary>Whether the control itself is set to be visible (the window is never shown in a test, so Control.Visible would be false for all).</summary>
-        private static bool Shown(Editor e, string field)
-        {
-            var control = (Control)e.Field(field);
-            var getState = typeof(Control).GetMethod("GetState", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic, null, new[] { typeof(int) }, null);
-            for (Control c = control; c != null && c.Tag == null; c = c.Parent) // a row with a "?" or button sits in a host (tagged) that is hidden as a whole
-            {
-                if (!(bool)getState.Invoke(c, new object[] { 2 })) return false;
-                if (c.Parent != null && c.Parent.Tag != null && !(bool)getState.Invoke(c.Parent, new object[] { 2 })) return false;
-                if (c is GroupBox || c.Parent is TableLayoutPanel || c.Parent is GroupBox) break;
-            }
-            return true;
-        }
-
-        [Suite("editor.email")]
-        public static void EmailCategory(T t)
-        {
-            var e = new Editor();
-            var category = (ComboBox)e.Field("_category");
-            var mail = (Button)e.Field("_mailButton");
-            var box = (GroupBox)e.Field("_emailBox");
-            var kind = (ComboBox)e.Field("_emailKind");
-            category.SelectedItem = ActionCategory.Mouse;
-            t.False("the mail icon is hidden for other categories", Shown(e, "_mailButton"));
-            category.SelectedItem = ActionCategory.Email;
-            t.True("the mail icon shows for Email", Shown(e, "_mailButton"));
-            t.True("the Email box shows", Shown(e, "_emailBox"));
-            kind.SelectedItem = EmailKind.Send;
-            t.True("Send shows To", Shown(e, "_emailTo"));
-            t.False("Send hides the filters", Shown(e, "_emailSince"));
-            kind.SelectedItem = EmailKind.Read;
-            t.False("Read hides To", Shown(e, "_emailTo"));
-            t.True("Read shows the filters", Shown(e, "_emailSince") && Shown(e, "_emailStatus"));
-            category.SelectedItem = ActionCategory.Keyboard;
-            t.False("the mail icon hides again", Shown(e, "_mailButton"));
-
-            var read = e.Through(ActionNode.NewEmail(new EmailSettings { Kind = EmailKind.Read, Profile = "work", Subject = "Invoice", From = "boss", Since = "2026-01-01", Before = "2026-02-01", Status = EmailStatus.Unread, Max = 7, MarkRead = true, SaveTo = "C:/mail", Id = "mail", TimeMs = 5000, DelayMs = 300 })).Email;
-            t.Eq("Read round trip", read.Kind + "|" + read.Profile + "|" + read.Subject + "|" + read.From + "|" + read.Since + "|" + read.Before + "|" + read.Status + "|" + read.Max + "|" + read.MarkRead + "|" + read.SaveTo + "|" + read.Id + "|" + read.TimeMs + "|" + read.DelayMs,
-                "Read|work|Invoice|boss|2026-01-01|2026-02-01|Unread|7|True|C:/mail|mail|5000|300");
-            var send = e.Through(ActionNode.NewEmail(new EmailSettings { Kind = EmailKind.Send, Profile = "work", To = "a@x.com", Cc = "b@x.com", Subject = "Hi", Body = "line1\nline2", BodyIsHtml = true, Attachments = "C:/a.txt" })).Email;
-            t.Eq("Send round trip", send.Kind + "|" + send.To + "|" + send.Cc + "|" + send.Subject + "|" + send.Body.Replace("\r\n", "/").Replace("\n", "/") + "|" + send.BodyIsHtml + "|" + send.Attachments, "Send|a@x.com|b@x.com|Hi|line1/line2|True|C:/a.txt");
-            var del = e.Through(ActionNode.NewEmail(new EmailSettings { Kind = EmailKind.Delete, Profile = "work", Subject = "x", Permanent = true })).Email;
-            t.Eq("Delete round trip", del.Kind + "|" + del.Permanent, "Delete|True");
-            var mark = e.Through(ActionNode.NewEmail(new EmailSettings { Kind = EmailKind.Mark, Profile = "work", Status = EmailStatus.Unread, MarkAs = EmailMarkAs.Read })).Email;
-            t.Eq("Mark round trip", mark.Kind + "|" + mark.MarkAs, "Mark|Read");
-        }
-
         [Suite("editor.program")]
         public static void ProgramCategory(T t)
         {
