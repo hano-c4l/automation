@@ -161,7 +161,11 @@ namespace AutomationTest.Core.Email
                 var remaining = until - DateTime.UtcNow;
                 if (remaining <= TimeSpan.Zero) throw new InvalidOperationException("Email sign-in: no answer from the browser in " + (int)timeout.TotalMinutes + " minute(s); try again.");
                 if (pending == null) pending = listener.GetContextAsync();
-                if (!pending.Wait((int)Math.Min(remaining.TotalMilliseconds, 500), token)) continue;
+                try
+                {
+                    if (!pending.Wait((int)Math.Min(remaining.TotalMilliseconds, 500), token)) continue;
+                }
+                catch (AggregateException ex) { throw new InvalidOperationException("Email sign-in: the listener stopped: " + ex.GetBaseException().Message); }
                 var context = pending.Result;
                 pending = null;
                 var query = context.Request.QueryString;

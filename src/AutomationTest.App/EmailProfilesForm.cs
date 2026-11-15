@@ -158,6 +158,7 @@ namespace AutomationTest.App
 
             _auth.Items.AddRange(new object[] { "Password (or app password)", "Google (sign in, supports MFA)", "Microsoft (sign in, supports MFA)" });
             _auth.SelectedIndex = 0;
+            if (profile != null && profile.Auth == EmailAuth.Custom) _auth.Items.Add("Custom (set in Setting.ini)");
             foreach (var box in new[] { _smtpSecurity, _imapSecurity })
                 box.Items.AddRange(new object[] { EmailSecurity.StartTls, EmailSecurity.SslTls, EmailSecurity.None });
             _smtpSecurity.SelectedItem = EmailSecurity.StartTls;
@@ -171,7 +172,7 @@ namespace AutomationTest.App
                 _smtpHost.Text = profile.SmtpHost; _smtpPort.Value = Math.Max(1, Math.Min(65535, profile.SmtpPort)); _smtpSecurity.SelectedItem = profile.SmtpSecurity; _smtpPort.Value = Math.Max(1, Math.Min(65535, profile.SmtpPort));
                 _imapHost.Text = profile.ImapHost; _imapSecurity.SelectedItem = profile.ImapSecurity; _imapPort.Value = Math.Max(1, Math.Min(65535, profile.ImapPort));
                 _user.Text = profile.User; _password.Text = profile.Password;
-                _auth.SelectedIndex = profile.Auth == EmailAuth.Google ? 1 : profile.Auth == EmailAuth.Microsoft ? 2 : 0;
+                _auth.SelectedIndex = profile.Auth == EmailAuth.Google ? 1 : profile.Auth == EmailAuth.Microsoft ? 2 : profile.Auth == EmailAuth.Custom ? 3 : 0;
                 _clientId.Text = profile.ClientId; _clientSecret.Text = profile.ClientSecret; _tenant.Text = profile.Tenant;
                 _refreshToken = profile.RefreshToken;
                 _customAuthUrl = profile.AuthUrl; _customTokenUrl = profile.TokenUrl; _customScope = profile.Scope;
@@ -198,7 +199,10 @@ namespace AutomationTest.App
             var buttons = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight };
             buttons.Controls.AddRange(new Control[] { _test, _save, _cancel });
             _signIn.Click += async (s, e) => await RunSignIn();
-            _auth.SelectedIndexChanged += (s, e) => UpdateAuthRows();
+            _auth.SelectedIndexChanged += (s, e) => { _refreshToken = ""; UpdateAuthRows(); };
+            _clientId.TextChanged += (s, e) => ForgetSignIn();
+            _tenant.TextChanged += (s, e) => ForgetSignIn();
+            _user.TextChanged += (s, e) => ForgetSignIn();
             UpdateAuthRows();
             var layout = new FlowLayoutPanel { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, FlowDirection = FlowDirection.TopDown, WrapContents = false };
             layout.Controls.AddRange(new Control[] { table, _authNote, note, buttons, _result });
@@ -219,7 +223,7 @@ namespace AutomationTest.App
 
         private EmailAuth AuthMode
         {
-            get { return _auth.SelectedIndex == 1 ? EmailAuth.Google : _auth.SelectedIndex == 2 ? EmailAuth.Microsoft : EmailAuth.Password; }
+            get { return _auth.SelectedIndex == 1 ? EmailAuth.Google : _auth.SelectedIndex == 2 ? EmailAuth.Microsoft : _auth.SelectedIndex == 3 ? EmailAuth.Custom : EmailAuth.Password; }
         }
 
         /// <summary>Shows the fields of the chosen way to log in.</summary>
@@ -229,17 +233,26 @@ namespace AutomationTest.App
             bool oauth = mode != EmailAuth.Password;
             _passwordLabel.Visible = _password.Visible = !oauth;
             foreach (Control c in new Control[] { _clientLabel, _clientId, _signIn, _signInState, _signInLabel }) c.Visible = oauth;
-            _secretLabel.Visible = _clientSecret.Visible = mode == EmailAuth.Google;
+            _secretLabel.Visible = _clientSecret.Visible = mode == EmailAuth.Google || mode == EmailAuth.Custom;
             _tenantLabel.Visible = _tenant.Visible = mode == EmailAuth.Microsoft;
             _signInState.Text = _refreshToken.Length > 0 ? "Signed in" : "Not signed in";
             _authNote.Text = mode == EmailAuth.Password
                 ? "An account with two-step verification (MFA) cannot answer a code here: use an app password from your provider (Gmail, Yahoo, iCloud), or choose a sign-in option above."
                 : mode == EmailAuth.Google
                     ? "User = your Gmail address. Make an OAuth client of type Desktop app in Google Cloud Console (Gmail API) and paste its Client ID and secret. While the app is in Testing, Google asks you to sign in again after 7 days; an app password avoids that."
+                    : mode == EmailAuth.Custom ? "Another OAuth2 provider: its addresses and scope are in Setting.ini. Sign in works as for the others."
                     : "User = your mailbox address. Register an app in Microsoft Entra (public client, redirect http://localhost, permissions IMAP.AccessAsUser.All and SMTP.Send) and paste its Application (client) ID. Tenant: leave empty, or give your directory ID. SMTP AUTH must be enabled for the mailbox.";
         }
 
         private CancellationTokenSource _signingIn;
+
+        /// <summary>Another account, client or directory: the earlier sign-in does not apply.</summary>
+        private void ForgetSignIn()
+        {
+            if (_refreshToken.Length == 0 || _signingIn != null) return;
+            _refreshToken = "";
+            UpdateAuthRows();
+        }
 
         private async Task RunSignIn()
         {
@@ -291,7 +304,7 @@ namespace AutomationTest.App
                 SmtpHost = _smtpHost.Text.Trim(), SmtpPort = (int)_smtpPort.Value, SmtpSecurity = (EmailSecurity)_smtpSecurity.SelectedItem,
                 ImapHost = _imapHost.Text.Trim(), ImapPort = (int)_imapPort.Value, ImapSecurity = (EmailSecurity)_imapSecurity.SelectedItem,
                 User = _user.Text.Trim(), Password = AuthMode == EmailAuth.Password ? _password.Text : "",
-                Auth = AuthMode, ClientId = _clientId.Text.Trim(), ClientSecret = AuthMode == EmailAuth.Google ? _clientSecret.Text : "", Tenant = AuthMode == EmailAuth.Microsoft ? _tenant.Text.Trim() : "",
+                Auth = AuthMode, ClientId = _clientId.Text.Trim(), ClientSecret = AuthMode == EmailAuth.Google || AuthMode == EmailAuth.Custom ? _clientSecret.Text : "", Tenant = AuthMode == EmailAuth.Microsoft ? _tenant.Text.Trim() : "",
                 RefreshToken = AuthMode == EmailAuth.Password ? "" : _refreshToken,
                 AuthUrl = _customAuthUrl, TokenUrl = _customTokenUrl, Scope = _customScope,
                 FromAddress = _fromAddress.Text.Trim(), FromName = _fromName.Text.Trim()
@@ -309,6 +322,7 @@ namespace AutomationTest.App
             try
             {
                 string text = await Task.Run(() => EmailClient.Test(profile, 20000, token));
+                if (profile.UsesOAuth && profile.RefreshToken.Length > 0) _refreshToken = profile.RefreshToken; // the provider may have sent a new one
                 if (!IsDisposed) _result.Text = text;
             }
             catch (OperationCanceledException) { }
