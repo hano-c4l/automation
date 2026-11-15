@@ -20,6 +20,7 @@ namespace AutomationTest.App
 
         private readonly string _path;
         private readonly List<EmailProfile> _profiles = new List<EmailProfile>();
+        private readonly object _lock = new object(); // a run (another thread) may save a new refresh token while the window edits profiles
 
         public EmailProfileStore() : this(IniFile.DefaultPath) { }
 
@@ -31,16 +32,36 @@ namespace AutomationTest.App
 
         public IList<EmailProfile> Profiles { get { return _profiles; } }
 
-        public IList<string> Names { get { return _profiles.Select(p => p.Name).ToList(); } }
+        public IList<string> Names { get { lock (_lock) return _profiles.Select(p => p.Name).ToList(); } }
 
         public EmailProfile Find(string name)
         {
-            var found = _profiles.FirstOrDefault(p => string.Equals(p.Name, (name ?? "").Trim(), StringComparison.OrdinalIgnoreCase));
-            return found?.Clone();
+            lock (_lock)
+            {
+                var found = _profiles.FirstOrDefault(p => string.Equals(p.Name, (name ?? "").Trim(), StringComparison.OrdinalIgnoreCase));
+                return found?.Clone();
+            }
+        }
+
+        /// <summary>A provider sent a new refresh token: keep it (the old one may stop working).</summary>
+        public void UpdateRefreshToken(string name, string refreshToken)
+        {
+            lock (_lock)
+            {
+                var found = _profiles.FirstOrDefault(p => string.Equals(p.Name, (name ?? "").Trim(), StringComparison.OrdinalIgnoreCase));
+                if (found == null) return;
+                found.RefreshToken = refreshToken ?? "";
+                try { Write(); } catch (InvalidOperationException) { } // the run goes on with the token in memory
+            }
         }
 
         /// <summary>Adds the profile, or replaces the one named <paramref name="oldName"/> (null = add).</summary>
         public void Save(EmailProfile profile, string oldName)
+        {
+            lock (_lock) SaveCore(profile, oldName);
+        }
+
+        private void SaveCore(EmailProfile profile, string oldName)
         {
             if (string.IsNullOrWhiteSpace(profile.Name)) throw new InvalidOperationException("Give the profile a name.");
             profile.Name = profile.Name.Trim();
@@ -54,8 +75,11 @@ namespace AutomationTest.App
 
         public void Delete(string name)
         {
-            _profiles.RemoveAll(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase));
-            Write();
+            lock (_lock)
+            {
+                _profiles.RemoveAll(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase));
+                Write();
+            }
         }
 
         // ------------------------------------------------------------------ Setting.ini
@@ -82,6 +106,12 @@ namespace AutomationTest.App
             return Enum.TryParse(text, true, out parsed) ? parsed : fallback;
         }
 
+        private static EmailAuth ParseAuth(string text)
+        {
+            EmailAuth parsed;
+            return Enum.TryParse(text, true, out parsed) ? parsed : EmailAuth.Password;
+        }
+
         private void Load()
         {
             _profiles.Clear();
@@ -104,7 +134,15 @@ namespace AutomationTest.App
                     User = ini.Get(section, "User") ?? "",
                     Password = Unprotect(ini.Get(section, "Password")),
                     FromAddress = ini.Get(section, "FromAddress") ?? "",
-                    FromName = ini.Get(section, "FromName") ?? ""
+                    FromName = ini.Get(section, "FromName") ?? "",
+                    Auth = ParseAuth(ini.Get(section, "Auth")),
+                    ClientId = ini.Get(section, "ClientId") ?? "",
+                    ClientSecret = Unprotect(ini.Get(section, "ClientSecret")),
+                    Tenant = ini.Get(section, "Tenant") ?? "",
+                    AuthUrl = ini.Get(section, "AuthUrl") ?? "",
+                    TokenUrl = ini.Get(section, "TokenUrl") ?? "",
+                    Scope = ini.Get(section, "Scope") ?? "",
+                    RefreshToken = Unprotect(ini.Get(section, "RefreshToken"))
                 });
             }
         }
@@ -129,6 +167,14 @@ namespace AutomationTest.App
                 ini.Set(section, "Password", Protect(p.Password));
                 ini.Set(section, "FromAddress", p.FromAddress);
                 ini.Set(section, "FromName", p.FromName);
+                ini.Set(section, "Auth", p.Auth.ToString());
+                ini.Set(section, "ClientId", p.ClientId);
+                ini.Set(section, "ClientSecret", Protect(p.ClientSecret));
+                ini.Set(section, "Tenant", p.Tenant);
+                ini.Set(section, "AuthUrl", p.AuthUrl);
+                ini.Set(section, "TokenUrl", p.TokenUrl);
+                ini.Set(section, "Scope", p.Scope);
+                ini.Set(section, "RefreshToken", Protect(p.RefreshToken));
             }
             try { ini.Save(_path); }
             catch (IOException ex) { throw new InvalidOperationException("Cannot save the email profiles to \"" + _path + "\": " + ex.Message); }

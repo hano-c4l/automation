@@ -43,6 +43,21 @@ namespace AutomationTest.Core.Email
         public string FromAddress = "";
         public string FromName = "";
 
+        /// <summary>How to log in (a password, or OAuth2 for accounts with multi-factor authentication).</summary>
+        public EmailAuth Auth = EmailAuth.Password;
+        public string ClientId = "";
+        public string ClientSecret = "";
+        /// <summary>Microsoft: the directory (tenant) to sign in to; empty = common (work, school and personal accounts).</summary>
+        public string Tenant = "";
+        /// <summary>Custom OAuth2 provider: the sign-in address, the token address and the scope.</summary>
+        public string AuthUrl = "", TokenUrl = "", Scope = "";
+        /// <summary>What a sign-in gave: lets the program get access tokens without asking again (kept encrypted).</summary>
+        public string RefreshToken = "";
+        /// <summary>Where a new refresh token is saved (set by the runner; not part of the profile).</summary>
+        public IEmailProfiles Source;
+
+        public bool UsesOAuth { get { return Auth != EmailAuth.Password; } }
+
         public bool CanSend { get { return SmtpHost.Trim().Length > 0; } }
         public bool CanRead { get { return ImapHost.Trim().Length > 0; } }
 
@@ -55,6 +70,8 @@ namespace AutomationTest.Core.Email
         /// <summary>The profile with that name (letter case does not matter); null when there is none.</summary>
         EmailProfile Find(string name);
         IList<string> Names { get; }
+        /// <summary>Saves a new refresh token the provider sent (OAuth2 profiles).</summary>
+        void UpdateRefreshToken(string name, string refreshToken);
     }
 
     /// <summary>What a Read returns for each message (the columns of the table, in this order).</summary>
@@ -189,7 +206,10 @@ namespace AutomationTest.Core.Email
         {
             Exception inner = ex.GetBaseException();
             string text = inner.Message;
-            if (!string.IsNullOrEmpty(profile.Password)) text = text.Replace(profile.Password, "****");
+            foreach (string secret in new[] { profile.Password, profile.ClientSecret, profile.RefreshToken, OAuth2.CachedAccessToken(profile) })
+                if (!string.IsNullOrEmpty(secret)) text = text.Replace(secret, "****");
+            if (text.Contains("SmtpClientAuthentication") || text.Contains("5.7.139"))
+                text += " (Microsoft: SMTP AUTH is turned off for this mailbox; an administrator can turn it on in Microsoft 365)";
             if (inner is AuthenticationException) text = "the server did not accept the user name and password (" + text + ")";
             else if (inner is System.Security.Authentication.AuthenticationException) text = "the secure connection could not be made (" + text + "); check the port and the security setting";
             else if (inner is System.Net.Sockets.SocketException) text = "cannot connect (" + text + ")";
@@ -198,19 +218,21 @@ namespace AutomationTest.Core.Email
 
         private static void CheckSecurity(EmailProfile profile, EmailSecurity security, string host)
         {
-            if (security == EmailSecurity.None && !string.IsNullOrEmpty(profile.User) && !string.IsNullOrEmpty(profile.Password))
-                throw new InvalidOperationException("Email (" + profile.Name + "): the password would be sent without encryption to " + host + ". Choose StartTls or SslTls for this server.");
+            if (security == EmailSecurity.None && ((!string.IsNullOrEmpty(profile.User) && !string.IsNullOrEmpty(profile.Password)) || profile.UsesOAuth))
+                throw new InvalidOperationException("Email (" + profile.Name + "): the " + (profile.UsesOAuth ? "access token" : "password") + " would be sent without encryption to " + host + ". Choose StartTls or SslTls for this server.");
         }
 
         private static SmtpClient ConnectSmtp(EmailProfile profile, int timeoutMs, CancellationToken token)
         {
             if (!profile.CanSend) throw new InvalidOperationException("Email: the profile \"" + profile.Name + "\" has no SMTP server, so it cannot send.");
             CheckSecurity(profile, profile.SmtpSecurity, profile.SmtpHost);
+            string accessToken = profile.UsesOAuth ? OAuth2.GetAccessToken(profile, profile.Source, token) : null;
             var client = new SmtpClient { Timeout = timeoutMs };
             try
             {
                 client.Connect(profile.SmtpHost.Trim(), profile.SmtpPort, Options(profile.SmtpSecurity), token);
-                if (!string.IsNullOrEmpty(profile.User)) client.Authenticate(profile.User, profile.Password, token);
+                if (accessToken != null) client.Authenticate(new SaslMechanismOAuth2(profile.User, accessToken), token);
+                else if (!string.IsNullOrEmpty(profile.User)) client.Authenticate(profile.User, profile.Password, token);
                 return client;
             }
             catch (OperationCanceledException) { client.Dispose(); throw; }
@@ -221,11 +243,13 @@ namespace AutomationTest.Core.Email
         {
             if (!profile.CanRead) throw new InvalidOperationException("Email: the profile \"" + profile.Name + "\" has no IMAP server, so it cannot read.");
             CheckSecurity(profile, profile.ImapSecurity, profile.ImapHost);
+            string accessToken = profile.UsesOAuth ? OAuth2.GetAccessToken(profile, profile.Source, token) : null;
             var client = new ImapClient { Timeout = timeoutMs };
             try
             {
                 client.Connect(profile.ImapHost.Trim(), profile.ImapPort, Options(profile.ImapSecurity), token);
-                if (!string.IsNullOrEmpty(profile.User)) client.Authenticate(profile.User, profile.Password, token);
+                if (accessToken != null) client.Authenticate(new SaslMechanismOAuth2(profile.User, accessToken), token);
+                else if (!string.IsNullOrEmpty(profile.User)) client.Authenticate(profile.User, profile.Password, token);
                 return client;
             }
             catch (OperationCanceledException) { client.Dispose(); throw; }

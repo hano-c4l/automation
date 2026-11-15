@@ -116,6 +116,20 @@ namespace AutomationTest.App
         private readonly NumericUpDown _imapPort = new NumericUpDown { Minimum = 1, Maximum = 65535, Value = 993, Width = 70 };
         private readonly ComboBox _imapSecurity = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 100 };
         private readonly TextBox _user = new TextBox { Width = 260 };
+        private readonly ComboBox _auth = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 260 };
+        private readonly TextBox _clientId = new TextBox { Width = 260 };
+        private readonly TextBox _clientSecret = new TextBox { Width = 260, UseSystemPasswordChar = true };
+        private readonly TextBox _tenant = new TextBox { Width = 260 };
+        private readonly Button _signIn = new Button { Text = "Sign in...", AutoSize = true };
+        private readonly Label _signInState = new Label { AutoSize = true, Padding = new Padding(0, 6, 0, 0) };
+        private readonly Label _passwordLabel = new Label { Text = "Password", AutoSize = true, Padding = new Padding(0, 6, 8, 0) };
+        private readonly Label _secretLabel = new Label { Text = "Client secret", AutoSize = true, Padding = new Padding(0, 6, 8, 0) };
+        private readonly Label _tenantLabel = new Label { Text = "Tenant", AutoSize = true, Padding = new Padding(0, 6, 8, 0) };
+        private readonly Label _clientLabel = new Label { Text = "Client ID", AutoSize = true, Padding = new Padding(0, 6, 8, 0) };
+        private readonly Label _signInLabel = new Label { Text = "Sign in", AutoSize = true, Padding = new Padding(0, 6, 8, 0) };
+        private readonly Label _authNote = new Label { AutoSize = true, MaximumSize = new Size(420, 0), Padding = new Padding(0, 4, 0, 4) };
+        private string _refreshToken = "";
+        private string _customAuthUrl = "", _customTokenUrl = "", _customScope = "";
         private readonly TextBox _password = new TextBox { Width = 260, UseSystemPasswordChar = true };
         private readonly TextBox _fromAddress = new TextBox { Width = 260 };
         private readonly TextBox _fromName = new TextBox { Width = 260 };
@@ -142,6 +156,8 @@ namespace AutomationTest.App
             Padding = new Padding(12);
             CancelButton = _cancel;
 
+            _auth.Items.AddRange(new object[] { "Password (or app password)", "Google (sign in, supports MFA)", "Microsoft (sign in, supports MFA)" });
+            _auth.SelectedIndex = 0;
             foreach (var box in new[] { _smtpSecurity, _imapSecurity })
                 box.Items.AddRange(new object[] { EmailSecurity.StartTls, EmailSecurity.SslTls, EmailSecurity.None });
             _smtpSecurity.SelectedItem = EmailSecurity.StartTls;
@@ -155,6 +171,10 @@ namespace AutomationTest.App
                 _smtpHost.Text = profile.SmtpHost; _smtpPort.Value = Math.Max(1, Math.Min(65535, profile.SmtpPort)); _smtpSecurity.SelectedItem = profile.SmtpSecurity; _smtpPort.Value = Math.Max(1, Math.Min(65535, profile.SmtpPort));
                 _imapHost.Text = profile.ImapHost; _imapSecurity.SelectedItem = profile.ImapSecurity; _imapPort.Value = Math.Max(1, Math.Min(65535, profile.ImapPort));
                 _user.Text = profile.User; _password.Text = profile.Password;
+                _auth.SelectedIndex = profile.Auth == EmailAuth.Google ? 1 : profile.Auth == EmailAuth.Microsoft ? 2 : 0;
+                _clientId.Text = profile.ClientId; _clientSecret.Text = profile.ClientSecret; _tenant.Text = profile.Tenant;
+                _refreshToken = profile.RefreshToken;
+                _customAuthUrl = profile.AuthUrl; _customTokenUrl = profile.TokenUrl; _customScope = profile.Scope;
                 _fromAddress.Text = profile.FromAddress; _fromName.Text = profile.FromName;
             }
 
@@ -164,21 +184,88 @@ namespace AutomationTest.App
             Row(table, "  port / security", Pair(_smtpPort, _smtpSecurity));
             Row(table, "IMAP server (read)", _imapHost);
             Row(table, "  port / security", Pair(_imapPort, _imapSecurity));
+            Row(table, "Login with", _auth);
             Row(table, "User", _user);
-            Row(table, "Password", _password);
+            Row(table, _passwordLabel, _password);
+            Row(table, _clientLabel, _clientId);
+            Row(table, _secretLabel, _clientSecret);
+            Row(table, _tenantLabel, _tenant);
+            Row(table, _signInLabel, Pair(_signIn, _signInState));
             Row(table, "From address", _fromAddress);
             Row(table, "From name", _fromName);
             var note = new Label { AutoSize = true, MaximumSize = new Size(420, 0), Padding = new Padding(0, 6, 0, 6),
                 Text = "Leave a server empty if you only send or only read. Gmail and Outlook.com need an app password (not your normal password)." };
             var buttons = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight };
             buttons.Controls.AddRange(new Control[] { _test, _save, _cancel });
+            _signIn.Click += async (s, e) => await RunSignIn();
+            _auth.SelectedIndexChanged += (s, e) => UpdateAuthRows();
+            UpdateAuthRows();
             var layout = new FlowLayoutPanel { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, FlowDirection = FlowDirection.TopDown, WrapContents = false };
-            layout.Controls.AddRange(new Control[] { table, note, buttons, _result });
+            layout.Controls.AddRange(new Control[] { table, _authNote, note, buttons, _result });
             Controls.Add(layout);
 
             _test.Click += async (s, e) => await RunTest();
             _save.Click += (s, e) => Save();
-            FormClosing += (s, e) => { try { _testing?.Cancel(); } catch (ObjectDisposedException) { } };
+            FormClosing += (s, e) => { try { _testing?.Cancel(); _signingIn?.Cancel(); } catch (ObjectDisposedException) { } };
+        }
+
+        private static void Row(TableLayoutPanel table, Label label, Control field)
+        {
+            int row = table.RowCount++;
+            label.Anchor = AnchorStyles.Left;
+            table.Controls.Add(label, 0, row);
+            table.Controls.Add(field, 1, row);
+        }
+
+        private EmailAuth AuthMode
+        {
+            get { return _auth.SelectedIndex == 1 ? EmailAuth.Google : _auth.SelectedIndex == 2 ? EmailAuth.Microsoft : EmailAuth.Password; }
+        }
+
+        /// <summary>Shows the fields of the chosen way to log in.</summary>
+        private void UpdateAuthRows()
+        {
+            var mode = AuthMode;
+            bool oauth = mode != EmailAuth.Password;
+            _passwordLabel.Visible = _password.Visible = !oauth;
+            foreach (Control c in new Control[] { _clientLabel, _clientId, _signIn, _signInState, _signInLabel }) c.Visible = oauth;
+            _secretLabel.Visible = _clientSecret.Visible = mode == EmailAuth.Google;
+            _tenantLabel.Visible = _tenant.Visible = mode == EmailAuth.Microsoft;
+            _signInState.Text = _refreshToken.Length > 0 ? "Signed in" : "Not signed in";
+            _authNote.Text = mode == EmailAuth.Password
+                ? "An account with two-step verification (MFA) cannot answer a code here: use an app password from your provider (Gmail, Yahoo, iCloud), or choose a sign-in option above."
+                : mode == EmailAuth.Google
+                    ? "User = your Gmail address. Make an OAuth client of type Desktop app in Google Cloud Console (Gmail API) and paste its Client ID and secret. While the app is in Testing, Google asks you to sign in again after 7 days; an app password avoids that."
+                    : "User = your mailbox address. Register an app in Microsoft Entra (public client, redirect http://localhost, permissions IMAP.AccessAsUser.All and SMTP.Send) and paste its Application (client) ID. Tenant: leave empty, or give your directory ID. SMTP AUTH must be enabled for the mailbox.";
+        }
+
+        private CancellationTokenSource _signingIn;
+
+        private async Task RunSignIn()
+        {
+            if (_signingIn != null) { _signingIn.Cancel(); return; } // the button is Cancel while waiting
+            var profile = Read();
+            if (profile.Name.Length == 0) profile.Name = "(new profile)";
+            if (profile.ClientId.Length == 0) { _result.Text = "Enter the Client ID first."; return; }
+            _signingIn = new CancellationTokenSource();
+            var token = _signingIn.Token;
+            _signIn.Text = "Cancel";
+            _test.Enabled = _save.Enabled = false;
+            _result.Text = "Waiting for you to sign in in the browser (five minutes)...";
+            try
+            {
+                string refresh = await Task.Run(() => OAuth2.SignIn(profile, url => System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true }), TimeSpan.FromMinutes(5), token));
+                _refreshToken = refresh;
+                if (!IsDisposed) _result.Text = "Signed in. Press Save to keep it, or Test to try the connection.";
+            }
+            catch (OperationCanceledException) { if (!IsDisposed) _result.Text = "Sign-in cancelled."; }
+            catch (Exception ex) { if (!IsDisposed) _result.Text = ex.Message; }
+            finally
+            {
+                _signingIn.Dispose();
+                _signingIn = null;
+                if (!IsDisposed) { _signIn.Text = "Sign in..."; _test.Enabled = _save.Enabled = true; UpdateAuthRows(); }
+            }
         }
 
         private static void Row(TableLayoutPanel table, string label, Control field)
@@ -203,7 +290,10 @@ namespace AutomationTest.App
                 Name = _name.Text.Trim(),
                 SmtpHost = _smtpHost.Text.Trim(), SmtpPort = (int)_smtpPort.Value, SmtpSecurity = (EmailSecurity)_smtpSecurity.SelectedItem,
                 ImapHost = _imapHost.Text.Trim(), ImapPort = (int)_imapPort.Value, ImapSecurity = (EmailSecurity)_imapSecurity.SelectedItem,
-                User = _user.Text.Trim(), Password = _password.Text,
+                User = _user.Text.Trim(), Password = AuthMode == EmailAuth.Password ? _password.Text : "",
+                Auth = AuthMode, ClientId = _clientId.Text.Trim(), ClientSecret = AuthMode == EmailAuth.Google ? _clientSecret.Text : "", Tenant = AuthMode == EmailAuth.Microsoft ? _tenant.Text.Trim() : "",
+                RefreshToken = AuthMode == EmailAuth.Password ? "" : _refreshToken,
+                AuthUrl = _customAuthUrl, TokenUrl = _customTokenUrl, Scope = _customScope,
                 FromAddress = _fromAddress.Text.Trim(), FromName = _fromName.Text.Trim()
             };
         }
@@ -232,6 +322,7 @@ namespace AutomationTest.App
             {
                 var profile = Read();
                 if (!profile.CanSend && !profile.CanRead) throw new InvalidOperationException("Enter an SMTP server, an IMAP server, or both.");
+                if (profile.UsesOAuth && (profile.ClientId.Length == 0 || profile.User.Length == 0)) throw new InvalidOperationException("Enter the user (your address) and the Client ID, then press Sign in.");
                 _store.Save(profile, _oldName);
                 SavedName = profile.Name;
                 DialogResult = DialogResult.OK;

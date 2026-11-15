@@ -6,6 +6,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using AutomationTest.App;
 using AutomationTest.Core.Email;
 using AutomationTest.Core.Input;
@@ -86,6 +87,8 @@ namespace AutomationTest.Tests.Suites
             public Profiles(params EmailProfile[] profiles) { _list.AddRange(profiles); }
             public EmailProfile Find(string name) { return _list.FirstOrDefault(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase)); }
             public IList<string> Names { get { return _list.Select(p => p.Name).ToList(); } }
+            public readonly List<string> Saved = new List<string>();
+            public void UpdateRefreshToken(string name, string refreshToken) { Saved.Add(name + "=" + refreshToken); }
         }
 
         private static EmailProfile Local(int port)
@@ -224,6 +227,154 @@ namespace AutomationTest.Tests.Suites
             t.True("Test with nothing set says so", EmailClient.Test(new EmailProfile { Name = "x" }, 2000, CancellationToken.None).StartsWith("Nothing to test"));
         }
 
+        /// <summary>A token server on 127.0.0.1: every request is kept, the answer is what the test set.</summary>
+        private sealed class TokenServer : IDisposable
+        {
+            private readonly HttpListener _listener = new HttpListener();
+            private readonly Thread _thread;
+            public readonly string Url;
+            public readonly List<string> Requests = new List<string>();
+            public string Answer = "{\"access_token\":\"AT-1\",\"refresh_token\":\"RT-1\",\"expires_in\":3600}";
+            public int Status = 200;
+
+            public TokenServer()
+            {
+                var random = new Random();
+                for (int attempt = 0; ; attempt++)
+                {
+                    int port = random.Next(20000, 60000);
+                    var candidate = new HttpListener();
+                    candidate.Prefixes.Add("http://127.0.0.1:" + port + "/");
+                    try { candidate.Start(); _listener = candidate; Url = "http://127.0.0.1:" + port + "/token"; break; }
+                    catch (HttpListenerException) when (attempt < 20) { candidate.Close(); }
+                }
+                _thread = new Thread(Serve) { IsBackground = true };
+                _thread.Start();
+            }
+
+            private void Serve()
+            {
+                try
+                {
+                    while (true)
+                    {
+                        var context = _listener.GetContext();
+                        string body = new StreamReader(context.Request.InputStream).ReadToEnd();
+                        lock (Requests) Requests.Add(body);
+                        byte[] bytes = Encoding.UTF8.GetBytes(Answer);
+                        context.Response.StatusCode = Status;
+                        context.Response.ContentType = "application/json";
+                        context.Response.OutputStream.Write(bytes, 0, bytes.Length);
+                        context.Response.Close();
+                    }
+                }
+                catch (HttpListenerException) { }
+                catch (ObjectDisposedException) { }
+                catch (InvalidOperationException) { }
+            }
+
+            public void Dispose() { _listener.Close(); }
+        }
+
+        private static EmailProfile OAuthProfile(string tokenUrl)
+        {
+            return new EmailProfile { Name = "mfa", Auth = EmailAuth.Custom, ClientId = "cid", ClientSecret = "SECRET-CS", AuthUrl = "https://login.example.com/authorize", TokenUrl = tokenUrl, Scope = "mail offline", User = "me@example.com", SmtpHost = "127.0.0.1", SmtpPort = 1, SmtpSecurity = EmailSecurity.None };
+        }
+
+        /// <summary>Plays the browser: opens the redirect address of the sign-in address with the given query.</summary>
+        private static Action<string> Browser(Func<string, string> query)
+        {
+            return address => Task.Run(() =>
+            {
+                var q = new Dictionary<string, string>(); foreach (string pair in new Uri(address).Query.TrimStart((char)63).Split((char)38)) { int eq = pair.IndexOf((char)61); if (eq > 0) q[pair.Substring(0, eq)] = Uri.UnescapeDataString(pair.Substring(eq + 1)); }
+                using (var web = new WebClient())
+                {
+                    try { web.DownloadString(q["redirect_uri"] + "?" + query(q["state"])); } catch (WebException) { }
+                }
+            });
+        }
+
+        [Suite("email.oauth")]
+        public static void OAuth(T t)
+        {
+            // PKCE (the example of RFC 7636)
+            t.Eq("PKCE challenge", OAuth2.Challenge("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"), "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM");
+            t.True("a verifier is long and different each time", OAuth2.NewVerifier().Length >= 43 && OAuth2.NewVerifier() != OAuth2.NewVerifier());
+
+            // the sign-in address
+            var google = new EmailProfile { Name = "g", Auth = EmailAuth.Google, ClientId = "abc 1", User = "me@gmail.com" };
+            string url = OAuth2.BuildAuthUrl(google, "http://localhost:5000/", "st", "ch");
+            t.True("Google address", url.StartsWith("https://accounts.google.com/o/oauth2/v2/auth?response_type=code") && url.Contains("client_id=abc%201") && url.Contains("code_challenge_method=S256")
+                && url.Contains("access_type=offline") && url.Contains("redirect_uri=http%3A%2F%2Flocalhost%3A5000%2F") && url.Contains("state=st") && url.Contains("login_hint=me%40gmail.com"));
+            var microsoft = new EmailProfile { Name = "m", Auth = EmailAuth.Microsoft, ClientId = "x", Tenant = "contoso" };
+            string ms = OAuth2.BuildAuthUrl(microsoft, "http://localhost:5000/", "st", "ch");
+            t.True("Microsoft address", ms.StartsWith("https://login.microsoftonline.com/contoso/oauth2/v2.0/authorize?") && ms.Contains("offline_access") && ms.Contains("SMTP.Send"));
+            t.True("the tenant is common when empty", OAuth2.EndpointsOf(new EmailProfile { Auth = EmailAuth.Microsoft }).AuthUrl.Contains("/common/"));
+
+            // the whole sign-in with the browser played by the test
+            using (var server = new TokenServer())
+            {
+                var profile = OAuthProfile(server.Url);
+                string refresh = OAuth2.SignIn(profile, address =>
+                {
+                    Browser(state => "code=CODE-9&state=WRONG")(address); // another page: refused, the wait goes on
+                    Browser(state => "code=CODE-9&state=" + state)(address);
+                }, TimeSpan.FromSeconds(20), CancellationToken.None);
+                t.Eq("sign-in gives the refresh token", refresh, "RT-1");
+                t.Eq("a wrong state did not reach the token server", server.Requests.Count, 1);
+                string body = server.Requests.Count == 1 ? server.Requests[0] : "";
+                t.True("the code was exchanged with the verifier", body.Contains("grant_type=authorization_code") && body.Contains("code=CODE-9") && body.Contains("code_verifier=") && body.Contains("client_secret=SECRET-CS") && body.Contains("client_id=cid"));
+
+                server.Answer = "{\"error\":\"access_denied\"}"; server.Status = 400;
+                t.Throws("the provider refuses the code", () => OAuth2.SignIn(profile, Browser(state => "code=X&state=" + state), TimeSpan.FromSeconds(20), CancellationToken.None), "access_denied");
+                t.Throws("the person declines in the browser", () => OAuth2.SignIn(profile, Browser(state => "error=access_denied&state=" + state), TimeSpan.FromSeconds(20), CancellationToken.None), "access_denied");
+                t.Throws("nobody signs in", () => OAuth2.SignIn(profile, address => { }, TimeSpan.FromMilliseconds(600), CancellationToken.None), "no answer from the browser");
+                var cts = new CancellationTokenSource(300);
+                t.Throws<OperationCanceledException>("Cancel stops the wait", () => OAuth2.SignIn(profile, address => { }, TimeSpan.FromSeconds(30), cts.Token), "");
+            }
+
+            // access tokens: remembered, renewed when old, a new refresh token is saved
+            using (var server = new TokenServer())
+            {
+                var store = new Profiles();
+                var profile = OAuthProfile(server.Url);
+                profile.RefreshToken = "RT-A";
+                server.Answer = "{\"access_token\":\"AT-1\",\"expires_in\":3600}";
+                t.Eq("first access token", OAuth2.GetAccessToken(profile, store, CancellationToken.None), "AT-1");
+                server.Answer = "{\"access_token\":\"AT-2\",\"expires_in\":3600}";
+                t.Eq("the second call uses the remembered one", OAuth2.GetAccessToken(profile, store, CancellationToken.None), "AT-1");
+                t.Eq("one request only", server.Requests.Count, 1);
+                t.True("it is a refresh", server.Requests[0].Contains("grant_type=refresh_token") && server.Requests[0].Contains("refresh_token=RT-A"));
+
+                var old = OAuthProfile(server.Url);
+                old.RefreshToken = "RT-B";
+                server.Answer = "{\"access_token\":\"AT-3\",\"refresh_token\":\"RT-NEW\",\"expires_in\":1}"; // too short to be kept
+                t.Eq("a token that ends soon", OAuth2.GetAccessToken(old, store, CancellationToken.None), "AT-3");
+                t.Eq("a rotated refresh token is saved", string.Join(",", store.Saved), "mfa=RT-NEW");
+                t.Eq("and kept in the profile", old.RefreshToken, "RT-NEW");
+                server.Answer = "{\"access_token\":\"AT-4\",\"expires_in\":3600}";
+                t.Eq("a short-lived token is renewed", OAuth2.GetAccessToken(old, store, CancellationToken.None), "AT-4");
+
+                var dead = OAuthProfile(server.Url);
+                dead.RefreshToken = "RT-DEAD";
+                server.Answer = "{\"error\":\"invalid_grant\",\"error_description\":\"expired RT-DEAD\"}"; server.Status = 400;
+                string failure = null;
+                try { OAuth2.GetAccessToken(dead, store, CancellationToken.None); } catch (InvalidOperationException ex) { failure = ex.Message; }
+                t.True("a dead refresh token says to sign in again", failure != null && failure.Contains("invalid_grant") && failure.Contains("Sign in again") && failure.Contains("(mfa)"));
+                t.False("and does not repeat the token", failure != null && failure.Contains("RT-DEAD"));
+            }
+
+            // errors in the run
+            t.Throws("not signed in", () => OAuth2.GetAccessToken(OAuthProfile("http://127.0.0.1:1/token"), null, CancellationToken.None), "not signed in");
+            var unencrypted = OAuthProfile("http://127.0.0.1:1/token");
+            unencrypted.RefreshToken = "RT";
+            string refused = null;
+            try { Run(new Profiles(unencrypted), null, ActionNode.NewEmail(new EmailSettings { Profile = "mfa", To = "a@x.com" })); } catch (InvalidOperationException ex) { refused = ex.Message; }
+            t.True("a token over an unencrypted connection is refused", refused != null && refused.Contains("access token") && refused.Contains("without encryption"));
+            var fresh = OAuthProfile("http://127.0.0.1:1/token"); fresh.SmtpSecurity = EmailSecurity.SslTls;
+            t.True("Test says to sign in first", EmailClient.Test(fresh, 2000, CancellationToken.None).Contains("not signed in"));
+        }
+
         [Suite("email.store")]
         public static void Store(T t)
         {
@@ -242,6 +393,13 @@ namespace AutomationTest.Tests.Suites
                 t.False("the password is not in the file as text", text.Contains("S3cret!pw"));
                 t.True("the password is stored encrypted", text.Contains("Password=dpapi:"));
 
+                store.Save(new EmailProfile { Name = "Cloud", Auth = EmailAuth.Microsoft, ClientId = "client-1", Tenant = "contoso", User = "me@c.com", ImapHost = "outlook.office365.com", RefreshToken = "REFRESH-TOKEN-XYZ", ClientSecret = "CLIENT-SECRET-QQ" }, null);
+                store.UpdateRefreshToken("cloud", "ROTATED-TOKEN");
+                string withTokens = File.ReadAllText(path);
+                t.False("tokens and secrets are not in the file as text", withTokens.Contains("REFRESH-TOKEN-XYZ") || withTokens.Contains("ROTATED-TOKEN") || withTokens.Contains("CLIENT-SECRET-QQ"));
+                var cloud = new EmailProfileStore(path).Find("Cloud");
+                t.Eq("OAuth fields are back", cloud.Auth + "|" + cloud.ClientId + "|" + cloud.Tenant + "|" + cloud.RefreshToken + "|" + cloud.ClientSecret, "Microsoft|client-1|contoso|ROTATED-TOKEN|CLIENT-SECRET-QQ");
+                store.Delete("Cloud");
                 var again = new EmailProfileStore(path);
                 t.Eq("two profiles are back", string.Join(",", again.Names), "Work,Home");
                 var work = again.Find("WORK");

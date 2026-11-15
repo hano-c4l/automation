@@ -548,6 +548,7 @@ namespace AutomationTest.Core.Runner
             if (name.Length == 0) throw new InvalidOperationException("Email: choose the profile to use (the mail icon next to Category edits the profiles).");
             var profile = EmailProfiles?.Find(name);
             if (profile == null) throw new InvalidOperationException("Email: there is no profile named \"" + name + "\" on this computer (profiles are not saved in the script; add it with the mail icon next to Category).");
+            profile.Source = EmailProfiles;
             int timeout = (int)Math.Min(Math.Max(e.TimeMs, 1000), int.MaxValue);
 
             if (e.Kind == EmailKind.Send)
