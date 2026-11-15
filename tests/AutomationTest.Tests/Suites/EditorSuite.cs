@@ -311,7 +311,7 @@ namespace AutomationTest.Tests.Suites
             group.SelectedItem = "Window";
             t.Eq("the Window group has six types", kind.Items.Count, 6);
             category.SelectedItem = ActionCategory.Utilities;
-            t.Eq("Utilities category groups", string.Join(",", group.Items.Cast<object>()), "File/Folder,Script,System");
+            t.Eq("Utilities category groups", string.Join(",", group.Items.Cast<object>()), "File/Folder,API,Script,System");
             category.SelectedItem = ActionCategory.Program;
             t.Eq("back to Program: its groups again", string.Join(",", group.Items.Cast<object>()), "Program,Window");
 

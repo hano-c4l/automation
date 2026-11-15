@@ -123,6 +123,8 @@ namespace AutomationTest.App
         private readonly ComboBox _cmdGroup = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 120 };
         private readonly ToggleSwitch _cmdValueExpr = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
         private readonly ComboBox _cmdMatch = MakeCombo(typeof(ProgramMatch));
+        private readonly TimeBox _apiTimeout = new TimeBox(30000);
+        private readonly ToggleSwitch _cmdFailOnError = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
         private readonly TextBox _cmdParams = new TextBox { Width = 200, Multiline = true, Height = 64, AcceptsReturn = true, ScrollBars = ScrollBars.Vertical };
         private readonly HintTextBox _cmdReturns = new HintTextBox { Width = 200, Placeholder = "Names of the results to bring back" };
         private readonly NumberBox _cmdX = new NumberBox { Width = 200, Minimum = -100000, Maximum = 100000, Placeholder = "X (left edge on the screen)" };
@@ -466,6 +468,8 @@ namespace AutomationTest.App
             AddRow(cmdTable, "Path", _cmdValue, null, null, _cmdBrowse);
             AddRow(cmdTable, "Expr. (path)", _cmdValueExpr, Help.ExpressionText);
             AddRow(cmdTable, "Inputs", _cmdParams, Help.AutoScript);
+            AddRow(cmdTable, "Timeout", _apiTimeout, Help.Api);
+            AddRow(cmdTable, "Fail on error", _cmdFailOnError, Help.Api);
             AddRow(cmdTable, "Returns", _cmdReturns, Help.AutoScript);
             AddRow(cmdTable, "X", _cmdX, Help.WindowPlace);
             AddRow(cmdTable, "Y", _cmdY, Help.WindowPlace);
@@ -730,17 +734,22 @@ namespace AutomationTest.App
             bool close = cmdKind == CommandKind.Close;
             bool window = CommandKinds.IsWindow(cmdKind);
             bool matched = close || window; // the programs or windows are found by Title, Name, Path or Id
-            bool hasTarget = cmdKind == CommandKind.FsCopy || cmdKind == CommandKind.FsMove || cmdKind == CommandKind.FsRename || cmdKind == CommandKind.FsWrite;
+            bool hasTarget = cmdKind == CommandKind.FsCopy || cmdKind == CommandKind.FsMove || cmdKind == CommandKind.FsRename || cmdKind == CommandKind.FsWrite
+                || CommandKinds.ApiSendsBody(cmdKind) || cmdKind == CommandKind.ApiDownload;
             bool script = cmdKind == CommandKind.AutoScript;
-            SetRowVisible(_cmdParams, script);
+            bool api = CommandKinds.IsApi(cmdKind);
+            SetRowVisible(_cmdParams, script || api);
+            SetLabel(_cmdParams, api ? "Headers" : "Inputs");
             SetRowVisible(_cmdReturns, script);
-            SetRowVisible(_cmdValue, cmdKind == CommandKind.Open || matched || fs || script);
-            SetLabel(_cmdValue, script ? "File" : cmdKind == CommandKind.Open ? "Path" : matched ? (cmdMatch == ProgramMatch.Title ? "Title" : cmdMatch == ProgramMatch.Name ? "Name" : cmdMatch == ProgramMatch.Path ? "Path" : "Process id") : cmdKind == CommandKind.FsList ? "Folder" : "Path");
-            _cmdValue.Placeholder = script ? "Script file (.json)" : cmdKind == CommandKind.Open ? "Program or document to open"
+            SetRowVisible(_apiTimeout, api);
+            SetRowVisible(_cmdFailOnError, api);
+            SetRowVisible(_cmdValue, cmdKind == CommandKind.Open || matched || fs || script || api);
+            SetLabel(_cmdValue, api ? "URL" : script ? "File" : cmdKind == CommandKind.Open ? "Path" : matched ? (cmdMatch == ProgramMatch.Title ? "Title" : cmdMatch == ProgramMatch.Name ? "Name" : cmdMatch == ProgramMatch.Path ? "Path" : "Process id") : cmdKind == CommandKind.FsList ? "Folder" : "Path");
+            _cmdValue.Placeholder = api ? "https://..." : script ? "Script file (.json)" : cmdKind == CommandKind.Open ? "Program or document to open"
                 : matched ? (cmdMatch == ProgramMatch.Title ? "Window title (regular expression)" : cmdMatch == ProgramMatch.Name ? "Process name, e.g. notepad" : cmdMatch == ProgramMatch.Path ? "Full path of the program file" : "Process id (a number)")
                 : cmdKind == CommandKind.FsCreate ? "Folder to make" : cmdKind == CommandKind.FsList ? "Folder to list" : "File or folder";
             _cmdBrowse.Visible = script || cmdKind == CommandKind.Open || (matched && cmdMatch == ProgramMatch.Path) || fs; // a title, a name or an id is typed
-            SetRowVisible(_cmdValueExpr, cmdKind == CommandKind.Open || matched || fs || script);
+            SetRowVisible(_cmdValueExpr, cmdKind == CommandKind.Open || matched || fs || script || api);
             SetRowVisible(_cmdMatch, matched);
             SetRowVisible(_cmdAll, matched);
             SetRowVisible(_cmdX, cmdKind == CommandKind.WindowMove);
@@ -750,10 +759,11 @@ namespace AutomationTest.App
             SetRowVisible(_cmdTimeout, close && !_cmdKill.Checked);
             SetRowVisible(_cmdKill, close);
             SetRowVisible(_cmdTarget, hasTarget);
-            SetLabel(_cmdTarget, cmdKind == CommandKind.FsRename ? "New name" : cmdKind == CommandKind.FsWrite ? "Text" : "Destination");
-            _cmdTarget.Placeholder = cmdKind == CommandKind.FsRename ? "New name (no folder)" : cmdKind == CommandKind.FsWrite ? "Text to write" : "Destination (a folder or a new path)";
+            SetLabel(_cmdTarget, cmdKind == CommandKind.FsRename ? "New name" : cmdKind == CommandKind.FsWrite ? "Text" : CommandKinds.ApiSendsBody(cmdKind) ? "Body" : cmdKind == CommandKind.ApiDownload ? "Save to" : "Destination");
+            _cmdTarget.Placeholder = cmdKind == CommandKind.FsRename ? "New name (no folder)" : cmdKind == CommandKind.FsWrite ? "Text to write"
+                : CommandKinds.ApiSendsBody(cmdKind) ? "Text to send (JSON or plain text)" : cmdKind == CommandKind.ApiDownload ? "File to save the answer in" : "Destination (a folder or a new path)";
             SetRowVisible(_cmdTargetExpr, hasTarget);
-            SetRowVisible(_cmdOverwrite, cmdKind == CommandKind.FsCopy || cmdKind == CommandKind.FsMove);
+            SetRowVisible(_cmdOverwrite, cmdKind == CommandKind.FsCopy || cmdKind == CommandKind.FsMove || cmdKind == CommandKind.ApiDownload);
             SetRowVisible(_cmdRecurse, cmdKind == CommandKind.FsDelete || cmdKind == CommandKind.FsList);
             SetRowVisible(_cmdAppend, cmdKind == CommandKind.FsWrite);
             SetRowVisible(_cmdDelForce, cmdKind == CommandKind.FsDelete);
@@ -1034,14 +1044,16 @@ namespace AutomationTest.App
                 case ActionCategory.Utilities:
                 case ActionCategory.Program:
                     var ck = (CommandKind)_cmdKind.SelectedItem;
-                    bool cfs = ScriptRunner.CommandIsFileSystem(ck), cclose = ck == CommandKind.Close, cwindow = CommandKinds.IsWindow(ck), cscript = ck == CommandKind.AutoScript;
-                    bool ctarget = ck == CommandKind.FsCopy || ck == CommandKind.FsMove || ck == CommandKind.FsRename || ck == CommandKind.FsWrite;
+                    bool cfs = ScriptRunner.CommandIsFileSystem(ck), cclose = ck == CommandKind.Close, cwindow = CommandKinds.IsWindow(ck), cscript = ck == CommandKind.AutoScript, capi = CommandKinds.IsApi(ck);
+                    bool ctarget = ck == CommandKind.FsCopy || ck == CommandKind.FsMove || ck == CommandKind.FsRename || ck == CommandKind.FsWrite
+                        || CommandKinds.ApiSendsBody(ck) || ck == CommandKind.ApiDownload;
                     return ActionNode.NewCommand(new CommandSettings
                     {
                         Kind = ck,
-                        Value = ck == CommandKind.Open || cclose || cwindow || cfs || cscript ? _cmdValue.Text.Trim() : "",
-                        ValueIsExpression = (ck == CommandKind.Open || cclose || cwindow || cfs || cscript) && _cmdValueExpr.Checked,
-                        Params = cscript ? _cmdParams.Text.Trim() : "",
+                        Value = ck == CommandKind.Open || cclose || cwindow || cfs || cscript || capi ? _cmdValue.Text.Trim() : "",
+                        ValueIsExpression = (ck == CommandKind.Open || cclose || cwindow || cfs || cscript || capi) && _cmdValueExpr.Checked,
+                        Params = cscript || capi ? _cmdParams.Text.Trim() : "",
+                        FailOnError = capi && _cmdFailOnError.Checked,
                         Returns = cscript ? _cmdReturns.Text.Trim() : "",
                         Match = cclose || cwindow ? (ProgramMatch)_cmdMatch.SelectedItem : ProgramMatch.Title,
                         All = (cclose || cwindow) && _cmdAll.Checked,
@@ -1051,12 +1063,12 @@ namespace AutomationTest.App
                         Height = ck == CommandKind.WindowResize ? (int)_cmdH.Value : 0,
                         Target = ctarget ? (ck == CommandKind.FsWrite ? _cmdTarget.Text : _cmdTarget.Text.Trim()) : "",
                         TargetIsExpression = ctarget && _cmdTargetExpr.Checked,
-                        Overwrite = (ck == CommandKind.FsCopy || ck == CommandKind.FsMove) && _cmdOverwrite.Checked,
+                        Overwrite = (ck == CommandKind.FsCopy || ck == CommandKind.FsMove || ck == CommandKind.ApiDownload) && _cmdOverwrite.Checked,
                         Recurse = (ck == CommandKind.FsDelete || ck == CommandKind.FsList) && _cmdRecurse.Checked,
                         Append = ck == CommandKind.FsWrite && _cmdAppend.Checked,
                         Id = ScriptRunner.CommandKeeps(ck) ? _cmdId.Text.Trim() : "",
                         DelayMs = ck == CommandKind.Shutdown ? 0 : _cmdDelay.Milliseconds,
-                        TimeMs = ck == CommandKind.Shutdown ? _cmdTime.Milliseconds : cclose ? _cmdTimeout.Milliseconds : 0,
+                        TimeMs = ck == CommandKind.Shutdown ? _cmdTime.Milliseconds : cclose ? _cmdTimeout.Milliseconds : capi ? _apiTimeout.Milliseconds : 0,
                         Force = ck == CommandKind.Shutdown ? _cmdForce.Checked : cclose ? _cmdKill.Checked : ck == CommandKind.FsDelete && _cmdDelForce.Checked
                     });
 
@@ -1408,6 +1420,8 @@ namespace AutomationTest.App
                     _cmdValueExpr.Checked = cs.ValueIsExpression;
                     _cmdParams.Text = (cs.Params ?? "").Replace("\r\n", "\n").Replace("\n", "\r\n");
                     _cmdReturns.Text = cs.Returns ?? "";
+                    _cmdFailOnError.Checked = CommandKinds.IsApi(cs.Kind) && cs.FailOnError;
+                    _apiTimeout.Milliseconds = CommandKinds.IsApi(cs.Kind) && cs.TimeMs > 0 ? cs.TimeMs : 30000;
                     _cmdMatch.SelectedItem = cs.Match;
                     _cmdAll.Checked = cs.All;
                     _cmdTarget.Text = cs.Target ?? "";
@@ -1939,6 +1953,22 @@ namespace AutomationTest.App
             if (c.Kind == CommandKind.Open && c.Value.Length == 0) return "Enter the program or document to open.";
             if (c.Kind == CommandKind.Open && c.ValueIsExpression) Expression.CheckSyntax(c.Value);
             if (c.Kind == CommandKind.WindowResize && (c.Width < 1 || c.Height < 1)) return "Enter a Width and a Height of at least 1.";
+            if (CommandKinds.IsApi(c.Kind))
+            {
+                if (c.Value.Length == 0) return "Enter the web address.";
+                if (c.ValueIsExpression) Expression.CheckSyntax(c.Value);
+                else if (!c.Value.StartsWith("http://", StringComparison.OrdinalIgnoreCase) && !c.Value.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) return "The web address must start with http:// or https://.";
+                string headerProblem;
+                foreach (var header in ApiClient.ParseHeaders(c.Params, out headerProblem)) if (header.Item3) Expression.CheckSyntax(header.Item2);
+                if (headerProblem != null) return "Headers: " + headerProblem;
+                if (CommandKinds.ApiSendsBody(c.Kind) && c.TargetIsExpression && c.Target.Length > 0) Expression.CheckSyntax(c.Target);
+                if (c.Kind == CommandKind.ApiDownload)
+                {
+                    if (c.Target.Length == 0) return "Enter the file to save the answer in.";
+                    if (c.TargetIsExpression) Expression.CheckSyntax(c.Target);
+                }
+                if (c.Id.Length > 0 && !Expression.IsValidId(c.Id)) return "The ID may have letters, digits and _, not starting with a digit (and not true, false, now, today); or leave it empty.";
+            }
             if (c.Kind == CommandKind.AutoScript)
             {
                 if (c.Value.Length == 0) return "Enter the script file to run.";
@@ -2856,6 +2886,12 @@ namespace AutomationTest.App
                             break;
                         case CommandKind.Active: details = "sends a harmless input event so the computer does not lock or sleep"; break;
                         case CommandKind.Open: details = cd.Value; break;
+                        case CommandKind.ApiGet: case CommandKind.ApiPost: case CommandKind.ApiPut: case CommandKind.ApiPatch:
+                        case CommandKind.ApiDelete: case CommandKind.ApiHead: case CommandKind.ApiDownload:
+                            details = (cd.ValueIsExpression ? "= " : "") + ApiClient.SafeUrl(cd.Value)
+                                + (cd.Kind == CommandKind.ApiDownload ? " -> " + cd.Target : "")
+                                + (cd.Id.Length > 0 ? " => {" + cd.Id + "}" : "") + (cd.FailOnError ? " (fail on error)" : "");
+                            break;
                         case CommandKind.AutoScript:
                             details = (cd.ValueIsExpression ? "= " : "") + cd.Value
                                 + (cd.Params.Trim().Length > 0 ? " (" + cd.Params.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).Length + " input(s))" : "")

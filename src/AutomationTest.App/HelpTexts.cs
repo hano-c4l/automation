@@ -284,6 +284,44 @@ The Automation Test program itself is never closed. If no program
 matches, Close does nothing (a note is shown, it is not an error);
 the Window actions fail with an error instead.");
 
+        public static readonly HelpTopic Api = new HelpTopic("API",
+@"Calls a web address (http or https; the certificate of a secure
+address is always checked) and keeps the answer in the variable of
+the ID.
+
+URL       the address. Expr. makes it an expression, for example
+          ""https://site/items/"" + {id}.
+Headers   one per line: Name: value. A value that starts with = is
+          an expression:  Authorization: = ""Bearer "" + {token}
+Body      Post, Put, Patch, Delete: the text to send. Text that starts
+          with { or [ is sent as JSON, other text as plain text; a
+          Content-Type header overrides that.
+Save to   Download: the file to save the answer in (Overwrite to
+          replace one that exists).
+Timeout   how long to wait for the answer.
+Fail on error
+          ON: a status that is not 2xx (404, 500...) is an error
+          (a Try can catch it). OFF: it is an answer you can test.
+
+The variable holds the whole answer:
+  {r.Status}       the number, 200, 404...
+  {r.Ok}           true for 200 to 299
+  {r.Reason}       the words, OK, Not Found
+  {r.Body}         the answer as text
+  {r.Json}         the answer read as JSON:
+                     {r.Json.data[0].name}   an item, then a name
+                     {r.Json[""first name""]}  a name with a space
+                     {r.Json.items.Count}    how many items
+                   (arrays count from 0; a JSON text, number or
+                   true/false is an ordinary String, Number or Boolean)
+  {r.Headers}      a table of the header names and values
+  {r.ContentType}
+
+Messages and the log name the address without its query (a query
+often holds a key). Keep keys and passwords in a Password variable
+and use it in an expression. Careful with scripts from other
+people: an API action sends data to the address it names.");
+
         public static readonly HelpTopic AutoScript = new HelpTopic("Auto Script",
 @"Runs another script file (saved from this program) as a part of
 this one, so a job you made once can be used again.
