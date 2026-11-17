@@ -29,6 +29,17 @@ namespace AutomationTest.App
         /// <summary>Log: every run writes a log file in the Logs folder (default off).</summary>
         public bool LogRuns { get; set; }
 
+        public const int DefaultClearLogDays = 7, MinClearLogDays = 1, MaxClearLogDays = 3650;
+
+        /// <summary>Clear Log: while Log is on, log files older than this many days are removed when the program starts (default 7).</summary>
+        public int ClearLogDays { get; set; } = DefaultClearLogDays;
+
+        // The answer is held twice while it is read (the bytes and the text), so the upper end stays well inside what the program can hold.
+        public const int DefaultApiAnswerLimitMb = 50, MinApiAnswerLimitMb = 1, MaxApiAnswerLimitMb = 500;
+
+        /// <summary>API answer limit: the biggest answer (in MB) an API action keeps in its variable; a bigger one is not kept (default 50).</summary>
+        public int ApiAnswerLimitMb { get; set; } = DefaultApiAnswerLimitMb;
+
         /// <summary>Message: a notice is shown when a run finishes or fails (default off).</summary>
         public bool NotifyEnd { get; set; }
 
@@ -62,6 +73,8 @@ namespace AutomationTest.App
                 RecordAllEvent = ini.Get(OptionSection, "RecordAllEvent") == "1",
                 AdvancedPositionPicker = ini.Get(OptionSection, "AdvancedPositionPicker") == "1",
                 LogRuns = ini.Get(OptionSection, "Log") == "1",
+                ClearLogDays = Days(ini.GetInt(OptionSection, "ClearLog")),
+                ApiAnswerLimitMb = Megabytes(ini.GetInt(OptionSection, "ApiAnswerLimitMB")),
                 NotifyEnd = ini.Get(OptionSection, "Message") == "1",
                 RandomTime = ini.Get(OptionSection, "RandomTime") == "1"
             };
@@ -89,6 +102,8 @@ namespace AutomationTest.App
             ini.Set(OptionSection, "RecordAllEvent", RecordAllEvent ? "1" : "0");
             ini.Set(OptionSection, "AdvancedPositionPicker", AdvancedPositionPicker ? "1" : "0");
             ini.Set(OptionSection, "Log", LogRuns ? "1" : "0");
+            ini.Set(OptionSection, "ClearLog", Days(ClearLogDays));
+            ini.Set(OptionSection, "ApiAnswerLimitMB", Megabytes(ApiAnswerLimitMb));
             ini.Set(OptionSection, "Message", NotifyEnd ? "1" : "0");
             ini.Set(OptionSection, "RandomTime", RandomTime ? "1" : "0");
         }
@@ -108,6 +123,18 @@ namespace AutomationTest.App
                 seen[code] = item.Item1;
             }
             return null;
+        }
+
+        /// <summary>A number of days that can be used: a missing or impossible one is the default.</summary>
+        private static int Days(int? value)
+        {
+            return value.HasValue && value.Value >= MinClearLogDays && value.Value <= MaxClearLogDays ? value.Value : DefaultClearLogDays;
+        }
+
+        /// <summary>A limit in MB that can be used: a missing or impossible one is the default.</summary>
+        private static int Megabytes(int? value)
+        {
+            return value.HasValue && value.Value >= MinApiAnswerLimitMb && value.Value <= MaxApiAnswerLimitMb ? value.Value : DefaultApiAnswerLimitMb;
         }
 
         private static bool IsModifier(int code)

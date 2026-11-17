@@ -296,8 +296,12 @@ Headers   one per line: Name: value. A value that starts with = is
 Body      Post, Put, Patch, Delete: the text to send. Text that starts
           with { or [ is sent as JSON, other text as plain text; a
           Content-Type header overrides that.
-Save to   Download: the file to save the answer in (Overwrite to
-          replace one that exists).
+Download  Get, Post, Put, Patch, Delete: ON saves the answer in the
+          file of Download Path instead of the variable (see the ?
+          of Download). OFF keeps it in the variable, up to the API
+          answer limit in Settings (50 MB unless changed); a bigger
+          answer is not kept and the run goes on: {r.TooBig} is true
+          and {r.Status} is still the real status.
 Timeout   how long to wait for the answer.
 Fail on error
           ON: a status that is not 2xx (404, 500...) is an error
@@ -307,7 +311,10 @@ The variable holds the whole answer:
   {r.Status}       the number, 200, 404...
   {r.Ok}           true for 200 to 299
   {r.Reason}       the words, OK, Not Found
-  {r.Body}         the answer as text
+  {r.Body}         the answer as text (empty when it was too big
+                   or saved in a file)
+  {r.TooBig}       true when the answer was over the limit
+  {r.SavedTo}      the file the answer was saved in (Download ON)
   {r.Json}         the answer read as JSON:
                      {r.Json.data[0].name}   an item, then a name
                      {r.Json[""first name""]}  a name with a space
@@ -415,6 +422,31 @@ Write        the text to write into the file.
 Environment variables such as %TEMP% work in paths, and a path
 without a drive is taken from the program's folder.");
 
+        public static readonly HelpTopic ApiDownload = new HelpTopic("Download (API)",
+@"OFF (the default)
+      The answer is kept in the variable, up to the API answer limit
+      in Settings (50 MB unless changed). A bigger answer is not read
+      any further: the run goes on with the status and headers only,
+      {r.TooBig} is true and {r.Body} is empty. Nothing is asked.
+
+ON    The answer is saved in the file of Download Path, whatever
+      its size; nothing is asked either. The folders above it are
+      made. Timeout is only the wait for the answer to begin, so a
+      big file may take as long as it needs (Stop ends it).
+      An answer that is not 2xx (404, 500...) is not saved; its
+      text is in {r.Body} and it is an error only with Fail on error.
+      {r.SavedTo} is the file that was written.
+
+Download Path
+      A path without a drive starts at the folder of the script (a
+      script that is not saved yet: the program's current folder).
+      Expr. (file) ON makes it an expression, so each file of a Loop
+      can get its own name:
+        ""C:\Reports\report_"" + {i} + "".xlsx""
+      gives report_1.xlsx, report_2.xlsx... in a Loop (For) with the
+      counter i. A file that exists already is an error unless
+      Overwrite is ON.");
+
         public static readonly HelpTopic FileOverwrite = new HelpTopic("Overwrite (File/Folder)",
 @"OFF   an existing file or folder at the destination is an error
 ON    a file is replaced; a folder is merged into (files with the
@@ -424,6 +456,10 @@ ON    a file is replaced; a folder is merged into (files with the
 @"Delete  OFF: a folder that is not empty is an error.
          ON: the folder is deleted with everything inside it.
 List    ON: also lists what is inside the subfolders.
+
+A folder that is a link (junction or symbolic link) is never gone
+into: Delete removes only the link, Force leaves what it shows
+alone, Copy makes the same link at the destination, List names it.
 
 Careful with scripts from other people: Delete removes your files
 and cannot be undone (nothing goes to the Recycle Bin). A whole

@@ -125,6 +125,9 @@ namespace AutomationTest.App
         private readonly ComboBox _cmdMatch = MakeCombo(typeof(ProgramMatch));
         private readonly TimeBox _apiTimeout = new TimeBox(30000);
         private readonly ToggleSwitch _cmdFailOnError = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
+        private readonly ToggleSwitch _apiDownload = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
+        private readonly HintTextBox _apiSavePath = new HintTextBox { Width = 200, Placeholder = "File to save the answer in" };
+        private readonly ToggleSwitch _apiSavePathExpr = new ToggleSwitch { Checked = false, Size = new Size(40, 21) };
         private readonly TextBox _cmdParams = new TextBox { Width = 200, Multiline = true, Height = 64, AcceptsReturn = true, ScrollBars = ScrollBars.Vertical };
         private readonly HintTextBox _cmdReturns = new HintTextBox { Width = 200, Placeholder = "Names of the results to bring back" };
         private readonly NumberBox _cmdX = new NumberBox { Width = 200, Minimum = -100000, Maximum = 100000, Placeholder = "X (left edge on the screen)" };
@@ -470,6 +473,9 @@ namespace AutomationTest.App
             AddRow(cmdTable, "Inputs", _cmdParams, Help.AutoScript);
             AddRow(cmdTable, "Timeout", _apiTimeout, Help.Api);
             AddRow(cmdTable, "Fail on error", _cmdFailOnError, Help.Api);
+            AddRow(cmdTable, "Download", _apiDownload, Help.ApiDownload);
+            AddRow(cmdTable, "Download Path", _apiSavePath, Help.ApiDownload);
+            AddRow(cmdTable, "Expr. (file)", _apiSavePathExpr, Help.ExpressionText);
             AddRow(cmdTable, "Returns", _cmdReturns, Help.AutoScript);
             AddRow(cmdTable, "X", _cmdX, Help.WindowPlace);
             AddRow(cmdTable, "Y", _cmdY, Help.WindowPlace);
@@ -689,6 +695,7 @@ namespace AutomationTest.App
             _cmdKind.SelectedIndexChanged += (s, e) => { if (!_grouping) UpdateEditorVisibility(); };
             _cmdMatch.SelectedIndexChanged += (s, e) => UpdateEditorVisibility();
             _cmdKill.CheckedChanged += (s, e) => UpdateEditorVisibility(); // Timeout means nothing when the program is ended at once
+            _apiDownload.CheckedChanged += (s, e) => UpdateEditorVisibility(); // Download Path is there only while Download is on
             InitGroups();
             _webGroup.SelectedIndexChanged += (s, e) => { FillWebKinds(); if (!_grouping) UpdateEditorVisibility(); };
             _xlGroup.SelectedIndexChanged += (s, e) => { FillXlKinds(); if (!_grouping) UpdateEditorVisibility(); };
@@ -735,7 +742,7 @@ namespace AutomationTest.App
             bool window = CommandKinds.IsWindow(cmdKind);
             bool matched = close || window; // the programs or windows are found by Title, Name, Path or Id
             bool hasTarget = cmdKind == CommandKind.FsCopy || cmdKind == CommandKind.FsMove || cmdKind == CommandKind.FsRename || cmdKind == CommandKind.FsWrite
-                || CommandKinds.ApiSendsBody(cmdKind) || cmdKind == CommandKind.ApiDownload;
+                || CommandKinds.ApiSendsBody(cmdKind);
             bool script = cmdKind == CommandKind.AutoScript;
             bool api = CommandKinds.IsApi(cmdKind);
             SetRowVisible(_cmdParams, script || api);
@@ -743,6 +750,10 @@ namespace AutomationTest.App
             SetRowVisible(_cmdReturns, script);
             SetRowVisible(_apiTimeout, api);
             SetRowVisible(_cmdFailOnError, api);
+            bool apiSaves = CommandKinds.ApiCanSave(cmdKind) && _apiDownload.Checked;
+            SetRowVisible(_apiDownload, CommandKinds.ApiCanSave(cmdKind));
+            SetRowVisible(_apiSavePath, apiSaves);
+            SetRowVisible(_apiSavePathExpr, apiSaves);
             SetRowVisible(_cmdValue, cmdKind == CommandKind.Open || matched || fs || script || api);
             SetLabel(_cmdValue, api ? "URL" : script ? "File" : cmdKind == CommandKind.Open ? "Path" : matched ? (cmdMatch == ProgramMatch.Title ? "Title" : cmdMatch == ProgramMatch.Name ? "Name" : cmdMatch == ProgramMatch.Path ? "Path" : "Process id") : cmdKind == CommandKind.FsList ? "Folder" : "Path");
             _cmdValue.Placeholder = api ? "https://..." : script ? "Script file (.json)" : cmdKind == CommandKind.Open ? "Program or document to open"
@@ -759,11 +770,11 @@ namespace AutomationTest.App
             SetRowVisible(_cmdTimeout, close && !_cmdKill.Checked);
             SetRowVisible(_cmdKill, close);
             SetRowVisible(_cmdTarget, hasTarget);
-            SetLabel(_cmdTarget, cmdKind == CommandKind.FsRename ? "New name" : cmdKind == CommandKind.FsWrite ? "Text" : CommandKinds.ApiSendsBody(cmdKind) ? "Body" : cmdKind == CommandKind.ApiDownload ? "Save to" : "Destination");
+            SetLabel(_cmdTarget, cmdKind == CommandKind.FsRename ? "New name" : cmdKind == CommandKind.FsWrite ? "Text" : CommandKinds.ApiSendsBody(cmdKind) ? "Body" : "Destination");
             _cmdTarget.Placeholder = cmdKind == CommandKind.FsRename ? "New name (no folder)" : cmdKind == CommandKind.FsWrite ? "Text to write"
-                : CommandKinds.ApiSendsBody(cmdKind) ? "Text to send (JSON or plain text)" : cmdKind == CommandKind.ApiDownload ? "File to save the answer in" : "Destination (a folder or a new path)";
+                : CommandKinds.ApiSendsBody(cmdKind) ? "Text to send (JSON or plain text)" : "Destination (a folder or a new path)";
             SetRowVisible(_cmdTargetExpr, hasTarget);
-            SetRowVisible(_cmdOverwrite, cmdKind == CommandKind.FsCopy || cmdKind == CommandKind.FsMove || cmdKind == CommandKind.ApiDownload);
+            SetRowVisible(_cmdOverwrite, cmdKind == CommandKind.FsCopy || cmdKind == CommandKind.FsMove || apiSaves);
             SetRowVisible(_cmdRecurse, cmdKind == CommandKind.FsDelete || cmdKind == CommandKind.FsList);
             SetRowVisible(_cmdAppend, cmdKind == CommandKind.FsWrite);
             SetRowVisible(_cmdDelForce, cmdKind == CommandKind.FsDelete);
@@ -1046,7 +1057,9 @@ namespace AutomationTest.App
                     var ck = (CommandKind)_cmdKind.SelectedItem;
                     bool cfs = ScriptRunner.CommandIsFileSystem(ck), cclose = ck == CommandKind.Close, cwindow = CommandKinds.IsWindow(ck), cscript = ck == CommandKind.AutoScript, capi = CommandKinds.IsApi(ck);
                     bool ctarget = ck == CommandKind.FsCopy || ck == CommandKind.FsMove || ck == CommandKind.FsRename || ck == CommandKind.FsWrite
-                        || CommandKinds.ApiSendsBody(ck) || ck == CommandKind.ApiDownload;
+                        || CommandKinds.ApiSendsBody(ck);
+                    // Download OFF (or a type without it): nothing of the path is kept, so no hidden value stays in the file.
+                    bool csaves = CommandKinds.ApiCanSave(ck) && _apiDownload.Checked;
                     return ActionNode.NewCommand(new CommandSettings
                     {
                         Kind = ck,
@@ -1054,6 +1067,9 @@ namespace AutomationTest.App
                         ValueIsExpression = (ck == CommandKind.Open || cclose || cwindow || cfs || cscript || capi) && _cmdValueExpr.Checked,
                         Params = cscript || capi ? _cmdParams.Text.Trim() : "",
                         FailOnError = capi && _cmdFailOnError.Checked,
+                        SaveAnswer = csaves,
+                        SavePath = csaves ? _apiSavePath.Text.Trim() : "",
+                        SavePathIsExpression = csaves && _apiSavePathExpr.Checked,
                         Returns = cscript ? _cmdReturns.Text.Trim() : "",
                         Match = cclose || cwindow ? (ProgramMatch)_cmdMatch.SelectedItem : ProgramMatch.Title,
                         All = (cclose || cwindow) && _cmdAll.Checked,
@@ -1063,7 +1079,7 @@ namespace AutomationTest.App
                         Height = ck == CommandKind.WindowResize ? (int)_cmdH.Value : 0,
                         Target = ctarget ? (ck == CommandKind.FsWrite ? _cmdTarget.Text : _cmdTarget.Text.Trim()) : "",
                         TargetIsExpression = ctarget && _cmdTargetExpr.Checked,
-                        Overwrite = (ck == CommandKind.FsCopy || ck == CommandKind.FsMove || ck == CommandKind.ApiDownload) && _cmdOverwrite.Checked,
+                        Overwrite = (ck == CommandKind.FsCopy || ck == CommandKind.FsMove || csaves) && _cmdOverwrite.Checked,
                         Recurse = (ck == CommandKind.FsDelete || ck == CommandKind.FsList) && _cmdRecurse.Checked,
                         Append = ck == CommandKind.FsWrite && _cmdAppend.Checked,
                         Id = ScriptRunner.CommandKeeps(ck) ? _cmdId.Text.Trim() : "",
@@ -1422,6 +1438,9 @@ namespace AutomationTest.App
                     _cmdReturns.Text = cs.Returns ?? "";
                     _cmdFailOnError.Checked = CommandKinds.IsApi(cs.Kind) && cs.FailOnError;
                     _apiTimeout.Milliseconds = CommandKinds.IsApi(cs.Kind) && cs.TimeMs > 0 ? cs.TimeMs : 30000;
+                    _apiDownload.Checked = CommandKinds.ApiCanSave(cs.Kind) && cs.SaveAnswer;
+                    _apiSavePath.Text = cs.SavePath ?? "";
+                    _apiSavePathExpr.Checked = cs.SavePathIsExpression;
                     _cmdMatch.SelectedItem = cs.Match;
                     _cmdAll.Checked = cs.All;
                     _cmdTarget.Text = cs.Target ?? "";
@@ -1962,10 +1981,12 @@ namespace AutomationTest.App
                 foreach (var header in ApiClient.ParseHeaders(c.Params, out headerProblem)) if (header.Item3) Expression.CheckSyntax(header.Item2);
                 if (headerProblem != null) return "Headers: " + headerProblem;
                 if (CommandKinds.ApiSendsBody(c.Kind) && c.TargetIsExpression && c.Target.Length > 0) Expression.CheckSyntax(c.Target);
-                if (c.Kind == CommandKind.ApiDownload)
+                if (c.SaveAnswer && CommandKinds.ApiCanSave(c.Kind))
                 {
-                    if (c.Target.Length == 0) return "Enter the file to save the answer in.";
-                    if (c.TargetIsExpression) Expression.CheckSyntax(c.Target);
+                    if (c.SavePath.Length == 0) return "Download is on: enter the Download Path (the file to save the answer in).";
+                    if (c.SavePathIsExpression) Expression.CheckSyntax(c.SavePath);
+                    else if (c.SavePath.IndexOf('{') >= 0)
+                        return "The Download Path has { }: turn on Expr. (file) to use a variable, and write it as an expression, for example \"C:\\Reports\\report_\" + {i} + \".xlsx\".";
                 }
                 if (c.Id.Length > 0 && !Expression.IsValidId(c.Id)) return "The ID may have letters, digits and _, not starting with a digit (and not true, false, now, today); or leave it empty.";
             }
@@ -2887,9 +2908,9 @@ namespace AutomationTest.App
                         case CommandKind.Active: details = "sends a harmless input event so the computer does not lock or sleep"; break;
                         case CommandKind.Open: details = cd.Value; break;
                         case CommandKind.ApiGet: case CommandKind.ApiPost: case CommandKind.ApiPut: case CommandKind.ApiPatch:
-                        case CommandKind.ApiDelete: case CommandKind.ApiHead: case CommandKind.ApiDownload:
+                        case CommandKind.ApiDelete: case CommandKind.ApiHead:
                             details = (cd.ValueIsExpression ? "= " : "") + ApiClient.SafeUrl(cd.Value)
-                                + (cd.Kind == CommandKind.ApiDownload ? " -> " + cd.Target : "")
+                                + (cd.SaveAnswer && CommandKinds.ApiCanSave(cd.Kind) ? " -> " + (cd.SavePathIsExpression ? "= " : "") + cd.SavePath : "")
                                 + (cd.Id.Length > 0 ? " => {" + cd.Id + "}" : "") + (cd.FailOnError ? " (fail on error)" : "");
                             break;
                         case CommandKind.AutoScript:
@@ -3894,6 +3915,7 @@ namespace AutomationTest.App
             var token = _cts.Token;
             var runner = new ScriptRunner(_mouse, _keyboard) { RandomTime = _settings.RandomTime, ScriptFolder = _currentPath == null ? null : Path.GetDirectoryName(_currentPath) };
             runner.ClipboardReader = ReadClipboardText;
+            runner.MaxApiAnswerBytes = _settings.ApiAnswerLimitMb * 1024L * 1024L; // Settings, API answer limit
             runner.PasswordPrompt = AskPassword;
             // Passwords are hidden wherever the run shows text: messages, the status, the log and the notice.
             var secrets = new List<string>(_pendingSecrets ?? new List<string>());
@@ -3901,7 +3923,8 @@ namespace AutomationTest.App
             Func<string, string> mask = text =>
             {
                 if (text == null) return null;
-                lock (secrets) foreach (string secret in secrets) text = text.Replace(secret, "****");
+                // The longest first: a password that is part of a longer one must not leave the rest of the longer one readable.
+                lock (secrets) foreach (string secret in secrets.OrderByDescending(s => s.Length)) text = text.Replace(secret, "****");
                 return text;
             };
 
@@ -4124,7 +4147,16 @@ namespace AutomationTest.App
             bool first = AppSettings.IsMissing(ini);
             _settings = AppSettings.Load(ini);
             if (first) SaveSettings();
+            // Settings, Clear Log: once at each start of the program, while Log is on, the old log files go (in the background).
+            if (_settings.LogRuns && !_oldLogsCleared)
+            {
+                _oldLogsCleared = true;
+                int days = _settings.ClearLogDays;
+                Task.Run(() => RunLog.ClearOld(RunLog.Folder, days, DateTime.Now));
+            }
         }
+
+        private bool _oldLogsCleared;
 
         /// <summary>Writes the settings into a freshly read Setting.ini, so the other entries (window, license state) stay as they are.</summary>
         private void SaveSettings()

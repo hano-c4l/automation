@@ -175,6 +175,26 @@ namespace AutomationTest.Core.Model
         [DataMember(Order = 21, EmitDefaultValue = false)] public bool FailOnError { get; set; }
 
         /// <summary>
+        /// API (Get, Post, Put, Patch, Delete): Download = Yes saves the answer in the file of <see cref="SavePath"/> (any size) instead
+        /// of keeping it in the variable. No (the default): the answer is kept in the variable up to the limit in Settings.
+        /// </summary>
+        [DataMember(Order = 22, EmitDefaultValue = false)] public bool SaveAnswer { get; set; }
+
+        /// <summary>API with Download = Yes: the file to save the answer in.</summary>
+        public string SavePath { get; set; } = "";
+
+        // Written only when there is a path, so an action with Download off looks in the file exactly as before.
+        [DataMember(Name = "SavePath", Order = 23, EmitDefaultValue = false)]
+        private string SavePathData
+        {
+            get { return string.IsNullOrEmpty(SavePath) ? null : SavePath; }
+            set { SavePath = value ?? ""; }
+        }
+
+        /// <summary>The <see cref="SavePath"/> is an expression ("report_" + {i} + ".xlsx").</summary>
+        [DataMember(Order = 24, EmitDefaultValue = false)] public bool SavePathIsExpression { get; set; }
+
+        /// <summary>
         /// Auto Script: the values handed to the script, one per line as "name = expression" (the expression is worked out here, in
         /// this script). API: the headers, one per line as "Name: value" (a value that starts with = is an expression).
         /// </summary>
@@ -220,6 +240,7 @@ namespace AutomationTest.Core.Model
             Id = "";
             Params = "";
             Returns = "";
+            SavePath = "";
         }
 
         public CommandSettings Clone()
@@ -234,6 +255,7 @@ namespace AutomationTest.Core.Model
             if (Id == null) Id = "";
             if (Params == null) Params = "";
             if (Returns == null) Returns = "";
+            if (SavePath == null) SavePath = "";
             if (DelayMs < 0) DelayMs = 0;
             if (TimeMs < 0) TimeMs = 0;
         }

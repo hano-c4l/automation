@@ -81,6 +81,12 @@ namespace AutomationTest.Tests.Suites
                 combo.SelectedItem = kind;
             }
 
+            /// <summary>What the editor says is wrong with the node when Add or Update is pressed (null = nothing).</summary>
+            public string Validate(ActionNode node)
+            {
+                return (string)typeof(MainForm).GetMethod("Validate", BindingFlags.NonPublic | BindingFlags.Static).Invoke(null, new object[] { node });
+            }
+
             public void Call(string method, params object[] args)
             {
                 typeof(MainForm).GetMethod(method, Private).Invoke(Form, args);

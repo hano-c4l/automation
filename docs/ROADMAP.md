@@ -134,13 +134,13 @@ Có thể đổi thứ tự P4–P9 theo nhu cầu; P1 → P2 → P3 nên giữ 
 
 | # | Câu hỏi | Đề xuất |
 |---|---|---|
-| 1 | Log nằm ở đâu, có tự xóa log cũ không? | `Logs` cạnh exe; chưa tự xóa (thêm "giữ N file gần nhất" sau nếu cần) |
+| 1 | Log nằm ở đâu, có tự xóa log cũ không? | `Logs` cạnh exe. **Đã chốt và làm (2026-11-17):** ô Clear Log (days) trong Settings, mặc định 7, xóa log cũ hơn số ngày đó mỗi lần mở chương trình khi Log đang ON |
 | 2 | Message dùng cơ chế nào? | Bong bóng của icon khay, nhưng chương trình ẩn icon khi lần chạy kết thúc (`ShowFromTray`) nên bong bóng có thể không kịp thấy: nếu vậy dùng hộp thoại nhỏ hoặc thông báo Windows; lỗi thì kèm tên action và câu lỗi |
 | 3 | Catch có ID chứa thông báo lỗi và có nhánh Finally không? | Có ID tùy chọn; chưa làm Finally |
 | 4 | Mở file cũ có action Image: tự chuyển thành Variable Image + Condition? | Có, giữ đọc được action Image cũ |
 | 5 | OCR dùng công cụ nào? | OCR có sẵn của Windows (cần gói ngôn ngữ), làm thử nhỏ trước khi chốt; Tesseract là phương án dự phòng (thêm hàng chục MB) |
 | 6 | Email kết nối bằng gì? Bạn đang dùng Outlook cổ điển (classic) hay Outlook mới? | Outlook COM chỉ chạy với **Outlook cổ điển** (Outlook mới của Windows không có COM theo hiểu biết của tôi, cần kiểm lại); nếu bạn dùng Outlook mới hoặc Gmail thì SMTP/IMAP (mật khẩu ứng dụng/OAuth) là cách duy nhất. Đề xuất: biết bạn dùng gì rồi mới chốt |
-| 7 | Kiểu "FETCH" của API nghĩa là gì? | Dùng GET/POST/PUT/PATCH/DELETE/HEAD và thêm "Download" (lưu ra file); nếu bạn muốn khác thì nói |
+| 7 | Kiểu "FETCH" của API nghĩa là gì? | Dùng GET/POST/PUT/PATCH/DELETE/HEAD; lưu ra file là toggle Download của các kiểu đó (kiểu Download riêng đã bỏ 2026-11-17) |
 | 8 | Password hỏi một lần mỗi lần chạy hay mỗi lần action chạy? | Một lần cho mỗi ID mỗi lần chạy |
 | 9 | Random Time áp dụng cho những trường nào? | Chỉ Time và Delay, cộng thêm 10–20%, không bớt |
 | 10 | Làm P0 (bộ test trong repo) trước? | Có |
