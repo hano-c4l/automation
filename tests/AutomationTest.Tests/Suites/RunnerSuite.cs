@@ -106,6 +106,11 @@ namespace AutomationTest.Tests.Suites
             down.Children.Add(Calc("sum", "{sum} * 10 + {i}"));
             t.Eq("Loop (For) counting down", Get(Run(new List<ActionNode> { Var("sum", "0"), down }), "sum"), 321.0);
 
+            // a step with a fraction does not drift: 0, 0.1 ... 1 is 11 passes (adding 0.1 ten times gives 0.9999999999999999, then 1.0999...)
+            var fraction = ActionNode.NewLoop(new LoopSettings { Mode = LoopType.For, ForId = "i", ForFrom = "0", ForTo = "1", ForStep = "0.1" });
+            fraction.Children.Add(Calc("n", "{n} + 1"));
+            t.Eq("Loop (For) 0 to 1 step 0.1 runs 11 times", Get(Run(new List<ActionNode> { Var("n", "0"), fraction }), "n"), 11.0);
+
             var skipped = ActionNode.NewLoop(new LoopSettings { Mode = LoopType.For, ForId = "i", ForFrom = "5", ForTo = "1", ForStep = "1" });
             skipped.Children.Add(Calc("sum", "{sum} + 1"));
             var messages = new List<string>();

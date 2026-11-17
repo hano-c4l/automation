@@ -312,8 +312,12 @@ namespace AutomationTest.Core.Runner
                 Message?.Invoke("Loop skipped: it counts from " + Format.Display(from) + " to " + Format.Display(to) + " with a step of " + Format.Display(step) + ".");
                 return;
             }
-            for (double i = from; step > 0 ? i <= to : i >= to; i += step)
+            // The counter is worked out from the start each time (from + n * step): adding the step again and again lets a
+            // fraction such as 0.1 drift, and the last pass could be lost.
+            for (long n = 0; ; n++)
             {
+                double i = from + n * step;
+                if (step > 0 ? i > to : i < to) break;
                 _vars.Set(id, i);
                 if (!Iterate(loop, token)) break;
             }
@@ -375,8 +379,9 @@ namespace AutomationTest.Core.Runner
                 case CommandKind.WindowRestore:
                 case CommandKind.WindowMove:
                 case CommandKind.WindowResize:
-                    int arranged = ProgramActions.Arrange(c.Kind, c.Match, c.ValueIsExpression ? EvalString(c.Value) : c.Value, c.All, c.X, c.Y, c.Width, c.Height);
-                    if (arranged == 0) throw new InvalidOperationException("No window found for " + c.Match + " \"" + (c.ValueIsExpression ? EvalString(c.Value) : c.Value).Trim() + "\" (is the program running, and is its window visible?).");
+                    string window = c.ValueIsExpression ? EvalString(c.Value) : c.Value;
+                    int arranged = ProgramActions.Arrange(c.Kind, c.Match, window, c.All, c.X, c.Y, c.Width, c.Height);
+                    if (arranged == 0) throw new InvalidOperationException("No window found for " + c.Match + " \"" + (window ?? "").Trim() + "\" (is the program running, and is its window visible?).");
                     break;
 
                 case CommandKind.AutoScript:
@@ -394,8 +399,10 @@ namespace AutomationTest.Core.Runner
                     break;
 
                 case CommandKind.Close:
-                    int closed = ProgramActions.Close(c.Match, c.ValueIsExpression ? EvalString(c.Value) : c.Value, c.All, c.Force, c.TimeMs, token);
-                    if (closed == 0) Message?.Invoke("Program Close: no program matches \"" + c.Value.Trim() + "\" (" + c.Match + ").");
+                    string program = c.ValueIsExpression ? EvalString(c.Value) : c.Value;
+                    int closed = ProgramActions.Close(c.Match, program, c.All, c.Force, c.TimeMs, token);
+                    // The value that was looked for, not the text of the expression that gave it.
+                    if (closed == 0) Message?.Invoke("Program Close: no program matches \"" + (program ?? "").Trim() + "\" (" + c.Match + ").");
                     break;
 
                 default:

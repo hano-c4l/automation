@@ -83,7 +83,8 @@ namespace AutomationTest.App
                 foreach (var pair in section.Value) text.AppendLine(pair.Key + "=" + pair.Value);
                 text.AppendLine();
             }
-            try { File.WriteAllText(path, text.ToString(), new UTF8Encoding(false)); }
+            // The file also holds the state of a license that expires: it must never be left half written.
+            try { AutomationTest.Core.Model.SafeFile.WriteAllBytes(path, new UTF8Encoding(false).GetBytes(text.ToString())); }
             catch (UnauthorizedAccessException ex) { throw new IOException(ex.Message, ex); }
         }
     }

@@ -22,7 +22,7 @@ namespace AutomationTest.Core.Web
         public static object Parse(string text)
         {
             int i = 0;
-            object value = ReadValue(text, ref i);
+            object value = ReadValue(text, ref i, 0);
             SkipSpace(text, ref i);
             if (i != text.Length) throw new FormatException("Unexpected text after the JSON value.");
             return value;
@@ -92,8 +92,12 @@ namespace AutomationTest.Core.Web
             while (i < t.Length && char.IsWhiteSpace(t[i])) i++;
         }
 
-        private static object ReadValue(string t, ref int i)
+        // A page decides how deep the values it gives are nested; without a limit a hostile one could end the program (stack overflow).
+        private const int MaxDepth = 256;
+
+        private static object ReadValue(string t, ref int i, int depth)
         {
+            if (depth > MaxDepth) throw new FormatException("The JSON is nested too deep.");
             SkipSpace(t, ref i);
             if (i >= t.Length) throw new FormatException("Unexpected end of JSON.");
             char c = t[i];
@@ -109,7 +113,7 @@ namespace AutomationTest.Core.Web
                     string key = ReadString(t, ref i);
                     SkipSpace(t, ref i);
                     Expect(t, ref i, ':');
-                    dict[key] = ReadValue(t, ref i);
+                    dict[key] = ReadValue(t, ref i, depth + 1);
                     SkipSpace(t, ref i);
                     if (i < t.Length && t[i] == ',') { i++; continue; }
                     Expect(t, ref i, '}');
@@ -124,7 +128,7 @@ namespace AutomationTest.Core.Web
                 if (i < t.Length && t[i] == ']') { i++; return list.ToArray(); }
                 while (true)
                 {
-                    list.Add(ReadValue(t, ref i));
+                    list.Add(ReadValue(t, ref i, depth + 1));
                     SkipSpace(t, ref i);
                     if (i < t.Length && t[i] == ',') { i++; continue; }
                     Expect(t, ref i, ']');

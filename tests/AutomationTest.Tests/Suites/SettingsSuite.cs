@@ -87,6 +87,10 @@ namespace AutomationTest.Tests.Suites
                 log.Node(inner);
                 log.AddSecret("hunter2");
                 log.Note("Caught: the password hunter2 was wrong");
+                // a secret that is the start of a longer one: the longer one is hidden whole, whichever became known first
+                log.AddSecret("abc");
+                log.AddSecret("abc-long-tail");
+                log.Note("Tried abc-long-tail and abc");
                 log.End("finished");
                 log.Dispose();
 
@@ -98,6 +102,8 @@ namespace AutomationTest.Tests.Suites
                 t.False("the text that is typed is never written", text.Contains("secret-value-123"));
                 t.False("a secret is hidden", text.Contains("hunter2"));
                 t.True("and shown as stars", text.Contains("the password **** was wrong"));
+                t.False("the rest of a longer secret is not left readable", text.Contains("long-tail"));
+                t.True("both secrets are stars", text.Contains("Tried **** and ****"));
                 t.True("the end line says how it ended", text.Contains("Run finished after"));
                 t.True("every line has a time", System.Text.RegularExpressions.Regex.IsMatch(text.Split('\n')[0], @"^\d\d:\d\d:\d\d\.\d\d\d  "));
 

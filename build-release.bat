@@ -14,6 +14,11 @@ cd /d "%~dp0"
 set "OUT=%~dp0Release"
 set "KEEP=%TEMP%\AutomationTest_release_keep"
 
+rem A program that is still running from Release locks its files: stop before anything is removed, so the old build stays whole.
+if exist "%OUT%\AutomationTest\AutomationTest.exe" (
+  2>nul ( >>"%OUT%\AutomationTest\AutomationTest.exe" call ) || goto :running
+)
+
 echo Putting the user's files aside...
 rem A run that was stopped half way leaves the user's files in %KEEP%: put back what is missing before starting again, so they are not lost.
 if exist "%KEEP%" call :restoremissing
@@ -48,6 +53,10 @@ del /q "%OUT%\AutomationTest\*.pdb" "%OUT%\AutomationKeyGen\*.pdb" "%OUT%\Automa
 call :restore
 echo.
 echo Done: %OUT%
+goto :end
+
+:running
+echo AutomationTest.exe is running from %OUT%. Close it and try again. Nothing was changed.
 goto :end
 
 :locked

@@ -9,7 +9,7 @@ namespace AutomationTest.Core.Model
     {
         public static void Save(AutomationScript script, string path)
         {
-            File.WriteAllBytes(path, ToBytes(script));
+            SafeFile.WriteAllBytes(path, ToBytes(script)); // a stop half way never leaves a damaged script
         }
 
         /// <summary>The text that Save would write; used to tell whether a script changed since it was saved.</summary>

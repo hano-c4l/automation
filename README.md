@@ -33,10 +33,10 @@ AutomationTest.sln
 Cần .NET SDK (10.0 trở lên) để build; chạy chương trình chỉ cần Windows.
 
 ```bash
-dotnet build -c Release
+build-release.bat
 ```
 
-Chương trình nằm ở `src/AutomationTest.App/bin/Release/net48/AutomationTest.exe`. Tắt chương trình đang chạy trước khi build, nếu không file sẽ bị khóa.
+Bản để dùng và test nằm ở `Release\AutomationTest\AutomationTest.exe` (kèm `Release\AutomationWebHelper` và `Release\AutomationKeyGen`); script giữ lại `Setting.ini`, `license.lic` và thư mục `Logs` qua mỗi lần build. Tắt chương trình đang chạy trước khi build: script sẽ dừng ngay và không đổi gì nếu chương trình còn chạy. Chạy bộ test bằng `run-tests.bat`.
 
 ## License
 
