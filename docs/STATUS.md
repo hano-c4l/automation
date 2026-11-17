@@ -1,6 +1,6 @@
 # Status
 
-Cập nhật lần cuối: 2026-11-15
+Cập nhật lần cuối: 2026-11-17
 
 ## Hiện tại
 - **`main` (production) chỉ có tới nhóm action Group + Type và một bản chạy mỗi user; tất cả từ PR 49 trở đi (File/Folder, Program, Paste kinds, P0 bộ test, P1 Try/Catch, P2 Log/Message/Random Time, P3 Clipboard/Password, P4 copy/paste/kéo thả/hoàn tác, P5 category Program) mới có ở `preview`.** Các tính năng đã chốt trước đó đã code, gồm License (M5), icon app, thanh menu dạng icon, Start Selected, Pick có đóng băng màn hình và Adv Pick (F8). Chương trình chạy được đầy đủ: Mouse, Keyboard, Program/Open, Loop, Wait, Image, Variable, Condition, biểu thức, Record, lưu/mở file, License theo máy.
