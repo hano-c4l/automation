@@ -24,18 +24,23 @@ namespace AutomationTest.App
         /// <summary>Checks the license; if it is not valid, asks for one. False when the user gives up.</summary>
         private static bool EnsureLicensed()
         {
-            LicenseResult result;
-            try { result = LicenseManager.Check(); }
-            catch (InvalidOperationException ex) { result = new LicenseResult { Status = LicenseStatus.Malformed, Message = ex.Message }; }
+            LicenseResult result = CheckLicense();
             while (!result.IsValid)
             {
                 using (var form = new LicenseForm(true, result))
                 {
                     if (form.ShowDialog() != DialogResult.OK) return false;
                 }
-                result = LicenseManager.Check();
+                result = CheckLicense();
             }
             return true;
+        }
+
+        /// <summary>The check; a computer without a MachineGuid is an answer ("not valid") and not a crash, also the second time.</summary>
+        private static LicenseResult CheckLicense()
+        {
+            try { return LicenseManager.Check(); }
+            catch (InvalidOperationException ex) { return new LicenseResult { Status = LicenseStatus.Malformed, Message = ex.Message }; }
         }
     }
 }

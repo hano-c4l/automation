@@ -3901,7 +3901,8 @@ namespace AutomationTest.App
             Func<string, string> mask = text =>
             {
                 if (text == null) return null;
-                lock (secrets) foreach (string secret in secrets) text = text.Replace(secret, "****");
+                // The longest first: a password that is part of a longer one must not leave the rest of the longer one readable.
+                lock (secrets) foreach (string secret in secrets.OrderByDescending(s => s.Length)) text = text.Replace(secret, "****");
                 return text;
             };
 

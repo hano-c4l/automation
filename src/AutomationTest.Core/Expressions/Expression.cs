@@ -90,10 +90,21 @@ namespace AutomationTest.Core.Expressions
         private static List<Node> Parse(string text, bool allowList)
         {
             if (string.IsNullOrWhiteSpace(text)) throw new ExpressionException("The expression is empty.");
+            // A Loop works out the same few expressions thousands of times: the parsed form is kept (it holds no values, so it can
+            // be shared between runs and threads). Text that does not parse is not kept and fails again each time.
+            var cache = allowList ? ParsedLists : ParsedSingles;
+            List<Node> nodes;
+            if (cache.TryGetValue(text, out nodes)) return nodes;
             var parser = new Parser(text);
-            var nodes = parser.ParseTop(allowList);
+            nodes = parser.ParseTop(allowList);
+            if (cache.Count >= MaxParsed) cache.Clear();
+            cache[text] = nodes;
             return nodes;
         }
+
+        private const int MaxParsed = 2000;
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, List<Node>> ParsedSingles = new System.Collections.Concurrent.ConcurrentDictionary<string, List<Node>>();
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, List<Node>> ParsedLists = new System.Collections.Concurrent.ConcurrentDictionary<string, List<Node>>();
 
         private abstract class Node
         {

@@ -78,7 +78,13 @@ namespace AutomationTest.App
         public void AddSecret(string text)
         {
             if (string.IsNullOrEmpty(text)) return;
-            lock (_lock) _secrets.Add(text);
+            lock (_lock)
+            {
+                if (_secrets.Contains(text)) return;
+                _secrets.Add(text);
+                // The longest first: a secret that is part of a longer one must not leave the rest of the longer one readable.
+                _secrets.Sort((a, b) => b.Length.CompareTo(a.Length));
+            }
         }
 
         private void Number(List<ActionNode> nodes, string prefix)

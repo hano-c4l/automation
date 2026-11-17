@@ -37,6 +37,9 @@ namespace AutomationTest.Core.Runner
         {
             try { ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12; }
             catch (NotSupportedException) { }
+            // TLS 1.3 (the enum has no name for it on this framework) where Windows has it, for servers that accept nothing older.
+            try { ServicePointManager.SecurityProtocol |= (SecurityProtocolType)12288; }
+            catch (NotSupportedException) { }
             var handler = new HttpClientHandler { AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate };
             return new HttpClient(handler) { Timeout = System.Threading.Timeout.InfiniteTimeSpan }; // each call has its own time limit
         }
