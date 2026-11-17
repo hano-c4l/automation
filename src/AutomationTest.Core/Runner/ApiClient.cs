@@ -20,9 +20,18 @@ namespace AutomationTest.Core.Runner
         /// <summary>The text to send (null = nothing).</summary>
         public string Body;
         public long TimeoutMs = 30000;
-        /// <summary>Download: the file to save the answer in (null = keep the answer as text).</summary>
+        /// <summary>
+        /// The Download toggle: the file to save the answer in (null = keep the answer as text). An answer that is not 2xx is not
+        /// saved; it is read as text instead (within the limit) so its error can be seen in {r.Body}.
+        /// </summary>
         public string SaveTo;
         public bool Overwrite;
+        /// <summary>
+        /// The biggest answer that is read into a variable (after unpacking gzip; Settings, API answer limit). A bigger one is not read
+        /// any further and not kept: the status and headers still come back, with {r.TooBig} true. So a huge or endless answer cannot
+        /// use up the memory and the run goes on. A file save has no limit.
+        /// </summary>
+        public long MaxAnswerBytes = ApiClient.DefaultMaxAnswerBytes;
     }
 
     /// <summary>
@@ -31,7 +40,45 @@ namespace AutomationTest.Core.Runner
     /// </summary>
     public static class ApiClient
     {
+        public const long DefaultMaxAnswerBytes = 50L * 1024 * 1024;
+
         private static readonly HttpClient Client = Create();
+
+        /// <summary>The text of the answer, read piece by piece and never more than the limit; null when it is bigger (it is not read on).</summary>
+        private static string ReadText(HttpResponseMessage response, ApiRequest request, CancellationToken token)
+        {
+            long limit = request.MaxAnswerBytes > 0 ? request.MaxAnswerBytes : DefaultMaxAnswerBytes;
+            long? announced = response.Content.Headers.ContentLength;
+            if (announced.HasValue && announced.Value > limit) return null;
+            using (var input = response.Content.ReadAsStreamAsync().GetAwaiter().GetResult())
+            using (var kept = new MemoryStream())
+            {
+                var buffer = new byte[81920];
+                while (true)
+                {
+                    int read = input.ReadAsync(buffer, 0, buffer.Length, token).GetAwaiter().GetResult();
+                    if (read <= 0) break;
+                    if (kept.Length + read > limit) return null; // the rest is not fetched: the response is closed by the caller
+                    kept.Write(buffer, 0, read);
+                }
+                kept.Position = 0;
+                // The character set the server names, else UTF-8; a byte order mark at the start wins (as the framework does).
+                Encoding encoding = new UTF8Encoding(false);
+                string charset = response.Content.Headers.ContentType != null ? response.Content.Headers.ContentType.CharSet : null;
+                if (!string.IsNullOrWhiteSpace(charset))
+                {
+                    try { encoding = Encoding.GetEncoding(charset.Trim().Trim('"', '\'')); }
+                    catch (ArgumentException) { }
+                }
+                using (var reader = new StreamReader(kept, encoding, true)) return reader.ReadToEnd();
+            }
+        }
+
+        /// <summary>A size for a message: 50 MB, or a number of bytes when it is not whole megabytes.</summary>
+        public static string SizeText(long bytes)
+        {
+            return bytes % (1024 * 1024) == 0 ? (bytes / (1024 * 1024)) + " MB" : bytes + " bytes";
+        }
 
         private static HttpClient Create()
         {
@@ -93,20 +140,35 @@ namespace AutomationTest.Core.Runner
                     timeout.CancelAfter((int)Math.Min(limit, int.MaxValue));
                     try
                     {
-                        using (var response = Client.SendAsync(message, request.SaveTo == null ? HttpCompletionOption.ResponseContentRead : HttpCompletionOption.ResponseHeadersRead, timeout.Token).GetAwaiter().GetResult())
+                        // Only the headers first: the body is then read with a limit, or written to the file as it comes.
+                        using (var response = Client.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, timeout.Token).GetAwaiter().GetResult())
                         {
                             string body = "";
+                            bool tooBig = false;
+                            string savedTo = "";
                             if (request.SaveTo != null)
                             {
-                                if (response.IsSuccessStatusCode) Save(response, request, timeout.Token);
+                                // Download: Timeout is the wait for the answer to begin. A big file then takes as long as it takes;
+                                // only Stop ends it (the timer is turned off, the token still follows Stop).
+                                timeout.CancelAfter(System.Threading.Timeout.Infinite);
+                                if (response.IsSuccessStatusCode) { Save(response, request, timeout.Token); savedTo = request.SaveTo; }
+                                else if (request.Method != "HEAD")
+                                {
+                                    body = ReadText(response, request, timeout.Token);
+                                    if (body == null) { body = ""; tooBig = true; }
+                                }
                             }
-                            else if (request.Method != "HEAD") body = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+                            else if (request.Method != "HEAD")
+                            {
+                                body = ReadText(response, request, timeout.Token);
+                                if (body == null) { body = ""; tooBig = true; }
+                            }
 
                             var headers = new List<KeyValuePair<string, string>>();
                             foreach (var h in response.Headers) headers.Add(new KeyValuePair<string, string>(h.Key, string.Join(", ", h.Value)));
                             foreach (var h in response.Content.Headers) headers.Add(new KeyValuePair<string, string>(h.Key, string.Join(", ", h.Value)));
                             string type = response.Content.Headers.ContentType != null ? response.Content.Headers.ContentType.ToString() : "";
-                            return new ApiValue((int)response.StatusCode, response.ReasonPhrase, type, body, headers);
+                            return new ApiValue((int)response.StatusCode, response.ReasonPhrase, type, body, headers, tooBig, savedTo);
                         }
                     }
                     catch (OperationCanceledException)

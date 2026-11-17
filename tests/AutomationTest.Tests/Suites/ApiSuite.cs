@@ -75,6 +75,41 @@ namespace AutomationTest.Tests.Suites
                 else if (path == "/status/500") { status = 500; reply = "{\"error\":\"broken\"}"; type = "application/json"; }
                 else if (path == "/slow") { Thread.Sleep(3000); reply = "late"; }
                 else if (path == "/file") { reply = "file-content"; }
+                else if (path == "/endless")
+                {
+                    // a very big answer: 64 KB pieces for up to 10 s, until the client goes away
+                    response.StatusCode = 200;
+                    response.SendChunked = true;
+                    var piece = new byte[64 * 1024];
+                    var watch = System.Diagnostics.Stopwatch.StartNew();
+                    try
+                    {
+                        while (watch.ElapsedMilliseconds < 10000)
+                        {
+                            response.OutputStream.Write(piece, 0, piece.Length);
+                            Thread.Sleep(5);
+                        }
+                        response.Close();
+                    }
+                    catch (Exception) { try { response.Abort(); } catch (Exception) { } }
+                    return;
+                }
+                else if (path == "/trickle")
+                {
+                    // the headers at once, then the body slowly: 4 pieces over about 2 seconds (a big download on a slow line)
+                    response.StatusCode = 200;
+                    response.SendChunked = true;
+                    response.ContentType = "application/octet-stream";
+                    for (int i = 0; i < 4; i++)
+                    {
+                        byte[] piece = Encoding.ASCII.GetBytes("part" + i + ";");
+                        response.OutputStream.Write(piece, 0, piece.Length);
+                        response.OutputStream.Flush();
+                        if (i < 3) Thread.Sleep(650);
+                    }
+                    response.Close();
+                    return;
+                }
                 else if (path == "/redirect") { response.StatusCode = 302; response.RedirectLocation = "/json"; response.Close(); return; }
                 else if (path == "/text") { reply = "plain text"; }
                 else { status = 404; reply = "unknown"; }
@@ -157,6 +192,176 @@ namespace AutomationTest.Tests.Suites
             t.Throws<ExpressionException>("a table index on JSON", () => Expression.Evaluate("{j.data[0, 1]}", vars), "reads a table");
             t.Throws<ExpressionException>("[ ] on a number", () => Expression.Evaluate("{i[0]}", vars), "reads a table or JSON");
             t.Eq("the names a JSON expression reads", string.Join(",", Expression.ReferencedVariables("{j.data[{i}].name}", false).OrderBy(n => n)), "i,j");
+        }
+
+        [Suite("api.answer-size")]
+        public static void AnswerSize(T t)
+        {
+            t.Eq("an answer kept in a variable can be 50 MB", ApiClient.DefaultMaxAnswerBytes, 50L * 1024 * 1024);
+            using (var server = new TestServer())
+            {
+                // /file answers "file-content" (12 bytes)
+                var fits = ApiClient.Send(new ApiRequest { Url = server.Root + "/file", MaxAnswerBytes = 12 }, CancellationToken.None);
+                t.Eq("an answer of exactly the limit is read", fits.Body, "file-content");
+                t.False("it is not marked too big", fits.TooBig);
+                // one byte more: not an error; the status is real, the text is not kept and the answer says so
+                var over = ApiClient.Send(new ApiRequest { Url = server.Root + "/file", MaxAnswerBytes = 11 }, CancellationToken.None);
+                t.True("one byte over the limit is not an error and keeps the status", over.Ok && over.Status == 200);
+                t.True("it is marked too big, with no text", over.TooBig && over.Body == "");
+                t.True("the headers are still there", over.Headers.Rows > 0);
+                var gzipless = ApiClient.Send(new ApiRequest { Url = server.Root + "/trickle", MaxAnswerBytes = 10, TimeoutMs = 5000 }, CancellationToken.None);
+                t.True("an answer without a length that grows past the limit is cut, not read to the end", gzipless.TooBig);
+                var vars = new VariableStore();
+                vars.Set("r", over);
+                t.Eq("{r.TooBig}", Expression.Evaluate("{r.TooBig}", vars), true);
+                t.Eq("{r.Status}", Expression.Evaluate("{r.Status}", vars), 200.0);
+                t.Throws<ExpressionException>("{r.Json} says why there is nothing", () => Expression.Evaluate("{r.Json.a}", vars), "bigger than the limit");
+                vars.Set("f", fits);
+                t.Eq("{r.TooBig} is false for an answer that fits", Expression.Evaluate("{f.TooBig}", vars), false);
+                t.Eq("ApiClient names a size in MB", ApiClient.SizeText(50L * 1024 * 1024), "50 MB");
+                t.Eq("HEAD has no body to measure", ApiClient.Send(new ApiRequest { Url = server.Root + "/file", Method = "HEAD", MaxAnswerBytes = 1 }, CancellationToken.None).Status, 200);
+
+                // Download writes to the file and has no limit
+                string folder = Path.Combine(Path.GetTempPath(), "at_api_" + Guid.NewGuid().ToString("N"));
+                try
+                {
+                    string saved = Path.Combine(folder, "big.bin");
+                    var download = ApiClient.Send(new ApiRequest { Url = server.Root + "/file", SaveTo = saved, MaxAnswerBytes = 1 }, CancellationToken.None);
+                    t.True("Download is not limited", download.Ok && File.ReadAllText(saved) == "file-content");
+
+                    // a download that takes longer than Timeout is not cut: Timeout is the wait for the answer to begin
+                    string slow = Path.Combine(folder, "slow.bin");
+                    var trickled = ApiClient.Send(new ApiRequest { Url = server.Root + "/trickle", SaveTo = slow, TimeoutMs = 1000 }, CancellationToken.None);
+                    t.True("a download of 2 s with a Timeout of 1 s finishes", trickled.Ok && File.ReadAllText(slow) == "part0;part1;part2;part3;");
+                    // while reading into a variable the Timeout still covers the whole answer
+                    t.Throws("a slow answer read into a variable still times out",
+                        () => ApiClient.Send(new ApiRequest { Url = server.Root + "/trickle", TimeoutMs = 1000 }, CancellationToken.None), "no answer");
+                    // and Stop still ends a download that is going on
+                    using (var stop = new CancellationTokenSource(900))
+                    {
+                        bool stopped = false;
+                        try { ApiClient.Send(new ApiRequest { Url = server.Root + "/trickle", SaveTo = Path.Combine(folder, "stopped.bin"), TimeoutMs = 60000 }, stop.Token); }
+                        catch (OperationCanceledException) { stopped = true; }
+                        t.True("Stop ends a download", stopped);
+                    }
+                    t.False("a stopped download leaves no file", File.Exists(Path.Combine(folder, "stopped.bin")) || File.Exists(Path.Combine(folder, "stopped.bin.part")));
+                }
+                finally { try { Directory.Delete(folder, true); } catch (IOException) { } catch (UnauthorizedAccessException) { } }
+
+                var r = Run(null, Api(CommandKind.ApiGet, server.Root + "/json"), Calc("name", "{r.Json.data[0].name}"));
+                t.Eq("an ordinary answer is read as before", Get(r, "name"), "Ann");
+
+                // in a script, with the limit of Settings: over it the run goes on (even with Fail on error), and a note says so
+                var messages = new List<string>();
+                var runner = new ScriptRunner(new MouseController()) { MaxApiAnswerBytes = 5 };
+                runner.Message += messages.Add;
+                runner.Run(new List<ActionNode> { Api(CommandKind.ApiGet, server.Root + "/file", failOnError: true), Calc("after", "\"went on\"") }, null, CancellationToken.None);
+                object after;
+                runner.Variables.TryGet("after", out after);
+                t.Eq("the run goes on after an answer over the limit (Fail on error ON)", after, "went on");
+                t.True("a note says it was not kept", messages.Any(m => m.Contains("not kept") && m.Contains("5 bytes")));
+            }
+        }
+
+        [Suite("api.answer-size-endless")]
+        public static void AnswerSizeEndless(T t)
+        {
+            using (var server = new TestServer())
+            {
+                var watch = System.Diagnostics.Stopwatch.StartNew();
+                var answer = ApiClient.Send(new ApiRequest { Url = server.Root + "/endless", MaxAnswerBytes = 1024, TimeoutMs = 30000 }, CancellationToken.None);
+                long ms = watch.ElapsedMilliseconds;
+                t.True("a 10 s answer over the limit is marked too big", answer.TooBig && answer.Status == 200);
+                t.True("and the call returns at once instead of fetching the rest (" + ms + " ms)", ms < 2500);
+                // the connection is not reused half read: the next call to the same server is fine
+                t.Eq("the next call works", ApiClient.Send(new ApiRequest { Url = server.Root + "/text", TimeoutMs = 15000 }, CancellationToken.None).Body, "plain text");
+            }
+        }
+
+        private static ActionNode Saving(CommandKind kind, string url, string path, bool expression = false, bool overwrite = false, string body = "", bool failOnError = false)
+        {
+            return ActionNode.NewCommand(new CommandSettings { Kind = kind, Value = url, Id = "r", Target = body, SaveAnswer = true, SavePath = path, SavePathIsExpression = expression, Overwrite = overwrite, FailOnError = failOnError, TimeMs = 10000 });
+        }
+
+        [Suite("api.download-toggle")]
+        public static void DownloadToggle(T t)
+        {
+            string folder = Path.Combine(Path.GetTempPath(), "at_dl_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(folder);
+            try
+            {
+                using (var server = new TestServer())
+                {
+                    // Get with Download ON: the answer goes to the file, the variable says where; the limit does not apply
+                    string one = Path.Combine(folder, "sub", "one.txt");
+                    var runner = new ScriptRunner(new MouseController()) { MaxApiAnswerBytes = 1 };
+                    runner.Run(new List<ActionNode> { Saving(CommandKind.ApiGet, server.Root + "/file", one), Calc("where", "{r.SavedTo}"), Calc("big", "{r.TooBig}") }, null, CancellationToken.None);
+                    t.Eq("the answer is in the file (folders made, no limit)", File.Exists(one) ? File.ReadAllText(one) : "(no file)", "file-content");
+                    object where, big;
+                    runner.Variables.TryGet("where", out where);
+                    runner.Variables.TryGet("big", out big);
+                    t.Eq("{r.SavedTo} is the file", where, one);
+                    t.Eq("a saved answer is not too big", big, "false");
+
+                    // in a Loop (For), with an expression path: one file per pass
+                    var loop = ActionNode.NewLoop(new LoopSettings { Mode = LoopType.For, ForId = "i", ForFrom = "1", ForTo = "3", ForStep = "1" });
+                    loop.Children.Add(Saving(CommandKind.ApiGet, server.Root + "/text", "\"" + folder.Replace("\\", "\\\\") + "\\\\report_\" + {i} + \".txt\"", expression: true));
+                    Run(null, loop);
+                    t.True("a Loop saves report_1, report_2, report_3", Enumerable.Range(1, 3).All(i => File.Exists(Path.Combine(folder, "report_" + i + ".txt"))));
+                    t.Eq("with the answer in each", File.ReadAllText(Path.Combine(folder, "report_2.txt")), "plain text");
+
+                    // the same name again: an error without Overwrite, replaced with it
+                    t.Throws("a file that exists without Overwrite", () => Run(null, Saving(CommandKind.ApiGet, server.Root + "/text", one)), "exists already");
+                    Run(null, Saving(CommandKind.ApiGet, server.Root + "/text", one, overwrite: true));
+                    t.Eq("replaced with Overwrite", File.ReadAllText(one), "plain text");
+
+                    // Post with a body and Download ON: the body is sent, the answer saved
+                    string posted = Path.Combine(folder, "posted.json");
+                    Run(null, Saving(CommandKind.ApiPost, server.Root + "/echo", posted, body: "{\"n\":7}"));
+                    string echo = File.Exists(posted) ? File.ReadAllText(posted) : "";
+                    t.True("Post sends its body and saves the answer", echo.Contains("\"method\":\"POST\"") && echo.Contains("{\\\"n\\\":7}"));
+
+                    // not 2xx: nothing saved, the error text is kept, an error only with Fail on error
+                    string missing = Path.Combine(folder, "missing.txt");
+                    var failed = Run(null, Saving(CommandKind.ApiGet, server.Root + "/status/404", missing), Calc("text", "{r.Body}"), Calc("status", "{r.Status}"), Calc("saved", "{r.SavedTo}"));
+                    t.False("a 404 is not saved", File.Exists(missing) || File.Exists(missing + ".part"));
+                    t.Eq("its text is kept", Get(failed, "text"), "nope");
+                    t.Eq("its status is kept", Get(failed, "status"), "404");
+                    t.Eq("and {r.SavedTo} is empty", Get(failed, "saved"), "");
+                    t.Throws("a 404 with Fail on error is an error", () => Run(null, Saving(CommandKind.ApiGet, server.Root + "/status/404", missing, failOnError: true)), "answered 404");
+
+                    // a path without a drive starts at the folder of the script
+                    var inFolder = new ScriptRunner(new MouseController()) { ScriptFolder = folder };
+                    inFolder.Run(new List<ActionNode> { Saving(CommandKind.ApiGet, server.Root + "/text", "relative\\r.txt") }, null, CancellationToken.None);
+                    t.True("a relative Download Path is in the script's folder", File.Exists(Path.Combine(folder, "relative", "r.txt")));
+                    t.Throws("Download ON without a path", () => Run(null, Saving(CommandKind.ApiGet, server.Root + "/text", "  ")), "enter the Download Path");
+
+                    // Download OFF keeps the old behaviour, and the toggle means nothing for Head
+                    var head = Run(null, ActionNode.NewCommand(new CommandSettings { Kind = CommandKind.ApiHead, Value = server.Root + "/text", Id = "r", SaveAnswer = true, SavePath = Path.Combine(folder, "head.txt"), TimeMs = 10000 }), Calc("status", "{r.Status}"));
+                    t.Eq("Head with the toggle set still only asks", Get(head, "status"), "200");
+                    t.False("and saves nothing", File.Exists(Path.Combine(folder, "head.txt")));
+                }
+
+                // the file keeps the toggle; an old file has it off
+                var script = new AutomationScript();
+                script.Actions.Add(Saving(CommandKind.ApiGet, "https://x.test/a", "\"r_\" + {i}", expression: true, overwrite: true));
+                var back = ScriptSerializer.FromJson(ScriptSerializer.ToJson(script)).Actions[0].Command;
+                t.True("saved and read back: Download", back.SaveAnswer && back.SavePathIsExpression && back.Overwrite);
+                t.Eq("saved and read back: Download Path", back.SavePath, "\"r_\" + {i}");
+                var plain = new AutomationScript();
+                plain.Actions.Add(Api(CommandKind.ApiGet, "https://x.test/a"));
+                string json = ScriptSerializer.ToJson(plain);
+                t.False("Download OFF writes nothing new in the file", json.Contains("SaveAnswer") || json.Contains("SavePath"));
+                var old = ScriptSerializer.FromJson(json).Actions[0].Command;
+                t.True("a file without the fields: Download OFF and no path", !old.SaveAnswer && old.SavePath == "");
+
+                // Start Selected asks for the variables of the path
+                var all = new AutomationScript();
+                var call = Saving(CommandKind.ApiGet, "https://x.test/a", "\"r_\" + {n}", expression: true);
+                all.Actions.Add(call);
+                t.Eq("the path expression reads its variables", string.Join(",", SelectionPlanner.Build(all, new[] { call }).Needs.Select(x => x.Name)), "n");
+            }
+            finally { try { Directory.Delete(folder, true); } catch (IOException) { } catch (UnauthorizedAccessException) { } }
         }
 
         [Suite("api.calls")]
@@ -281,27 +486,18 @@ namespace AutomationTest.Tests.Suites
         [Suite("api.download")]
         public static void Download(T t)
         {
+            // what the Download toggle shares with any file save: no half file, a folder is not a file
             string folder = Path.Combine(Path.GetTempPath(), "at_api_" + Guid.NewGuid().ToString("N"));
             try
             {
                 using (var server = new TestServer())
                 {
                     string file = Path.Combine(folder, "sub", "out.txt");
-                    var r = Run(null, Api(CommandKind.ApiDownload, server.Root + "/file", "r", "", file), Calc("code", "{r.Status}"));
+                    var r = Run(null, Saving(CommandKind.ApiGet, server.Root + "/file", file), Calc("code", "{r.Status}"));
                     t.Eq("the file is saved (and its folder made)", File.ReadAllText(file), "file-content");
                     t.Eq("with a status", Get(r, "code"), "200");
                     t.False("no half-finished file is left", File.Exists(file + ".part"));
-
-                    t.Throws("a file that exists is not replaced", () => Run(null, Api(CommandKind.ApiDownload, server.Root + "/file", "r", "", file)), "exists already");
-                    File.WriteAllText(file, "old");
-                    var again = ActionNode.NewCommand(new CommandSettings { Kind = CommandKind.ApiDownload, Value = server.Root + "/file", Target = file, Overwrite = true, TimeMs = 10000 });
-                    Run(null, again);
-                    t.Eq("Overwrite replaces it", File.ReadAllText(file), "file-content");
-
-                    string other = Path.Combine(folder, "nothing.txt");
-                    t.Throws("a download that fails saves nothing", () => Run(null, Api(CommandKind.ApiDownload, server.Root + "/status/404", "r", "", other)), "nothing was saved");
-                    t.False("the file is not there", File.Exists(other));
-                    t.Throws("a folder instead of a file", () => Run(null, Api(CommandKind.ApiDownload, server.Root + "/file", "r", "", folder)), "is a folder");
+                    t.Throws("a folder instead of a file", () => Run(null, Saving(CommandKind.ApiGet, server.Root + "/file", folder)), "is a folder");
                 }
             }
             finally { try { Directory.Delete(folder, true); } catch (IOException) { } }
@@ -324,9 +520,22 @@ namespace AutomationTest.Tests.Suites
             t.Eq("the body keeps its braces and spaces", post.Target, "{\"a\": 1}");
             t.Eq("the timeout is 30 s when none was given", post.TimeMs, 30000L);
 
-            var download = e.Through(ActionNode.NewCommand(new CommandSettings { Kind = CommandKind.ApiDownload, Value = "https://x/f.zip", Target = "C:/t/f.zip", Overwrite = true })).Command;
-            t.Eq("download target", download.Target, "C:/t/f.zip");
-            t.True("download overwrite", download.Overwrite);
+
+            // the Download toggle and its path go in and out of the editor; OFF keeps no path
+            var saving = e.Through(ActionNode.NewCommand(new CommandSettings { Kind = CommandKind.ApiGet, Value = "https://x/f", SaveAnswer = true, SavePath = "\"C:\\\\r_\" + {i} + \".xlsx\"", SavePathIsExpression = true, Overwrite = true, TimeMs = 30000 })).Command;
+            t.True("Download ON", saving.SaveAnswer);
+            t.Eq("Download Path", saving.SavePath, "\"C:\\\\r_\" + {i} + \".xlsx\"");
+            t.True("Expr. (file)", saving.SavePathIsExpression);
+            t.True("Overwrite with Download", saving.Overwrite);
+            var postSaving = e.Through(ActionNode.NewCommand(new CommandSettings { Kind = CommandKind.ApiPost, Value = "https://x/f", Target = "{}", SaveAnswer = true, SavePath = "C:/out.json", TimeMs = 30000 })).Command;
+            t.True("Post keeps both its body and the path", postSaving.SaveAnswer && postSaving.Target == "{}" && postSaving.SavePath == "C:/out.json");
+            var off = e.Through(ActionNode.NewCommand(new CommandSettings { Kind = CommandKind.ApiGet, Value = "https://x/f", SaveAnswer = false, SavePath = "C:/left-over.txt", Overwrite = true, TimeMs = 30000 })).Command;
+            t.True("Download OFF keeps no path and no Overwrite", !off.SaveAnswer && off.SavePath == "" && !off.Overwrite);
+            var head = e.Through(ActionNode.NewCommand(new CommandSettings { Kind = CommandKind.ApiHead, Value = "https://x/f", SaveAnswer = true, SavePath = "C:/h.txt", TimeMs = 30000 })).Command;
+            t.True("Head has no Download", !head.SaveAnswer && head.SavePath == "");
+            t.Eq("a path with { } but Expr. off is refused", e.Validate(ActionNode.NewCommand(new CommandSettings { Kind = CommandKind.ApiGet, Value = "https://x/f", SaveAnswer = true, SavePath = "C:/r_{i}.xlsx", TimeMs = 30000 })) != null, true);
+            t.Eq("Download ON without a path is refused", e.Validate(ActionNode.NewCommand(new CommandSettings { Kind = CommandKind.ApiGet, Value = "https://x/f", SaveAnswer = true, TimeMs = 30000 })) != null, true);
+            t.Eq("a good path passes", e.Validate(ActionNode.NewCommand(new CommandSettings { Kind = CommandKind.ApiGet, Value = "https://x/f", SaveAnswer = true, SavePath = "\"C:/r_\" + {i}", SavePathIsExpression = true, TimeMs = 30000 })), null);
 
             var other = e.Through(ActionNode.NewCommand(new CommandSettings { Kind = CommandKind.FsCopy, Value = "a", Target = "b", FailOnError = true, Params = "X: 1" })).Command;
             t.Eq("other kinds drop the API fields", (other.FailOnError ? "y" : "n") + other.Params, "n");

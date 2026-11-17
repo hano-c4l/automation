@@ -17,8 +17,10 @@ namespace AutomationTest.App
         private readonly ToggleSwitch _recordAll = new ToggleSwitch();
         private readonly ToggleSwitch _advancedPicker = new ToggleSwitch();
         private readonly ToggleSwitch _log = new ToggleSwitch();
+        private readonly NumberBox _clearLog = new NumberBox { Minimum = AppSettings.MinClearLogDays, Maximum = AppSettings.MaxClearLogDays };
         private readonly ToggleSwitch _message = new ToggleSwitch();
         private readonly ToggleSwitch _randomTime = new ToggleSwitch();
+        private readonly NumberBox _apiLimit = new NumberBox { Minimum = AppSettings.MinApiAnswerLimitMb, Maximum = AppSettings.MaxApiAnswerLimitMb };
 
         /// <summary>The settings as edited (valid after the dialog returns OK).</summary>
         public AppSettings Result { get; private set; }
@@ -42,8 +44,10 @@ namespace AutomationTest.App
             _recordAll.Checked = current.RecordAllEvent;
             _advancedPicker.Checked = current.AdvancedPositionPicker;
             _log.Checked = current.LogRuns;
+            _clearLog.Value = current.ClearLogDays;
             _message.Checked = current.NotifyEnd;
             _randomTime.Checked = current.RandomTime;
+            _apiLimit.Value = current.ApiAnswerLimitMb;
 
             var table = new TableLayoutPanel { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, ColumnCount = 2 };
             table.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
@@ -57,8 +61,16 @@ namespace AutomationTest.App
             Row(table, "Record all event", _recordAll);
             Row(table, "Advance position picker", _advancedPicker);
             Row(table, "Log", _log);
+            // Clear Log belongs to Log: it is only there while Log is on.
+            Label clearLogCaption = Row(table, "Clear Log (days)", _clearLog);
+            Action showClearLog = () => clearLogCaption.Visible = _clearLog.Visible = _log.Checked;
+            _log.CheckedChanged += (s, e) => showClearLog();
+            showClearLog();
+            Tip(_clearLog, "While Log is ON: each time the program starts, the log files older than this many days are removed from the Logs folder.");
             Row(table, "Message", _message);
             Row(table, "Random Time", _randomTime);
+            Row(table, "API answer limit (MB)", _apiLimit);
+            Tip(_apiLimit, "The biggest answer an API action keeps in its variable (" + AppSettings.MinApiAnswerLimitMb + " to " + AppSettings.MaxApiAnswerLimitMb + " MB). A bigger answer is not kept: the run goes on with the status only ({r.TooBig} is true). Turn on Download in the action to save a big answer in a file (no limit).");
             Tip(_log, "ON: every run writes a log file in the Logs folder next to the program (which action started when, errors, how the run ended). Values are not written.");
             Tip(_message, "ON: a notice appears in the corner of the screen when a run finishes or fails.");
             Tip(_randomTime, "ON: while running, the Time and Delay of each action are made 10 to 20 percent longer at random (never shorter).");
@@ -100,11 +112,13 @@ namespace AutomationTest.App
             table.SetColumnSpan(label, 2);
         }
 
-        private static void Row(TableLayoutPanel table, string caption, Control field)
+        private static Label Row(TableLayoutPanel table, string caption, Control field)
         {
-            table.Controls.Add(new Label { Text = caption, AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(8, 6, 24, 6) });
+            var label = new Label { Text = caption, AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(8, 6, 24, 6) };
+            table.Controls.Add(label);
             field.Margin = new Padding(0, 3, 0, 3);
             table.Controls.Add(field);
+            return label;
         }
 
         private void Save()
@@ -118,8 +132,11 @@ namespace AutomationTest.App
                 RecordAllEvent = _recordAll.Checked,
                 AdvancedPositionPicker = _advancedPicker.Checked,
                 LogRuns = _log.Checked,
+                // An empty box is the default, not the smallest number: 1 day would remove almost every log at the next start.
+                ClearLogDays = _clearLog.Text.Trim().Length == 0 ? AppSettings.DefaultClearLogDays : (int)_clearLog.Value,
                 NotifyEnd = _message.Checked,
-                RandomTime = _randomTime.Checked
+                RandomTime = _randomTime.Checked,
+                ApiAnswerLimitMb = _apiLimit.Text.Trim().Length == 0 ? AppSettings.DefaultApiAnswerLimitMb : (int)_apiLimit.Value
             };
             string problem = edited.Validate();
             if (problem != null)

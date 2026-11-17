@@ -9,6 +9,9 @@ namespace AutomationTest.App
         [STAThread]
         private static void Main()
         {
+            // First of all, before any window exists: an error nothing else handles is told and written down instead of ending the program.
+            ErrorReporter.Install();
+
             // Only one copy runs at a time: a second start brings the running copy to the front and ends.
             if (!SingleInstance.TryStart()) return;
 
