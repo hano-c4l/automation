@@ -4,7 +4,7 @@ Tài liệu này ghi các tính năng đã được yêu cầu nhưng chưa làm
 Tình trạng hiện tại xem `docs/STATUS.md`, yêu cầu gốc và quyết định kỹ thuật xem `docs/PROJECT.md`.
 Mỗi giai đoạn là một nhánh `feature_xxx` tách từ `preview`, xong thì PR vào `preview` (quy ước git trong `CLAUDE.md`).
 
-Cập nhật lần cuối: 2026-11-15. Trạng thái: **P0 (bộ test trong repo) đã xong phần chính; P1 (R1 và R14: Try/Catch/Break/Continue/Return và Section) P2 (R2 Log, R3 Message, R4 Random Time) và P3 (R6 Clipboard, R15 Password, R7 Start Selected nhớ giá trị) P4 (R13 copy/paste, kéo thả, Undo/Redo) và P5 (R5 category Program và thao tác cửa sổ) P6 (R10 Image thành kiểu Variable, R11 OCR) P7 (R12 Auto Script) và P8 (R8 API) đã xong**; chỉ còn P9 (Email); các giai đoạn còn lại chưa bắt đầu. P0 chưa có: test cho Web (cần trình duyệt và extension), RecordConverter, overlay/hook/phím nóng và Image trên cửa sổ thật.
+Cập nhật lần cuối: 2026-11-17. Trạng thái: **P0 (bộ test trong repo) đã xong phần chính; P1 (R1 và R14: Try/Catch/Break/Continue/Return và Section) P2 (R2 Log, R3 Message, R4 Random Time) và P3 (R6 Clipboard, R15 Password, R7 Start Selected nhớ giá trị) P4 (R13 copy/paste, kéo thả, Undo/Redo) và P5 (R5 category Program và thao tác cửa sổ) P6 (R10 Image thành kiểu Variable, R11 OCR) P7 (R12 Auto Script) và P8 (R8 API) đã xong**; chỉ còn P9 (Email); các giai đoạn còn lại chưa bắt đầu. P0 chưa có: test cho Web (cần trình duyệt và extension), RecordConverter, overlay/hook/phím nóng và Image trên cửa sổ thật.
 
 ## 1. Danh sách yêu cầu
 
