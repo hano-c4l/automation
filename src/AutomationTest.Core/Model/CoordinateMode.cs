@@ -172,10 +172,8 @@ namespace AutomationTest.Core.Model
         ApiPut,
         ApiPatch,
         ApiDelete,
-        /// <summary>Asks only for the headers of the answer.</summary>
-        ApiHead,
-        /// <summary>Saves the answer in a file.</summary>
-        ApiDownload
+        /// <summary>Asks only for the headers of the answer. (Saving an answer in a file is the Download toggle of the others.)</summary>
+        ApiHead
     }
 
     /// <summary>Which category an action of <see cref="CommandKind"/> belongs to.</summary>
@@ -189,7 +187,13 @@ namespace AutomationTest.Core.Model
 
         public static bool IsApi(CommandKind kind)
         {
-            return kind >= CommandKind.ApiGet && kind <= CommandKind.ApiDownload;
+            return kind >= CommandKind.ApiGet && kind <= CommandKind.ApiHead;
+        }
+
+        /// <summary>The API kinds that have the Download toggle (save the answer in a file): all but Head (it has no answer to save).</summary>
+        public static bool ApiCanSave(CommandKind kind)
+        {
+            return kind == CommandKind.ApiGet || ApiSendsBody(kind);
         }
 
         /// <summary>The API kinds that can send a body.</summary>

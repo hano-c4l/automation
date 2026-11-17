@@ -41,6 +41,9 @@ namespace AutomationTest.Core.Runner
 
         internal Random RandomSource = new Random();
 
+        /// <summary>Settings, API answer limit: the biggest answer an API action keeps in its variable (0 = the default, 50 MB).</summary>
+        public long MaxApiAnswerBytes { get; set; }
+
         /// <summary>Gives the text in the clipboard (set by the program, which knows how to reach the clipboard; null when it cannot).</summary>
         public Func<string> ClipboardReader { get; set; }
 
@@ -394,7 +397,6 @@ namespace AutomationTest.Core.Runner
                 case CommandKind.ApiPatch:
                 case CommandKind.ApiDelete:
                 case CommandKind.ApiHead:
-                case CommandKind.ApiDownload:
                     ExecuteApi(c, token);
                     break;
 
@@ -559,19 +561,26 @@ namespace AutomationTest.Core.Runner
             }
             if (problem != null) throw new InvalidOperationException("API headers: " + problem);
             if (CommandKinds.ApiSendsBody(c.Kind) && !string.IsNullOrEmpty(c.Target)) request.Body = c.TargetIsExpression ? EvalString(c.Target) : c.Target;
-            if (c.Kind == CommandKind.ApiDownload)
+            if (c.SaveAnswer && CommandKinds.ApiCanSave(c.Kind))
             {
-                string target = c.TargetIsExpression ? EvalString(c.Target) : c.Target;
-                request.SaveTo = FileActions.FullPath(target, "file to save the answer in");
+                // The Download toggle: the answer goes to the file, whatever its size. A path without a drive starts at the folder of
+                // the script that runs (like an Auto Script), so a script and the files it fetches can be moved together.
+                string typed = c.SavePathIsExpression ? EvalString(c.SavePath) : c.SavePath;
+                if (string.IsNullOrWhiteSpace(typed)) throw new InvalidOperationException("API: Download is on, enter the Download Path.");
+                string expanded = Environment.ExpandEnvironmentVariables(typed.Trim());
+                if (!string.IsNullOrEmpty(ScriptFolder) && !System.IO.Path.IsPathRooted(expanded)) expanded = System.IO.Path.Combine(ScriptFolder, expanded);
+                request.SaveTo = FileActions.FullPath(expanded, "Download Path");
             }
+            if (MaxApiAnswerBytes > 0) request.MaxAnswerBytes = MaxApiAnswerBytes;
 
             ApiValue answer = ApiClient.Send(request, token);
             if (id.Length > 0) _vars.Set(id, answer);
-            Message?.Invoke("API " + request.Method + " " + ApiClient.SafeUrl(request.Url) + ": " + answer);
+            Message?.Invoke("API " + request.Method + " " + ApiClient.SafeUrl(request.Url) + ": " + answer
+                + (answer.SavedTo.Length > 0 ? ", saved in " + answer.SavedTo : "")
+                + (request.SaveTo != null && answer.SavedTo.Length == 0 ? ", nothing was saved" : "")
+                + (answer.TooBig ? ", the answer is bigger than " + ApiClient.SizeText(request.MaxAnswerBytes) + " so it was not kept (turn on Download to save it in a file)" : ""));
             if (c.FailOnError && !answer.Ok)
                 throw new InvalidOperationException("API: " + request.Method + " " + ApiClient.SafeUrl(request.Url) + " answered " + answer + ".");
-            if (c.Kind == CommandKind.ApiDownload && !answer.Ok)
-                throw new InvalidOperationException("API: nothing was saved, " + ApiClient.SafeUrl(request.Url) + " answered " + answer + ".");
         }
 
         private void ExecuteFileSystem(CommandSettings c)

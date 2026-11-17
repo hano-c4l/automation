@@ -63,6 +63,7 @@ namespace AutomationTest.Core.Runner
                     if (Inside(source, target)) throw new InvalidOperationException("Cannot copy the folder \"" + source + "\" into itself (" + target + ").");
                     if (Directory.Exists(target) && !overwrite) throw new InvalidOperationException("The folder \"" + target + "\" exists already (turn on Overwrite to merge into it).");
                     if (File.Exists(target)) throw new InvalidOperationException("\"" + target + "\" is a file, so the folder cannot be copied there.");
+                    if (FolderLink.IsLink(source)) Directory.CreateDirectory(Path.GetDirectoryName(target));
                     CopyFolder(source, target, overwrite);
                 }
                 else
@@ -76,8 +77,13 @@ namespace AutomationTest.Core.Runner
             catch (Exception ex) when (IsIoError(ex)) { throw Wrap("copy", source, ex); }
         }
 
+        /// <summary>
+        /// A folder that is a link (junction, symbolic link) is copied as a link to the same place; what it shows is not read, so a
+        /// link that leads back into the folder cannot make the copy go round, and nothing outside the folder is copied.
+        /// </summary>
         private static void CopyFolder(string source, string target, bool overwrite)
         {
+            if (FolderLink.IsLink(source)) { FolderLink.Copy(source, target, overwrite); return; }
             Directory.CreateDirectory(target);
             foreach (string file in Directory.GetFiles(source))
                 File.Copy(file, Path.Combine(target, Path.GetFileName(file)), overwrite);
@@ -102,12 +108,12 @@ namespace AutomationTest.Core.Runner
                     {
                         if (!overwrite) throw new InvalidOperationException("The folder \"" + target + "\" exists already (turn on Overwrite to merge into it).");
                         CopyFolder(source, target, true); // merged; the source goes away afterwards
-                        Directory.Delete(source, true);
+                        DeleteFolder(source);
                         return;
                     }
                     Directory.CreateDirectory(Path.GetDirectoryName(target));
                     if (sameVolume) Directory.Move(source, target);
-                    else { CopyFolder(source, target, false); Directory.Delete(source, true); }
+                    else { CopyFolder(source, target, false); DeleteFolder(source); }
                 }
                 else
                 {
@@ -150,12 +156,17 @@ namespace AutomationTest.Core.Runner
                 throw new InvalidOperationException("Refusing to delete a whole drive (" + full + ").");
             try
             {
+                if (FolderLink.IsLink(full))
+                {
+                    Directory.Delete(full, false); // a link: only the link goes, never what it shows (no Recurse needed)
+                    return true;
+                }
                 if (Directory.Exists(full))
                 {
                     if (!recurse && Directory.EnumerateFileSystemEntries(full).Any())
                         throw new InvalidOperationException("The folder \"" + full + "\" is not empty (turn on Recurse to delete it with everything inside).");
                     if (force) ClearReadOnly(full);
-                    Directory.Delete(full, recurse);
+                    DeleteFolder(full);
                     return true;
                 }
                 if (File.Exists(full))
@@ -169,11 +180,40 @@ namespace AutomationTest.Core.Runner
             catch (Exception ex) when (IsIoError(ex)) { throw Wrap("delete", full, ex); }
         }
 
+        /// <summary>Removes the folder with everything in it. A link inside is removed as a link: what it shows stays where it is.</summary>
+        private static void DeleteFolder(string folder)
+        {
+            if (FolderLink.IsLink(folder)) { Directory.Delete(folder, false); return; }
+            foreach (string file in Directory.GetFiles(folder)) File.Delete(file);
+            foreach (string sub in Directory.GetDirectories(folder))
+            {
+                if (FolderLink.IsLink(sub)) Directory.Delete(sub, false);
+                else DeleteFolder(sub);
+            }
+            Directory.Delete(folder, false);
+        }
+
+        /// <summary>Force: takes the read-only mark off everything in the folder, without going through a link to another place.</summary>
         private static void ClearReadOnly(string folder)
         {
-            foreach (string entry in Directory.EnumerateFileSystemEntries(folder, "*", SearchOption.AllDirectories))
-                File.SetAttributes(entry, FileAttributes.Normal);
+            foreach (string file in Directory.GetFiles(folder)) File.SetAttributes(file, FileAttributes.Normal);
+            foreach (string sub in Directory.GetDirectories(folder))
+            {
+                if (FolderLink.IsLink(sub)) continue; // its content belongs to another place
+                ClearReadOnly(sub);
+            }
             File.SetAttributes(folder, FileAttributes.Directory);
+        }
+
+        /// <summary>Everything inside the folder; with <paramref name="recurse"/> also inside its folders, but a link is named and not entered.</summary>
+        private static void Collect(string folder, bool recurse, System.Collections.Generic.List<string> into)
+        {
+            foreach (string file in Directory.GetFiles(folder)) into.Add(file);
+            foreach (string sub in Directory.GetDirectories(folder))
+            {
+                into.Add(sub);
+                if (recurse && !FolderLink.IsLink(sub)) Collect(sub, true, into);
+            }
         }
 
         public static void CreateFolder(string path)
@@ -218,8 +258,9 @@ namespace AutomationTest.Core.Runner
             if (!Directory.Exists(full)) throw new InvalidOperationException("The folder \"" + full + "\" does not exist.");
             try
             {
-                string[] entries = Directory.EnumerateFileSystemEntries(full, "*", recurse ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly)
-                    .OrderBy(e => e, StringComparer.OrdinalIgnoreCase).ToArray();
+                var found = new System.Collections.Generic.List<string>();
+                Collect(full, recurse, found);
+                string[] entries = found.OrderBy(e => e, StringComparer.OrdinalIgnoreCase).ToArray();
                 var cells = new object[entries.Length, 1];
                 for (int i = 0; i < entries.Length; i++) cells[i, 0] = entries[i];
                 return new TableValue(cells);

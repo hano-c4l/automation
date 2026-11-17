@@ -109,7 +109,8 @@ namespace AutomationTest.Core.Runner
                 var c = node.Command;
                 if (CommandKinds.IsApi(c.Kind))
                 {
-                    var texts = new List<string> { c.ValueIsExpression ? c.Value : null, c.TargetIsExpression ? c.Target : null };
+                    var texts = new List<string> { c.ValueIsExpression ? c.Value : null, c.TargetIsExpression ? c.Target : null,
+                        c.SaveAnswer && c.SavePathIsExpression ? c.SavePath : null };
                     string ignored;
                     foreach (var header in ApiClient.ParseHeaders(c.Params, out ignored)) if (header.Item3) texts.Add(header.Item2);
                     return ReadsOf(texts.ToArray());

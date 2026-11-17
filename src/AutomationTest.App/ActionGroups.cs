@@ -100,7 +100,6 @@ namespace AutomationTest.App
             Tuple.Create(CommandKind.ApiPatch, "API", "Patch"),
             Tuple.Create(CommandKind.ApiDelete, "API", "Delete"),
             Tuple.Create(CommandKind.ApiHead, "API", "Head"),
-            Tuple.Create(CommandKind.ApiDownload, "API", "Download"),
             Tuple.Create(CommandKind.AutoScript, "Script", "Run"),
             Tuple.Create(CommandKind.Active, "System", "Active"),
             Tuple.Create(CommandKind.Shutdown, "System", "Shutdown"),

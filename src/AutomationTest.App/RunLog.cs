@@ -74,6 +74,34 @@ namespace AutomationTest.App
             return now.ToString("yyyyMMdd_HHmmss") + "_" + name + (selected ? "_selected" : "") + ".log";
         }
 
+        /// <summary>
+        /// Clear Log: removes the log files of runs (the names this class gives: date_time_name.log) that were last written more than
+        /// <paramref name="days"/> days ago. Nothing else in the folder is touched. A file that cannot be removed is left; never an error.
+        /// </summary>
+        /// <returns>How many files were removed.</returns>
+        public static int ClearOld(string folder, int days, DateTime now)
+        {
+            int removed = 0;
+            try
+            {
+                if (days < 1 || !Directory.Exists(folder)) return 0;
+                DateTime limit = now.AddDays(-days);
+                foreach (string file in Directory.GetFiles(folder, "*.log"))
+                {
+                    if (!System.Text.RegularExpressions.Regex.IsMatch(Path.GetFileName(file), @"^\d{8}_\d{6}_.*\.log$")) continue;
+                    try
+                    {
+                        if (File.GetLastWriteTime(file) >= limit) continue;
+                        File.Delete(file);
+                        removed++;
+                    }
+                    catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException) { /* in use or not allowed: next time */ }
+                }
+            }
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException || ex is System.Security.SecurityException || ex is ArgumentException) { }
+            return removed;
+        }
+
         /// <summary>Text to hide wherever it would appear in the log (a password, later on).</summary>
         public void AddSecret(string text)
         {
